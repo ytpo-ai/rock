@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { CloudLlmAdapter } from '../src/adapter.ts'
 
 /** Build an OpenAI-style SSE body whose chunks carry the given deltas. */
@@ -41,7 +41,7 @@ describe('CloudLlmAdapter', () => {
     ]))
     vi.stubGlobal('fetch', fetchMock)
 
-    const chunks = []
+    const chunks: StreamChunk[] = []
     for await (const chunk of adapter().stream(options())) chunks.push(chunk)
 
     expect(chunks.find(c => c.type === 'block-start')).toMatchObject({ type: 'block-start', blockType: 'text' })
@@ -50,11 +50,11 @@ describe('CloudLlmAdapter', () => {
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
 
     // The request body routes to the cloud Proxy with the agent key as Bearer.
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
     const body = JSON.parse(String(init.body))
     expect(body.model).toBe('seagull-relay')
     expect(body.stream).toBe(true)
-    expect(String(init.headers.get('authorization'))).toBe('Bearer sk-agent-test')
+    expect(String((init.headers as Headers).get('authorization'))).toBe('Bearer sk-agent-test')
   })
 
   it('maps a length finish to max-tokens and carries tool calls', async () => {
@@ -63,7 +63,7 @@ describe('CloudLlmAdapter', () => {
       'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}',
     ])))
 
-    const chunks = []
+    const chunks: StreamChunk[] = []
     for await (const chunk of adapter().stream(options())) chunks.push(chunk)
 
     const toolEnd = chunks.find(c => c.type === 'block-end' && c.block.type === 'tool-call')

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { GatewayReporter } from '../src/reporter.ts'
 import type { RockReportEvent } from '../src/types.ts'
 
@@ -19,11 +19,11 @@ function event(eventId: string): RockReportEvent {
 
 describe('GatewayReporter', () => {
   let dir: string
-  let post: ReturnType<typeof vi.fn>
+  let post: Mock<(url: string, events: readonly RockReportEvent[]) => Promise<void>>
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'gateway-reporter-'))
-    post = vi.fn().mockResolvedValue(undefined)
+    post = vi.fn<(url: string, events: readonly RockReportEvent[]) => Promise<void>>().mockResolvedValue(undefined)
   })
 
   afterEach(async () => {
@@ -49,7 +49,7 @@ describe('GatewayReporter', () => {
     await rep.flush()
 
     expect(post).toHaveBeenCalledTimes(1)
-    const [, batch] = post.mock.calls[0]
+    const [, batch] = post.mock.calls[0]!
     expect(batch).toHaveLength(2)
     expect(rep.pending).toBe(0)
   })
