@@ -15,7 +15,17 @@ function sseResponse(lines: string[]): Response {
 }
 
 function adapter(): CloudLlmAdapter {
-  return new CloudLlmAdapter({ baseUrl: 'http://cloud.test', apiKey: 'sk-agent-test', defaultModel: 'seagull-relay' })
+  return new CloudLlmAdapter({
+    providers: {
+      'seagull-cloud': { baseUrl: 'http://cloud.test', apiKey: 'sk-agent-test', defaultModel: 'seagull-relay' },
+      'deepseek': {
+        baseUrl: 'https://api.deepseek.test',
+        apiKey: 'sk-deepseek-test',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+        defaultModel: 'deepseek-chat',
+      },
+    },
+  })
 }
 
 function options(overrides: Partial<GenerateOptions> = {}): GenerateOptions {
@@ -69,5 +79,37 @@ describe('CloudLlmAdapter', () => {
     const toolEnd = chunks.find(c => c.type === 'block-end' && c.block.type === 'tool-call')
     expect(toolEnd).toBeDefined()
     expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'max-tokens' } })
+  })
+
+  it('routes each provider to its own baseUrl and apiKey', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    for await (const _ of adapter().stream(options({ provider: 'deepseek', model: 'deepseek-chat' }))) { /* drain */ }
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe('https://api.deepseek.test/v1/chat/completions')
+    expect(String((init.headers as Headers).get('authorization'))).toBe('Bearer sk-deepseek-test')
+    expect(JSON.parse(String(init.body)).model).toBe('deepseek-chat')
+  })
+
+  it('advertises the configured catalog per provider', async () => {
+    const subject = adapter()
+    await expect(subject.listModels('deepseek')).resolves.toEqual([
+      { provider: 'deepseek', id: 'deepseek-chat', name: 'deepseek-chat', inputModalities: ['text'] },
+      { provider: 'deepseek', id: 'deepseek-reasoner', name: 'deepseek-reasoner', inputModalities: ['text'] },
+    ])
+    await expect(subject.listModels('seagull-cloud')).resolves.toEqual([
+      { provider: 'seagull-cloud', id: 'seagull-relay', name: 'seagull-relay', inputModalities: ['text'] },
+    ])
+  })
+
+  it('rejects an unconfigured provider route', async () => {
+    const stream = adapter().stream(options({ provider: 'unknown' }))
+    await expect((async () => {
+      for await (const _ of stream) { /* drain */ }
+    })()).rejects.toMatchObject({ code: 'NO_ADAPTER' })
   })
 })

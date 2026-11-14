@@ -6,6 +6,7 @@
  * @module @rock/seagull-identity/service
  */
 import { readFile } from 'node:fs/promises'
+import type { BotDefinition } from '@rock/rock-bot-manager'
 import type { AgentLoopPatch, RenderedAgent, SeatClaim, ToolBinding, ToolType } from './types.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
@@ -24,6 +25,8 @@ export interface SeagullIdentityOptions {
   defaultProvider: string
   /** Placeholder model id for rendered agent entries. */
   defaultModel: string
+  /** Locally-defined custom bots merged with the cloud seat claims. */
+  botDefinitions?: readonly BotDefinition[]
   /** Fetch-like transport for the claims endpoint, injectable for tests. */
   fetchJson?: (url: string) => Promise<unknown>
 }
@@ -31,12 +34,20 @@ export interface SeagullIdentityOptions {
 /** Synced Seagull identity state plus rendering helpers. */
 export class SeagullIdentityService {
   private claims: SeatClaim[] = []
+  private localBots: readonly BotDefinition[]
 
-  constructor(private readonly options: SeagullIdentityOptions) {}
+  constructor(private readonly options: SeagullIdentityOptions) {
+    this.localBots = options.botDefinitions ?? []
+  }
 
   /** Current seat claims (empty before {@link sync} completes). */
   getClaims(): readonly SeatClaim[] {
     return this.claims
+  }
+
+  /** Replace the locally-defined custom bots (live update from `rock-bot-manager`). */
+  setBotDefinitions(bots: readonly BotDefinition[]): void {
+    this.localBots = bots
   }
 
   /** Load the claim list from the gateway, falling back to the local file. */
@@ -46,16 +57,25 @@ export class SeagullIdentityService {
 
   /** Resolve the tool type an agent bot binds to (local tool binding). */
   toolBindingOf(agentBotId: string): ToolType {
+    const local = this.localBots.find(bot => bot.id === agentBotId)
+    if (local !== undefined) return local.tool.toolType
     return this.options.bindings[agentBotId] ?? this.options.defaultToolType
   }
 
-  /** Render the agent-loop agent entries for every claimed bot. */
+  /** Render the agent-loop agent entries for every claimed bot and local bot. */
   renderAgents(): RenderedAgent[] {
-    return this.claims.map(claim => ({
-      id: claim.agentBotId,
-      provider: this.options.defaultProvider,
-      model: this.options.defaultModel,
-    }))
+    const byId = new Map<string, RenderedAgent>()
+    for (const claim of this.claims) {
+      byId.set(claim.agentBotId, {
+        id: claim.agentBotId,
+        provider: this.options.defaultProvider,
+        model: this.options.defaultModel,
+      })
+    }
+    for (const bot of this.localBots) {
+      byId.set(bot.id, { id: bot.id, provider: bot.llm.provider, model: bot.llm.model })
+    }
+    return [...byId.values()]
   }
 
   /**

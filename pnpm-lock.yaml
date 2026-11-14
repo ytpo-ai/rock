@@ -2861,6 +2861,12 @@ importers:
       '@rock/gateway-reporter':
         specifier: workspace:*
         version: link:../../rock/gateway-reporter
+      '@rock/rock-bot-manager':
+        specifier: workspace:*
+        version: link:../../rock/rock-bot-manager
+      '@rock/rock-observability':
+        specifier: workspace:*
+        version: link:../../rock/rock-observability
       '@rock/seagull-identity':
         specifier: workspace:*
         version: link:../../rock/seagull-identity
@@ -15324,6 +15330,16 @@ importers:
         specifier: workspace:*
         version: link:../../core/session
 
+  packages/rock/rock-bot-manager:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+
   packages/rock/rock-llm-relay:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -15333,6 +15349,15 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+
+  packages/rock/rock-observability:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
 
   packages/rock/seagull-identity:
     dependencies:
@@ -15346,6 +15371,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: workspace:*
         version: link:../../core/agent
+      '@rock/rock-bot-manager':
+        specifier: workspace:*
+        version: link:../rock-bot-manager
 
   packages/sandbox/sandbox:
     dependencies:

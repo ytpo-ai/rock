@@ -25,14 +25,24 @@ import type {
   ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 
-/** Constructor options owned by the plugin's `apply`. */
-export interface CloudLlmAdapterOptions {
-  /** Cloud LLM Proxy origin; the adapter appends `/v1/chat/completions`. */
+/** One OpenAI-compatible provider route owned by this adapter. */
+export interface CloudProviderConfig {
+  /** OpenAI-compatible endpoint origin; the adapter appends `/v1/chat/completions`. */
   baseUrl: string
-  /** Bearer agent API key presented to the cloud Proxy. */
+  /** Bearer API key presented to this provider. */
   apiKey?: string
+  /** Human-readable display name; defaults to the provider id. */
+  name?: string
+  /** Advertised model ids for the catalog; omitted falls back to `defaultModel`. */
+  models?: string[]
   /** Placeholder model id for catalog and omitted-request fallback. */
   defaultModel: string
+}
+
+/** Constructor options owned by the plugin's `apply`. */
+export interface CloudLlmAdapterOptions {
+  /** Provider routes keyed by the id passed to `GenerateOptions.provider`. */
+  providers: Record<string, CloudProviderConfig>
 }
 
 /** One OpenAI chat message after translation from the harness vocabulary. */
@@ -235,17 +245,28 @@ export class CloudLlmAdapter extends LlmAdapter {
     super()
   }
 
+  /** Resolve one provider route's connection facts, refusing unknown routes. */
+  private providerConfig(provider: string): CloudProviderConfig {
+    const route = this.config.providers[provider]
+    if (route === undefined) {
+      throw new LlmError(`no provider route configured for "${provider}"`, 'NO_ADAPTER')
+    }
+    return route
+  }
+
   override providerInfo(provider: string): LlmProviderInfo {
-    return { id: provider, name: provider }
+    return { id: provider, name: this.providerConfig(provider).name ?? provider }
   }
 
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve([{
+    const route = this.providerConfig(provider)
+    const ids = route.models !== undefined && route.models.length > 0 ? route.models : [route.defaultModel]
+    return Promise.resolve(ids.map(id => ({
       provider,
-      id: this.config.defaultModel,
-      name: 'Seagull Cloud Relay',
+      id,
+      name: id,
       inputModalities: ['text'],
-    }])
+    })))
   }
 
   override resolveModel(
@@ -263,11 +284,12 @@ export class CloudLlmAdapter extends LlmAdapter {
   }
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    const url = `${this.config.baseUrl.replace(/\/$/, '')}/v1/chat/completions`
+    const route = this.providerConfig(options.provider)
+    const url = `${route.baseUrl.replace(/\/$/, '')}/v1/chat/completions`
     const headers = new Headers()
     headers.set('content-type', 'application/json')
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
-    if (this.config.apiKey !== undefined) headers.set('authorization', `Bearer ${this.config.apiKey}`)
+    if (route.apiKey !== undefined) headers.set('authorization', `Bearer ${route.apiKey}`)
 
     const body = {
       model: options.model,
@@ -350,7 +372,7 @@ export class CloudLlmAdapter extends LlmAdapter {
     if (payload === '[DONE]') {
       return [...accumulator.flush(), { type: 'finish', reason: { kind: 'stop' } as FinishReason }]
     }
-    const chunk: OpenAiChunk = JSON.parse(payload)
+    const chunk = JSON.parse(payload) as OpenAiChunk
     const out: StreamChunk[] = []
     const delta = chunk.choices?.[0]?.delta
     if (delta !== undefined) {
@@ -393,5 +415,6 @@ export class CloudLlmAdapter extends LlmAdapter {
 /** A safe, secret-free diagnostic for an unknown thrown value. */
 function diagnosticOf(error: unknown): string {
   if (error instanceof Error) return error.message
-  return String(error ?? 'unknown error')
+  if (typeof error === 'string') return error
+  return 'unknown error'
 }

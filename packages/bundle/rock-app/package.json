@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-rock-app",
-  "description": "Rock (ConnectorClient) profile bundle: the codex delegation layer plus the three Rock plugins and the thin-relay agent preset over the dsh web surface",
+  "description": "Rock (ConnectorClient) profile bundle: the codex delegation layer plus the Rock plugins (cloud-llm-adapter, seagull-identity, gateway-reporter, rock-bot-manager, rock-observability) and the thin-relay agent preset over the dsh web surface",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -36,6 +36,8 @@
     "@deepseek-ai/dsh-tool-subagent": "workspace:*",
     "@rock/cloud-llm-adapter": "workspace:*",
     "@rock/gateway-reporter": "workspace:*",
+    "@rock/rock-bot-manager": "workspace:*",
+    "@rock/rock-observability": "workspace:*",
     "@rock/seagull-identity": "workspace:*"
   },
   "peerDependencies": {

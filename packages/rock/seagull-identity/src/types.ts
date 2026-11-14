@@ -13,8 +13,8 @@ export interface SeatClaim {
   claimedAt: string
 }
 
-/** Local tool type an agent bot binds to on the employee workbench. */
-export type ToolType = 'codex' | 'pi' | 'dsh' | 'acp' | 'claude-code' | string
+/** Local tool type an agent bot binds to on the employee workbench (e.g. codex / pi / dsh / acp / claude-code). */
+export type ToolType = string
 
 /** One local tool binding: agent bot → execution backend. */
 export interface ToolBinding {

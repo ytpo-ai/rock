@@ -16,6 +16,9 @@
     },
     {
       "path": "../../core/agent"
+    },
+    {
+      "path": "../rock-bot-manager"
     }
   ]
 }

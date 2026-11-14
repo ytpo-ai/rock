@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
-    "@deepseek-ai/dsh-agent": "workspace:*"
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@rock/rock-bot-manager": "workspace:*"
   }
 }

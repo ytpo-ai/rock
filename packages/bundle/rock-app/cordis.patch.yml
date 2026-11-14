@@ -62,6 +62,19 @@
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
         bufferPath: !!js "process.env.ROCK_BUFFER_PATH || '.rock/events.jsonl'"
 
+    # ── plugin⑤ rock-bot-manager: local bot registry (custom bots) ──
+    # Always mounted: the local workbench owns its custom bots independent of
+    # the Seagull seat-claim model.
+    - id: rock-bot-manager
+      name: '@rock/rock-bot-manager'
+      config:
+        storePath: !!js "process.env.ROCK_BOT_STORE || '.rock/bots.json'"
+
+    # ── plugin⑥ rock-observability: local session turns/steps/tokens fold ──
+    # Always mounted: the workbench dashboard reads ctx.rockObservability.
+    - id: rock-observability
+      name: '@rock/rock-observability'
+
 # ── thin-relay preset: the Rock agent delegates, it does not think ──
 - insert:
     - id: preset-rock

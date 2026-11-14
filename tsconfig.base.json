@@ -461,6 +461,7 @@
       "@rock/gateway-reporter": ["./packages/rock/gateway-reporter/src"],
       "@rock/rock-bot-manager": ["./packages/rock/rock-bot-manager/src"],
       "@rock/rock-llm-relay": ["./packages/rock/rock-llm-relay/src"],
+      "@rock/rock-observability": ["./packages/rock/rock-observability/src"],
       "@rock/seagull-identity": ["./packages/rock/seagull-identity/src"],
       "@deepseek-ai/dsh-chunked-list": ["./packages/util/chunked-list/src"],
       "@deepseek-ai/dsh-cmdline": ["./packages/boot/cmdline/src"],

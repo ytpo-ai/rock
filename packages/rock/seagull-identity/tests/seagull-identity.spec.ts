@@ -68,4 +68,59 @@ describe('SeagullIdentityService', () => {
     expect(fetchJson).toHaveBeenCalledWith('http://gateway.test/claims?employeeId=employee-a')
     expect(service.getClaims()).toHaveLength(2)
   })
+
+  it('merges local custom bots into the rendered agents with their own provider/model', async () => {
+    const claimFile = join(dir, 'claims.json')
+    await writeFile(claimFile, JSON.stringify(CLAIMS), 'utf8')
+
+    const service = new SeagullIdentityService({
+      claimFile,
+      bindings: {},
+      defaultToolType: 'codex',
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+      botDefinitions: [
+        {
+          id: 'agent-bot-E',
+          name: 'Local Bot E',
+          llm: { provider: 'deepseek', model: 'deepseek-chat' },
+          tool: { toolType: 'codex' },
+        },
+      ],
+    })
+    await service.sync()
+
+    expect(service.renderAgents()).toEqual([
+      { id: 'agent-bot-C', provider: 'seagull-cloud', model: 'seagull-relay' },
+      { id: 'agent-bot-D', provider: 'seagull-cloud', model: 'seagull-relay' },
+      { id: 'agent-bot-E', provider: 'deepseek', model: 'deepseek-chat' },
+    ])
+    expect(service.toolBindingOf('agent-bot-E')).toBe('codex')
+    expect(service.toolBindingOf('agent-bot-C')).toBe('codex')
+  })
+
+  it('lets a local bot override a claimed bot id and updates via setBotDefinitions', async () => {
+    const claimFile = join(dir, 'claims.json')
+    await writeFile(claimFile, JSON.stringify(CLAIMS), 'utf8')
+
+    const service = new SeagullIdentityService({
+      claimFile,
+      bindings: {},
+      defaultToolType: 'dsh',
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+    })
+    await service.sync()
+
+    service.setBotDefinitions([
+      {
+        id: 'agent-bot-C',
+        name: 'Overridden C',
+        llm: { provider: 'openai', model: 'gpt-4o' },
+        tool: { toolType: 'pi' },
+      },
+    ])
+    expect(service.renderAgents()).toContainEqual({ id: 'agent-bot-C', provider: 'openai', model: 'gpt-4o' })
+    expect(service.toolBindingOf('agent-bot-C')).toBe('pi')
+  })
 })
