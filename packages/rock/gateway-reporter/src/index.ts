@@ -23,7 +23,7 @@ import { GatewayReporter } from './reporter.ts'
 import type { RockReportEvent } from './types.ts'
 
 export const name = 'rock-gateway-reporter'
-export const inject = ['session']
+export const inject = ['sessions']
 
 const DEFAULT_FLUSH_INTERVAL_MS = 5_000
 const DEFAULT_MAX_BATCH_SIZE = 100

@@ -47,7 +47,7 @@ describe('RockLlmRelay', () => {
     expect(await response.text()).toContain('data:')
 
     expect(forward).toHaveBeenCalledTimes(1)
-    const [url, init] = forward.mock.calls[0]
+    const [url, init] = forward.mock.calls[0]!
     expect(url).toBe('http://cloud.test/v1/chat/completions')
     const headers = init.headers as Headers
     expect(headers.get('x-seagull-agent-bot-id')).toBe('agent-bot-C')
