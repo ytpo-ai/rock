@@ -574,6 +574,10 @@ final class AXAccess {
         }
         return (window, element)
     }
+    /// Resolve a window's geometry around an AX bounds read for an already-resolved window element.
+    func resolveWindowGeometry(owner: ProcessIdentity, windowID: UInt32, element: AXUIElement) throws -> WindowInfo {
+        try WindowGeometry.resolve(owner: owner, windowID: windowID) { try self.bounds(element) }
+    }
     /// WindowServer IDs identify a window or sheet even when other branches are incomplete.
     func windowElement(_ id: UInt32, owner: ProcessIdentity, budget: inout AXChildRecoveryBudget, requireComplete: Bool) throws -> AXUIElement? {
         let app = AXUIElementCreateApplication(owner.pid)
