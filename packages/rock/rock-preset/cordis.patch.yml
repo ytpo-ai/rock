@@ -1,0 +1,89 @@
+# Rock preset：员工工作台的委派器化组合（Phase 1 集成示例，待运行时验证）
+#
+# 说明：本文件是 Rock（ConnectorClient）的 cordis.patch.yml 示例，展示
+# 「clone DSH + 3 插件 + agent-loop 委派器化」如何组合。分两层：
+#   1) Host 层：共享服务（llm / agent-loop / subagent / 3 插件）
+#   2) Preset 层：每个认领 agent bot 的 thin-relay 组合（唯一 tool-subagent）
+#
+# 实际挂载时用真实值替换 ${...} 占位，并放到 Rock web profile 的 bundle 里。
+
+- insert:
+    # ── LLM 路由云端（插件① cloud-llm-adapter） ──
+    - id: llm
+      name: '@deepseek-ai/dsh-llm'
+    - id: llm-cloud
+      name: '@rock/cloud-llm-adapter'
+      config:
+        providerName: seagull-cloud
+        baseUrl: ${SEAGULL_CLOUD_BASE_URL}
+        apiKey: ${SEAGULL_AGENT_API_KEY}
+
+    # ── 认领同步 + 工具绑定（插件② seagull-identity） ──
+    - id: seagull-identity
+      name: '@rock/seagull-identity'
+      config:
+        gatewayUrl: ${SEAGULL_GATEWAY_URL}/v1/connectors/clients/claims
+        employeeId: ${SEAGULL_EMPLOYEE_ID}
+        claimFile: .rock/claims.json
+        bindings:
+          agent-bot-C: codex
+          agent-bot-D: pi
+
+    # ── 出站上报（插件③ gateway-reporter） ──
+    - id: gateway-reporter
+      name: '@rock/gateway-reporter'
+      config:
+        gatewayUrl: ${SEAGULL_GATEWAY_URL}/v1/connectors/report
+        connectorClientId: ${ROCK_CONNECTOR_CLIENT_ID}
+        employeeId: ${SEAGULL_EMPLOYEE_ID}
+        bufferPath: .rock/events.jsonl
+
+    # ── subagent 底座 + 委派工具 ──
+    - id: subagent
+      name: '@deepseek-ai/dsh-subagent'
+    - id: subagent-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+      config:
+        providerName: codex
+        permissionMode: workspace-write
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: codex
+        toolName: subagent
+        maxDepth: provider-managed
+
+    # ── agent-loop（委派器化：agents 由 seagull-identity 渲染） ──
+    - id: agent-loop
+      name: '@deepseek-ai/dsh-agent-loop'
+      config:
+        agents:
+          # 每条由认领的 agent bot 生成；provider 走云端 cloud-llm-adapter。
+          # 唯一工具为 tool-subagent（委派给绑定的 Codex/Pi/DSH），不自己 call model。
+          - id: agent-bot-C
+            provider: seagull-cloud
+            model: seagull-relay
+
+# Preset 层：thin-relay persona（只委派、不思考）
+- insert:
+    - id: preset-rock
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rock
+        order: 1
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                你是 agent bot 席位的委派器（thin relay）。不要自行思考或直接完成任务，
+                只把收到的任务委派给绑定工具（subagent_codex / subagent_pi / subagent_dsh），
+                并把其结果回传。你的唯一工具是 subagent。
+              complete: true
+              includeRuntimeContext: false
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: codex
+              toolName: subagent
+              maxDepth: provider-managed
