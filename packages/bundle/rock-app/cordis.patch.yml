@@ -100,6 +100,12 @@
 - id: entry-customization
   disabled: true
 
+# The console has no chat surface: hide the sidebar's New Session affordances
+# (the New Session row and the brand-as-New-Session shortcut).
+- id: ui-sidebar
+  config:
+    showNewSession: false
+
 - insert:
     # ── codex subagent provider + global delegation tool ──
     # Each delegation spawns one unattended Codex thread in the parent workspace.

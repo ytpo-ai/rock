@@ -81,7 +81,7 @@ function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts 
       useShortcuts={selector => selector(shortcuts)}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
-      startSession={startSession} toggleSidebar={toggleSidebar} trackEntryClick={trackEntryClick} t={t}
+      startSession={startSession} toggleSidebar={toggleSidebar} trackEntryClick={trackEntryClick} showNewSession={true} t={t}
       renderFactorySlot={() => null}
       renderSlot={((
         key: string,
@@ -325,7 +325,7 @@ describe('SidebarRoot shell', () => {
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
-      startSession={startSession} toggleSidebar={vi.fn()} trackEntryClick={trackEntryClick} t={t}
+      startSession={startSession} toggleSidebar={vi.fn()} trackEntryClick={trackEntryClick} showNewSession={true} t={t}
       renderFactorySlot={() => null}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}

@@ -1,8 +1,10 @@
-/** Rock workbench console shell, browser half: default landing panel selection. */
+/** Rock workbench console shell, browser half: default landing panel + Rock brand. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import { RockBrandName } from './RockBrandName.tsx'
 
 /** The panel the console opens on: the Rock overview panel. */
 const DEFAULT_PANEL = 'rock-overview' as MainPanelId
@@ -11,13 +13,14 @@ const DEFAULT_PANEL = 'rock-overview' as MainPanelId
 export const inject = ['slots', 'layout']
 
 /**
- * Select the default panel once its main-slot occupant registers, so a Rock
- * console without the chat surface still opens on a panel instead of the
- * empty conversation area. Selection happens once; later navigation is the
- * user's own.
+ * Select the default panel once its main-slot occupant registers, and fill the
+ * Rock brand name. Selection happens once; later navigation is the user's own.
  * @param ctx - browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({
+    name: 'sidebar.brand.name',
+  }, RockBrandName))
   ctx.effect(() => {
     let landed = false
     const selectDefault = (): void => {
