@@ -14,11 +14,27 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services required before the Remote namespace mounts. */
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['remote', 'slots', 'locale']
 
-/** Mount the Remote namespace, then the locale dictionary and Settings section. */
+/** Mount the Remote namespace, then register the locale dictionary and Settings section in a child context. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const unmountRemote = await ctx.remote.$mount(remote)
+  const ui = ctx.inject(['remote.rockObservability', 'slots', 'locale'], registerSection)
+  try {
+    await ui
+  } catch (error) {
+    await ui.dispose()
+    await unmountRemote()
+    throw error
+  }
+  return async () => {
+    await ui.dispose()
+    await unmountRemote()
+  }
+}
+
+/** Register the locale dictionary and the Settings section entry. */
+function registerSection(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'rock-observability: dictionaries')
   ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -29,5 +45,4 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     locale: NS,
     inject: (): RockObservabilitySectionInjected => ({ remote: ctx.remote.rockObservability }),
   }, RockObservabilitySection))
-  return async () => { await unmountRemote() }
 }
