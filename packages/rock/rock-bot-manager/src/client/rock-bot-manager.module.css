@@ -12,18 +12,18 @@
 .table th {
   text-align: left;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.25));
-  color: var(--dsw-alias-text-secondary, #666);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
   font-weight: 500;
 }
 
 .table td {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.12));
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .empty {
-  color: var(--dsw-alias-text-secondary, #666);
+  color: var(--dsw-alias-label-secondary);
   margin: 0;
 }
 
@@ -33,25 +33,31 @@
   gap: 8px;
 }
 
-.form input {
+.form input,
+.table select,
+.delete,
+.submit {
   padding: 6px 8px;
-  border: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.35));
+  border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: 4px;
   background: transparent;
-  color: inherit;
+  color: var(--dsw-alias-label-primary);
 }
 
 .delete,
 .submit {
-  padding: 6px 10px;
-  border: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.35));
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
 }
 
-.delete:hover,
-.submit:hover {
-  background: var(--dsw-alias-surface-hover, rgba(128, 128, 128, 0.08));
+@media (hover: hover) {
+  .delete:hover,
+  .submit:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.locked {
+  margin-left: 6px;
+  font-size: 0.85em;
+  color: var(--dsw-alias-label-tertiary);
 }

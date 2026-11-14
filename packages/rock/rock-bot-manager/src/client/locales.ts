@@ -4,7 +4,7 @@ export const NS = 'rock-bot-manager'
 
 /** English dictionary. */
 export const en = {
-  nav: 'Rock Bots',
+  nav: 'Agent bots',
   empty: 'No local bots yet. Add one below.',
   add: 'Add bot',
   'form.id': 'Bot id',
@@ -18,6 +18,8 @@ export const en = {
   'column.provider': 'Provider',
   'column.model': 'Model',
   'column.tool': 'Tool',
+  'binding.label': 'Tool binding',
+  'binding.locked': 'busy',
 } as const
 
 /** Locale keys. */
@@ -25,7 +27,7 @@ export type RockBotManagerKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockBotManagerKey, string> = {
-  nav: 'Rock Bot',
+  nav: 'Agent Bot 管理',
   empty: '尚未添加本地 bot，请在下方添加。',
   add: '添加 bot',
   'form.id': 'Bot id',
@@ -39,4 +41,6 @@ export const zh: Record<RockBotManagerKey, string> = {
   'column.provider': 'Provider',
   'column.model': '模型',
   'column.tool': '工具',
+  'binding.label': '工具绑定',
+  'binding.locked': '执行中',
 }

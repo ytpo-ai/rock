@@ -1,6 +1,6 @@
 /** Read-only Rock observability table contributed to the Settings page. */
 import { useEffect, useState, type ReactElement } from 'react'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservabilityRow } from '@rock/rock-observability/types'
@@ -15,7 +15,7 @@ export interface RockObservabilitySectionInjected {
 }
 
 export type RockObservabilitySectionProps =
-  PropsRuntime<'settings.section'> & PropsLocale<'rock-observability'> & InjectFace<RockObservabilitySectionInjected>
+  PropsRuntime<'main'> & PropsLocale<'rock-observability'> & InjectFace<RockObservabilitySectionInjected>
 
 /** Render the local sessions and their turns/steps/output-token figures. */
 export function RockObservabilitySection({ t, remote }: RockObservabilitySectionProps): ReactElement {

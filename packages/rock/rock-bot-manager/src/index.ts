@@ -19,16 +19,26 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { RockBotService } from './service.ts'
 import { JsonFileBotStore } from './store.ts'
+import { activeBotIdsFrom } from './tasks.ts'
 import type { BotDefinition, BotInput } from './types.ts'
 
 export type * from './types.ts'
 
 const DEFAULT_STORE_PATH = '.rock/bots.json'
 
+/** Tool types the binding selector offers before deployment overrides them. */
+const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-code']
+
 /** Deployment-owned persistence facts; patchable from cordis.yml. */
 export interface Config {
   /** JSON file persisting the local bot list. */
   storePath?: string
+  /** Full tasks endpoint URL (no query); absent → the binding lock never engages (offline). */
+  tasksUrl?: string
+  /** Employee id the tasks endpoint filters by; absent → the binding lock never engages. */
+  employeeId?: string
+  /** Tool types offered by the binding selector. */
+  toolTypes?: string[]
 }
 
 /** Remote service carrying the local bot registry. */
@@ -36,12 +46,17 @@ export default class RockBotController extends TypertRemoteService {
   static inject = []
   static Config: z<Config> = z.object({
     storePath: z.string().min(1).default(DEFAULT_STORE_PATH),
+    tasksUrl: z.string().default(''),
+    employeeId: z.string().default(''),
+    toolTypes: z.array(z.string().min(1)).default(DEFAULT_TOOL_TYPES),
   })
 
   private readonly service: RockBotService
+  private readonly config: Config
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockBots')
+    this.config = config
     this.service = new RockBotService({
       store: new JsonFileBotStore(config.storePath ?? DEFAULT_STORE_PATH),
     })
@@ -96,6 +111,33 @@ export default class RockBotController extends TypertRemoteService {
       await this.service.remove(id)
     } catch (error) {
       throw botRemoteError(error)
+    }
+  }
+
+  /** Bot ids with at least one active (non-terminal) cloud task; empty when offline. */
+  @Remote
+  async activeBotIds(): Promise<string[]> {
+    return activeBotIdsFrom(await this.fetchTasks())
+  }
+
+  /** Tool types the binding selector offers. */
+  @Remote
+  toolTypes(): string[] {
+    return [...(this.config.toolTypes ?? DEFAULT_TOOL_TYPES)]
+  }
+
+  /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
+  private async fetchTasks(): Promise<Array<Record<string, unknown>>> {
+    const url = this.config.tasksUrl
+    const employeeId = this.config.employeeId
+    if (url === undefined || employeeId === undefined || url.length === 0 || employeeId.length === 0) return []
+    try {
+      const response = await fetch(`${url}?employeeId=${encodeURIComponent(employeeId)}`)
+      if (!response.ok) return []
+      const body = (await response.json()) as { tasks?: unknown }
+      return Array.isArray(body.tasks) ? body.tasks as Array<Record<string, unknown>> : []
+    } catch {
+      return []
     }
   }
 }

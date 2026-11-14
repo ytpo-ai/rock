@@ -8,6 +8,98 @@
 # stay disabled until their deployment env is present, and `gateway-reporter`
 # buffers session events to a local JSONL file when the gateway is unreachable.
 
+# ── REQ-006 Rock console shell: strip the agent-chat surface ───────────────
+# Rock is an ops console, not a chat app. Disable the browser rows that render
+# the conversational surface (chat, composer, home whale), the workspace/session
+# browser, agent teams/subagents, the automation (schedule) page, and the
+# "browse more plugins" More menu. Host session infra (session-query /
+# session-stats / session-persistence) stays mounted so rock-observability keeps
+# reading local session data.
+
+# agent chat + session dialog
+- id: ui-chat
+  disabled: true
+- id: ui-conversation
+  disabled: true
+- id: ui-model-selection
+  disabled: true
+- id: ui-approval
+  disabled: true
+- id: ui-input-trigger
+  disabled: true
+- id: ui-commands
+  disabled: true
+- id: ui-skill
+  disabled: true
+- id: ui-reference
+  disabled: true
+- id: ui-permission
+  disabled: true
+- id: ui-agent-preset
+  disabled: true
+- id: ui-message-feedback
+  disabled: true
+- id: ui-user-questions
+  disabled: true
+- id: ui-trajectory
+  disabled: true
+- id: ui-plan
+  disabled: true
+- id: ui-goal
+  disabled: true
+- id: ui-attachment
+  disabled: true
+- id: ui-file-drag
+  disabled: true
+- id: ui-tool
+  disabled: true
+- id: ui-cordis
+  disabled: true
+- id: ui-deliverables
+  disabled: true
+- id: ui-workflow-run
+  disabled: true
+- id: ui-jobs
+  disabled: true
+- id: message-quotes
+  disabled: true
+- id: deliverable-file-references
+  disabled: true
+- id: workspace-changes
+  disabled: true
+# secret masking rides ui-conversation's `uiConversation`; gone with chat.
+- id: ui-secret-mask
+  disabled: true
+
+# workspace / session browsing
+# NOTE: ui-workspace stays mounted — it provides the `uiWorkspace` service the
+# sidebar shell injects (`startSession`). The workspace/session browser surface
+# itself is removed separately (REQ-006 follow-up), not by disabling the row.
+- id: ui-sidebar-files
+  disabled: true
+- id: ui-sidebar-terminal
+  disabled: true
+- id: ui-sidebar-documentpreview
+  disabled: true
+- id: ui-open-in-app
+  disabled: true
+- id: ui-file-actions
+  disabled: true
+- id: open-in-app
+  disabled: true
+
+# agent teams / subagents (delegation is internal, not a user surface)
+- id: ui-agent-team
+  disabled: true
+- id: ui-subagent
+  disabled: true
+
+# automation (schedule) + browse-more-plugins (More menu)
+- id: ui-schedule
+  disabled: true
+- id: entry-customization
+  disabled: true
+
 - insert:
     # ── codex subagent provider + global delegation tool ──
     # Each delegation spawns one unattended Codex thread in the parent workspace.
@@ -69,11 +161,28 @@
       name: '@rock/rock-bot-manager'
       config:
         storePath: !!js "process.env.ROCK_BOT_STORE || '.rock/bots.json'"
+        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/gateway/tasks'"
+        employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
     # ── plugin⑥ rock-observability: local session turns/steps/tokens fold ──
     # Always mounted: the workbench dashboard reads ctx.rockObservability.
     - id: rock-observability
       name: '@rock/rock-observability'
+
+    # ── rock-console: default landing panel (the console has no chat) ──
+    - id: rock-console
+      name: '@rock/rock-console'
+
+    # ── rock-tool-inventory: read-only installed-tool probes ──
+    - id: rock-tool-inventory
+      name: '@rock/rock-tool-inventory'
+
+    # ── rock-tasks: overview + task-management panels over the task queue ──
+    - id: rock-tasks
+      name: '@rock/rock-tasks'
+      config:
+        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/gateway/tasks'"
+        employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
 # ── thin-relay preset: the Rock agent delegates, it does not think ──
 - insert:

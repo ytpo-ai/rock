@@ -1,0 +1,81 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 500;
+}
+
+.table td {
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.empty {
+  color: var(--dsw-alias-label-secondary);
+  margin: 0;
+}
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.botCard {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.botHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.botId {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.running,
+.idle {
+  font-size: 0.85em;
+  padding: 2px 8px;
+}
+
+.running {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.idle {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.taskList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.taskStatus {
+  font-size: 0.85em;
+  color: var(--dsw-alias-label-secondary);
+}

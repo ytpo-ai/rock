@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RockBotService } from '../src/service.ts'
 import { JsonFileBotStore } from '../src/store.ts'
+import { activeBotIdsFrom } from '../src/tasks.ts'
 import type { BotDefinition } from '../src/types.ts'
 
 const BOT: BotDefinition = {
@@ -62,5 +63,26 @@ describe('RockBotService', () => {
     await expect(service.create({ ...BOT, id: '' })).rejects.toThrow('non-empty')
     await expect(service.create({ ...BOT, llm: { provider: '', model: 'm' }, tool: { toolType: 'codex' } })).rejects.toThrow('provider')
     await expect(service.create({ ...BOT, llm: { provider: 'p', model: 'm' }, tool: { toolType: '' } })).rejects.toThrow('toolType')
+  })
+})
+
+describe('activeBotIdsFrom', () => {
+  it('returns deduped owner ids with an active status, ignoring malformed rows', () => {
+    const tasks = [
+      { owner: 'bot-a', status: 'in-progress' },
+      { owner: 'bot-a', status: 'pending' },
+      { owner: 'bot-b', status: 'accepted' },
+      { owner: 'bot-c', status: 'blocked' },
+      { owner: '', status: 'in-progress' },
+      { owner: 'bot-d', status: 42 },
+    ]
+    expect(activeBotIdsFrom(tasks)).toEqual(['bot-a', 'bot-c'])
+  })
+
+  it('returns an empty list when no task is active', () => {
+    expect(activeBotIdsFrom([
+      { owner: 'bot-b', status: 'accepted' },
+      { owner: 'bot-b', status: 'done' },
+    ])).toEqual([])
   })
 })

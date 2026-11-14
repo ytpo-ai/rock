@@ -178,6 +178,9 @@
     { "path": "./packages/context/file-reference" },
     { "path": "./packages/rock/rock-bot-manager/tsconfig.client.json" },
     { "path": "./packages/rock/rock-observability/tsconfig.client.json" },
+    { "path": "./packages/rock/rock-console/tsconfig.client.json" },
+    { "path": "./packages/rock/rock-tool-inventory/tsconfig.client.json" },
+    { "path": "./packages/rock/rock-tasks/tsconfig.client.json" },
     { "path": "./apps/web" }
   ]
 }

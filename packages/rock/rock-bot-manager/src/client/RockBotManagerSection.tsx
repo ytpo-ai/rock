@@ -1,6 +1,6 @@
-/** Rock bot manager Settings section: list and add locally-defined agent bots. */
+/** Rock bot manager panel: list locally-defined agent bots, bind each to a tool, and lock busy bots. */
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { BotDefinition, BotInput } from '@rock/rock-bot-manager/types'
@@ -18,25 +18,35 @@ export interface RockBotManagerSectionInjected {
   remote: {
     listBots(): Promise<RemoteResult<BotDefinition[]>>
     createBot(input: BotInput): Promise<RemoteResult<BotDefinition>>
+    updateBot(id: string, patch: Partial<Omit<BotDefinition, 'id'>>): Promise<RemoteResult<BotDefinition>>
     removeBot(id: string): Promise<RemoteResult<void>>
+    activeBotIds(): Promise<RemoteResult<string[]>>
+    toolTypes(): Promise<RemoteResult<string[]>>
   }
 }
 
 export type RockBotManagerSectionProps =
-  PropsRuntime<'settings.section'> & PropsLocale<'rock-bot-manager'> & InjectFace<RockBotManagerSectionInjected>
+  PropsRuntime<'main'> & PropsLocale<'rock-bot-manager'> & InjectFace<RockBotManagerSectionInjected>
 
-/** Render the local bots and the add form. */
+/** Render the local bots, their tool bindings, and the add form. */
 export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps): ReactElement {
   const [bots, setBots] = useState<BotDefinition[]>([])
+  const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set())
+  const [toolTypes, setToolTypes] = useState<string[]>([])
   const [form, setForm] = useState<BotInput>(EMPTY_FORM)
 
   const refresh = (): void => {
     void remote.listBots().then((result) => { if (result.ok) setBots(result.value) })
+    void remote.activeBotIds().then((result) => { if (result.ok) setActiveIds(new Set(result.value)) })
   }
   useEffect(() => {
     let cancelled = false
+    void remote.toolTypes().then((result) => { if (!cancelled && result.ok) setToolTypes(result.value) })
     void remote.listBots().then((result) => {
       if (!cancelled && result.ok) setBots(result.value)
+    })
+    void remote.activeBotIds().then((result) => {
+      if (!cancelled && result.ok) setActiveIds(new Set(result.value))
     })
     return () => { cancelled = true }
   }, [remote])
@@ -49,6 +59,10 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
         refresh()
       }
     })
+  }
+
+  const rebind = (id: string, toolType: string): void => {
+    void remote.updateBot(id, { tool: { toolType } }).then(() => { refresh() })
   }
 
   const remove = (id: string): void => {
@@ -74,7 +88,20 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
                 <td>{bot.id}</td>
                 <td>{bot.llm.provider}</td>
                 <td>{bot.llm.model}</td>
-                <td>{bot.tool.toolType}</td>
+                <td>
+                  <select
+                    value={bot.tool.toolType}
+                    disabled={activeIds.has(bot.id)}
+                    onChange={(event) => { rebind(bot.id, event.target.value) }}
+                    aria-label={t('binding.label')}
+                  >
+                    {toolTypes.map(tool => <option key={tool} value={tool}>{tool}</option>)}
+                    {!toolTypes.includes(bot.tool.toolType) && (
+                      <option value={bot.tool.toolType}>{bot.tool.toolType}</option>
+                    )}
+                  </select>
+                  {activeIds.has(bot.id) && <span className={css.locked}>{t('binding.locked')}</span>}
+                </td>
                 <td>
                   <button type="button" className={css.delete} onClick={() => { remove(bot.id) }}>{t('delete')}</button>
                 </td>

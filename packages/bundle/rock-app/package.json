@@ -37,7 +37,10 @@
     "@rock/cloud-llm-adapter": "workspace:*",
     "@rock/gateway-reporter": "workspace:*",
     "@rock/rock-bot-manager": "workspace:*",
+    "@rock/rock-console": "workspace:*",
     "@rock/rock-observability": "workspace:*",
+    "@rock/rock-tasks": "workspace:*",
+    "@rock/rock-tool-inventory": "workspace:*",
     "@rock/seagull-identity": "workspace:*"
   },
   "peerDependencies": {
