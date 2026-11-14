@@ -1,0 +1,57 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.25));
+  color: var(--dsw-alias-text-secondary, #666);
+  font-weight: 500;
+}
+
+.table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.12));
+}
+
+.empty {
+  color: var(--dsw-alias-text-secondary, #666);
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.form input {
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.delete,
+.submit {
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.delete:hover,
+.submit:hover {
+  background: var(--dsw-alias-surface-hover, rgba(128, 128, 128, 0.08));
+}
