@@ -503,6 +503,7 @@
     { "path": "./packages/llm/llm-pi-ai" },
     { "path": "./packages/rock/cloud-llm-adapter" },
     { "path": "./packages/rock/gateway-reporter" },
+    { "path": "./packages/rock/rock-llm-relay" },
     { "path": "./packages/rock/seagull-identity" },
     { "path": "./packages/shell/bash-local" },
     { "path": "./packages/shell/shell-env" },

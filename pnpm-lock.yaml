@@ -15294,6 +15294,16 @@ importers:
         specifier: workspace:*
         version: link:../../core/session
 
+  packages/rock/rock-llm-relay:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+
   packages/rock/seagull-identity:
     dependencies:
       '@deepseek-ai/schemastery':
