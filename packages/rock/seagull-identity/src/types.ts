@@ -32,6 +32,8 @@ export interface RenderedAgent {
   provider: string
   /** Placeholder model id; the cloud Proxy resolves the real route. */
   model: string
+  /** Exact session identity pinned to the bot id, so observability can attribute a session to its bot. */
+  sessionId: string
 }
 
 /** A cordis patch row a launcher writes to inject the agent-loop agent entries. */

@@ -34,8 +34,8 @@ describe('SeagullIdentityService', () => {
     await service.sync()
 
     expect(service.renderAgents()).toEqual([
-      { id: 'agent-bot-C', provider: 'seagull-cloud', model: 'seagull-relay' },
-      { id: 'agent-bot-D', provider: 'seagull-cloud', model: 'seagull-relay' },
+      { id: 'agent-bot-C', provider: 'seagull-cloud', model: 'seagull-relay', sessionId: 'agent-bot-C' },
+      { id: 'agent-bot-D', provider: 'seagull-cloud', model: 'seagull-relay', sessionId: 'agent-bot-D' },
     ])
     expect(service.toolBindingOf('agent-bot-C')).toBe('codex')
     expect(service.toolBindingOf('agent-bot-D')).toBe('dsh')
@@ -91,9 +91,9 @@ describe('SeagullIdentityService', () => {
     await service.sync()
 
     expect(service.renderAgents()).toEqual([
-      { id: 'agent-bot-C', provider: 'seagull-cloud', model: 'seagull-relay' },
-      { id: 'agent-bot-D', provider: 'seagull-cloud', model: 'seagull-relay' },
-      { id: 'agent-bot-E', provider: 'deepseek', model: 'deepseek-chat' },
+      { id: 'agent-bot-C', provider: 'seagull-cloud', model: 'seagull-relay', sessionId: 'agent-bot-C' },
+      { id: 'agent-bot-D', provider: 'seagull-cloud', model: 'seagull-relay', sessionId: 'agent-bot-D' },
+      { id: 'agent-bot-E', provider: 'deepseek', model: 'deepseek-chat', sessionId: 'agent-bot-E' },
     ])
     expect(service.toolBindingOf('agent-bot-E')).toBe('codex')
     expect(service.toolBindingOf('agent-bot-C')).toBe('codex')
@@ -120,7 +120,7 @@ describe('SeagullIdentityService', () => {
         tool: { toolType: 'pi' },
       },
     ])
-    expect(service.renderAgents()).toContainEqual({ id: 'agent-bot-C', provider: 'openai', model: 'gpt-4o' })
+    expect(service.renderAgents()).toContainEqual({ id: 'agent-bot-C', provider: 'openai', model: 'gpt-4o', sessionId: 'agent-bot-C' })
     expect(service.toolBindingOf('agent-bot-C')).toBe('pi')
   })
 })

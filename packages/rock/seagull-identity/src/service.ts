@@ -70,10 +70,16 @@ export class SeagullIdentityService {
         id: claim.agentBotId,
         provider: this.options.defaultProvider,
         model: this.options.defaultModel,
+        sessionId: claim.agentBotId,
       })
     }
     for (const bot of this.localBots) {
-      byId.set(bot.id, { id: bot.id, provider: bot.llm.provider, model: bot.llm.model })
+      byId.set(bot.id, {
+        id: bot.id,
+        provider: bot.llm.provider,
+        model: bot.llm.model,
+        sessionId: bot.id,
+      })
     }
     return [...byId.values()]
   }
