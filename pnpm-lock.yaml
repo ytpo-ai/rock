@@ -450,6 +450,9 @@ importers:
       '@deepseek-ai/dsh-pwsh-sandbox':
         specifier: workspace:*
         version: link:../../packages/shell/pwsh-sandbox
+      '@deepseek-ai/dsh-rock-app':
+        specifier: workspace:*
+        version: link:../../packages/bundle/rock-app
       '@deepseek-ai/dsh-schedule':
         specifier: workspace:*
         version: link:../../packages/schedule/schedule
@@ -2834,6 +2837,33 @@ importers:
       '@deepseek-ai/dsh-user-approval':
         specifier: workspace:*
         version: link:../../interaction/user-approval
+
+  packages/bundle/rock-app:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent-preset':
+        specifier: workspace:*
+        version: link:../../preset/agent-preset
+      '@deepseek-ai/dsh-persona':
+        specifier: workspace:*
+        version: link:../../preset/persona
+      '@deepseek-ai/dsh-subagent-codex':
+        specifier: workspace:*
+        version: link:../../subagent/subagent-codex
+      '@deepseek-ai/dsh-tool-subagent':
+        specifier: workspace:*
+        version: link:../../subagent/tool-subagent
+      '@rock/cloud-llm-adapter':
+        specifier: workspace:*
+        version: link:../../rock/cloud-llm-adapter
+      '@rock/gateway-reporter':
+        specifier: workspace:*
+        version: link:../../rock/gateway-reporter
+      '@rock/seagull-identity':
+        specifier: workspace:*
+        version: link:../../rock/seagull-identity
 
   packages/bundle/sdk-app:
     dependencies:

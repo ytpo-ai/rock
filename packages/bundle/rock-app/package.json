@@ -1,0 +1,44 @@
+{
+  "name": "@deepseek-ai/dsh-rock-app",
+  "description": "Rock (ConnectorClient) profile bundle: the codex delegation layer plus the three Rock plugins and the thin-relay agent preset over the dsh web surface",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "lib/**/*.js.map",
+    "src"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent-preset": "workspace:*",
+    "@deepseek-ai/dsh-persona": "workspace:*",
+    "@deepseek-ai/dsh-subagent-codex": "workspace:*",
+    "@deepseek-ai/dsh-tool-subagent": "workspace:*",
+    "@rock/cloud-llm-adapter": "workspace:*",
+    "@rock/gateway-reporter": "workspace:*",
+    "@rock/seagull-identity": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  }
+}

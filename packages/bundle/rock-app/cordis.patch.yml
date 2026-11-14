@@ -1,0 +1,81 @@
+# dsh-rock-app bundle patch: the Rock (ConnectorClient) layer over the dsh web
+# surface. Applied after dsh-web-app; rows here address base/web rows by id.
+#
+# The Rock composition is thin-relay: a `rock` agent preset whose only tool is
+# the codex delegation tool, so the parent agent delegates to a native Codex
+# session instead of thinking itself. The three Rock plugins are cloud-facing
+# and are safe to boot standalone — `cloud-llm-adapter` and `seagull-identity`
+# stay disabled until their deployment env is present, and `gateway-reporter`
+# buffers session events to a local JSONL file when the gateway is unreachable.
+
+- insert:
+    # ── codex subagent provider + global delegation tool ──
+    # Each delegation spawns one unattended Codex thread in the parent workspace.
+    - id: subagent-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+      config:
+        providerName: codex
+        permissionMode: approve-for-me
+    - id: tool-subagent-codex
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: codex
+        toolName: subagent_codex
+        maxDepth: provider-managed
+
+    # ── plugin① cloud-llm-adapter: LLM route per provider ──
+    # Opt-in: disabled until SEAGULL_AGENT_API_KEY is set, so `dsh rock` boots
+    # standalone on the ordinary web model settings. Custom bots may add any
+    # official OpenAI-compatible provider (baseUrl + apiKey) here.
+    - id: llm-cloud
+      name: '@rock/cloud-llm-adapter'
+      disabled: !!js "!process.env.SEAGULL_AGENT_API_KEY"
+      config:
+        providers:
+          seagull-cloud:
+            baseUrl: !!js "process.env.SEAGULL_CLOUD_BASE_URL || 'http://127.0.0.1:3000'"
+            apiKey: !!js "process.env.SEAGULL_AGENT_API_KEY || 'rock-unset'"
+            name: Seagull Cloud
+            defaultModel: seagull-relay
+
+    # ── plugin② seagull-identity: seat-claim sync + tool binding ──
+    # Opt-in: disabled until SEAGULL_EMPLOYEE_ID is set. The cloud mode also
+    # needs a reachable gateway or a local claim file at ROCK_CLAIM_FILE.
+    - id: seagull-identity
+      name: '@rock/seagull-identity'
+      disabled: !!js "!process.env.SEAGULL_EMPLOYEE_ID"
+      config:
+        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/clients/claims'"
+        employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+        claimFile: !!js "process.env.ROCK_CLAIM_FILE || '.rock/claims.json'"
+        bindings:
+          agent-bot-C: codex
+
+    # ── plugin③ gateway-reporter: session events outbound to the gateway ──
+    # Always mounted; without a gateway it buffers to ROCK_BUFFER_PATH so the
+    # relayed events stay observable locally.
+    - id: gateway-reporter
+      name: '@rock/gateway-reporter'
+      config:
+        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/report'"
+        connectorClientId: !!js "process.env.ROCK_CONNECTOR_CLIENT_ID || 'rock-employee-a'"
+        employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+        bufferPath: !!js "process.env.ROCK_BUFFER_PATH || '.rock/events.jsonl'"
+
+# ── thin-relay preset: the Rock agent delegates, it does not think ──
+- insert:
+    - id: preset-rock
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rock
+        order: 1
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the thin-relay delegator for an agent bot seat. Do not solve the
+                task yourself. Delegate it to the subagent_codex tool and return its result
+                verbatim. Your only tool is subagent_codex.
+              complete: true
+              includeRuntimeContext: false
