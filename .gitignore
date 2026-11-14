@@ -41,6 +41,7 @@ apps/cli/docs/
 .artifacts/
 .dsh-build/
 .dsh-report/
+.rock/
 .ui-review/
 .playwright-mcp/
 .orig
