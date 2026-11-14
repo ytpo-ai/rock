@@ -1,35 +1,49 @@
 /**
  * Rock local observability plugin: folds the harness `session/event` feed into
- * a per-session turns/steps/output-tokens aggregate and exposes it on the
- * context. The dashboard Client reads `ctx.rockObservability` (or a later
- * Remote projection of it) to show which session ran how many rounds/steps and
- * how many output tokens it produced.
- *
- * ```yaml
- * - id: rock-observability
- *   name: '@rock/rock-observability'
- * ```
+ * a per-session turns/steps/output-tokens aggregate and exposes it as a Remote
+ * service (`ctx.rockObservability`). The dashboard Client reads `rows()` /
+ * `rowOf()` over Typert to show which session ran how many rounds/steps and how
+ * many output tokens it produced.
  *
  * @module @rock/rock-observability
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { RockObservabilityService } from './service.ts'
+import type { ObservabilityRow } from './types.ts'
 
-export const name = 'rock-observability'
-export const inject = ['sessions']
+export type * from './types.ts'
 
-/** Mount the observability fold and subscribe to committed session events. */
-export function apply(ctx: Context): void {
-  const service = new RockObservabilityService()
-  ctx.on('session/event', (session, event) => {
-    service.observe(session, event)
-  })
-  ctx.provide('rockObservability', service)
+/** Remote service carrying the local observability fold. */
+export default class RockObservabilityController extends TypertRemoteService {
+  static inject = ['sessions']
+
+  private readonly fold = new RockObservabilityService()
+
+  constructor(ctx: Context) {
+    super(ctx, 'rockObservability')
+    ctx.on('session/event', (session: Session, event: SessionEvent) => {
+      this.fold.observe(session, event)
+    })
+  }
+
+  /** Aggregated rows in first-observed-session order. */
+  @Remote
+  rows(): ObservabilityRow[] {
+    return this.fold.rows()
+  }
+
+  /** One row by session id, or `null` when unobserved. */
+  @Remote
+  rowOf(sessionId: string): ObservabilityRow | null {
+    return this.fold.rowOf(sessionId) ?? null
+  }
 }
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** The local observability fold (per-session turns/steps/outputTokens). */
-    rockObservability: RockObservabilityService
+    /** The local observability Remote (per-session turns/steps/outputTokens). */
+    rockObservability: RockObservabilityController
   }
 }

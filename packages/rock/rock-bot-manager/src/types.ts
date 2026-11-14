@@ -39,3 +39,14 @@ export interface BotDefinition {
   /** Execution backend binding. */
   tool: BotTool
 }
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** A bot with the same id already exists. */
+    'rockBots/duplicate': Record<string, never>
+    /** No bot with the requested id exists. */
+    'rockBots/unknown': Record<string, never>
+    /** The supplied bot fields failed validation. */
+    'rockBots/invalid': Record<string, never>
+  }
+}
