@@ -6,7 +6,7 @@
  * @module @rock/seagull-identity/service
  */
 import { readFile } from 'node:fs/promises'
-import type { RenderedAgent, SeatClaim, ToolBinding, ToolType } from './types.ts'
+import type { AgentLoopPatch, RenderedAgent, SeatClaim, ToolBinding, ToolType } from './types.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface SeagullIdentityOptions {
@@ -56,6 +56,19 @@ export class SeagullIdentityService {
       provider: this.options.defaultProvider,
       model: this.options.defaultModel,
     }))
+  }
+
+  /**
+   * Render the full `dsh-agent-loop` cordis patch row a launcher can write to
+   * the Rock profile to inject the claimed agents (config generation; the
+   * launcher persists this and reloads on claim sync).
+   */
+  renderAgentLoopPatch(): AgentLoopPatch {
+    return {
+      id: 'agent-loop',
+      name: '@deepseek-ai/dsh-agent-loop',
+      config: { agents: this.renderAgents() },
+    }
   }
 
   private async loadClaims(): Promise<SeatClaim[]> {

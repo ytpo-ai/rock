@@ -39,6 +39,13 @@ describe('SeagullIdentityService', () => {
     ])
     expect(service.toolBindingOf('agent-bot-C')).toBe('codex')
     expect(service.toolBindingOf('agent-bot-D')).toBe('dsh')
+
+    // 委派器化收尾：renderAgentLoopPatch 生成可写回 profile 的 agent-loop patch
+    expect(service.renderAgentLoopPatch()).toEqual({
+      id: 'agent-loop',
+      name: '@deepseek-ai/dsh-agent-loop',
+      config: { agents: service.renderAgents() },
+    })
   })
 
   it('syncs from the gateway and falls back to the local file on failure', async () => {

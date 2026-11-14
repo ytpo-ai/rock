@@ -33,3 +33,10 @@ export interface RenderedAgent {
   /** Placeholder model id; the cloud Proxy resolves the real route. */
   model: string
 }
+
+/** A cordis patch row a launcher writes to inject the agent-loop agent entries. */
+export interface AgentLoopPatch {
+  id: string
+  name: string
+  config: { agents: RenderedAgent[] }
+}

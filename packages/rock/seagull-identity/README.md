@@ -32,11 +32,12 @@ Rock ConnectorClient 的身份插件：同步 Seagull 云端认领关系（`Seat
 
 ## 实现
 
-- 挂载后 `ctx.provide('seagullIdentity', service)`，暴露 `getClaims()` / `toolBindingOf()` / `renderAgents()`。
+- 挂载后 `ctx.provide('seagullIdentity', service)`，暴露 `getClaims()` / `toolBindingOf()` / `renderAgents()` / `renderAgentLoopPatch()`。
 - `sync()` 先走网关，失败降级读 `claimFile`；两者都没有则空认领（standalone 本地自定义 bot 场景）。
+- `renderAgentLoopPatch()` 生成完整的 `@deepseek-ai/dsh-agent-loop` cordis patch 行（含 `agents`），供 launcher 在认领同步时写回 Rock profile 并 reload（配置生成式注入）。
 
 ## Known Limitations and Deferred Work
 
 - 认领排他 / 离线不解除 / 长期绑定（D-033）的强制在**云端**（REQ-002 `seat_claims`），本插件只消费认领关系。
-- `renderAgents()` 只渲染 agent 条目；将其真正注入 `dsh-agent-loop` 的 `Config.agents`（动态配置/launcher 注入）为 Phase 1 后续细化。
+- `renderAgentLoopPatch()` 是**配置生成**式注入（launcher 写回 + reload）；DSH agent-loop 暂无「运行期动态增删 agent 条目」的机制，如需热更新需扩展 agent-loop 核心。
 - standalone 本地自定义 bot（无认领时声明本地 bot）分支未在本插件落地，由 preset 静态声明。

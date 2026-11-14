@@ -18,6 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { mapToM3 } from './m3.ts'
 import { GatewayReporter } from './reporter.ts'
 import type { RockReportEvent } from './types.ts'
 
@@ -54,12 +55,13 @@ export const Config: z<Config> = z.object({
 
 /** Map one harness session event into an outbound Rock report envelope. */
 function toReportEvent(session: Session, event: SessionEvent, config: Config): RockReportEvent {
+  const mapped = mapToM3(event)
   return {
     eventId: `${String(session.id)}:${String(event.seq)}`,
     sessionId: String(session.id),
-    type: event.type,
+    type: mapped.type,
     timestamp: new Date(event.time).toISOString(),
-    payload: (event.data ?? {}) as Record<string, unknown>,
+    payload: mapped.payload,
     ...config.employeeId === undefined ? {} : { employeeId: config.employeeId },
     connectorClientId: config.connectorClientId,
     relayed: true,
