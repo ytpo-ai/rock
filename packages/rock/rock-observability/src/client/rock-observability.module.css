@@ -1,0 +1,23 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.25));
+  color: var(--dsw-alias-text-secondary, #666);
+  font-weight: 500;
+}
+
+.table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(128, 128, 128, 0.12));
+}
+
+.empty {
+  color: var(--dsw-alias-text-secondary, #666);
+  margin: 16px 0;
+}

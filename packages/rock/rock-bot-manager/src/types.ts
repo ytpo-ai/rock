@@ -40,6 +40,9 @@ export interface BotDefinition {
   tool: BotTool
 }
 
+/** A full-bot create payload; the id is optional (falls back to the name). */
+export type BotInput = Omit<BotDefinition, 'id'> & { id?: string }
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** A bot with the same id already exists. */

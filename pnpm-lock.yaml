@@ -15332,6 +15332,9 @@ importers:
 
   packages/rock/rock-bot-manager:
     dependencies:
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -15351,6 +15354,10 @@ importers:
         version: link:../../../vendor/cordis
 
   packages/rock/rock-observability:
+    dependencies:
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~

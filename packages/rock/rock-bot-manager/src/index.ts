@@ -19,7 +19,7 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { RockBotService } from './service.ts'
 import { JsonFileBotStore } from './store.ts'
-import type { BotDefinition } from './types.ts'
+import type { BotDefinition, BotInput } from './types.ts'
 
 export type * from './types.ts'
 
@@ -30,9 +30,6 @@ export interface Config {
   /** JSON file persisting the local bot list. */
   storePath?: string
 }
-
-/** A full-bot create payload; the id is optional (falls back to the name). */
-export type BotInput = Omit<BotDefinition, 'id'> & { id?: string }
 
 /** Remote service carrying the local bot registry. */
 export default class RockBotController extends TypertRemoteService {
