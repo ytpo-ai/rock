@@ -94,6 +94,11 @@ export function apply(ctx: Context, config: Config): void {
     service.setBotDefinitions(rockBots.list())
     service.setClaimedBindingOf(id => rockBots.getBinding(id))
   }
+  const rockOnboarding = ctx.get('rockOnboarding') as { getRecord(): { baseUrl: string; employeeId: string } | null } | undefined
+  if (rockOnboarding !== undefined) {
+    const record = rockOnboarding.getRecord()
+    if (record !== null) service.setIdentity(record.baseUrl, record.employeeId)
+  }
   void service.sync().then(() => {
     ctx.logger.info(`seagull-identity: synced ${service.getClaims().length} seat claim(s) + ${service.renderAgents().length - service.getClaims().length} local bot(s)`)
   })

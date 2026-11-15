@@ -125,13 +125,12 @@
             defaultModel: seagull-relay
 
     # ── plugin② seagull-identity: seat-claim sync + tool binding ──
-    # Opt-in: disabled until SEAGULL_EMPLOYEE_ID is set. The cloud mode also
-    # needs a reachable gateway or a local claim file at ROCK_CLAIM_FILE.
+    # Always mounted; syncs claims using the connector-key identity from
+    # rock-onboarding (falls back to the env config below when no key yet).
     - id: seagull-identity
       name: '@rock/seagull-identity'
-      disabled: !!js "!process.env.SEAGULL_EMPLOYEE_ID"
       config:
-        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/clients/claims'"
+        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/claims'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
         claimFile: !!js "process.env.ROCK_CLAIM_FILE || '.rock/claims.json'"
         bindings:

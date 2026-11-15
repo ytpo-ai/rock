@@ -16,7 +16,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { ConnectorKeyService } from './service.ts'
-import type { ConnectorIdentity } from './types.ts'
+import type { ConnectorIdentity, ConnectorKeyRecord } from './types.ts'
 
 export type * from './types.ts'
 
@@ -58,13 +58,31 @@ export default class RockOnboardingController extends TypertRemoteService {
     return this.service.getIdentity()
   }
 
+  /** Host-side read of the stored record (no Remote serialization). */
+  getRecord(): ConnectorKeyRecord | null {
+    return this.service.getRecord()
+  }
+
   /** Validate and persist a base URL + pasted key; fails with `rockOnboarding/invalid`. */
   @Remote
   async addKey(baseUrl: string, key: string): Promise<ConnectorIdentity> {
     try {
-      return await this.service.addKey(baseUrl, key)
+      const identity = await this.service.addKey(baseUrl, key)
+      this.notifyIdentity()
+      return identity
     } catch (error) {
       throw new RemoteError('rockOnboarding/invalid', error instanceof Error ? error.message : 'invalid key', {})
+    }
+  }
+
+  /** Notify seagull-identity to re-sync claims with the freshly resolved identity. */
+  private notifyIdentity(): void {
+    const record = this.service.getRecord()
+    if (record === null) return
+    const identity = this.ctx.get('seagullIdentity') as { setIdentity(baseUrl: string, employeeId: string): void; sync(): Promise<void> } | undefined
+    if (identity !== undefined) {
+      identity.setIdentity(record.baseUrl, record.employeeId)
+      void identity.sync()
     }
   }
 }

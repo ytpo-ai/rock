@@ -36,6 +36,8 @@ export class SeagullIdentityService {
   private claims: SeatClaim[] = []
   private localBots: readonly BotDefinition[]
   private claimedBindingOf: ((id: string) => string | undefined) | undefined
+  private runtimeBaseUrl?: string
+  private runtimeEmployeeId?: string
 
   constructor(private readonly options: SeagullIdentityOptions) {
     this.localBots = options.botDefinitions ?? []
@@ -54,6 +56,12 @@ export class SeagullIdentityService {
   /** Resolve claimed-bot bindings from the manager (runtime-persisted), else static config. */
   setClaimedBindingOf(resolver: ((id: string) => string | undefined) | undefined): void {
     this.claimedBindingOf = resolver
+  }
+
+  /** Set the runtime identity resolved from the connector key (REQ-013). */
+  setIdentity(baseUrl: string, employeeId: string): void {
+    this.runtimeBaseUrl = baseUrl
+    this.runtimeEmployeeId = employeeId
   }
 
   /** Load the claim list from the gateway, falling back to the local file. */
@@ -104,11 +112,11 @@ export class SeagullIdentityService {
   }
 
   private async loadClaims(): Promise<SeatClaim[]> {
-    if (this.options.gatewayUrl !== undefined && this.options.employeeId !== undefined) {
-      const url = `${this.options.gatewayUrl}?employeeId=${encodeURIComponent(this.options.employeeId)}`
+    const url = this.claimsUrl()
+    if (url !== undefined) {
       try {
         const data = await this.fetchJson(url)
-        return (data as { claims?: SeatClaim[] }).claims ?? []
+        return (data as { data?: { claims?: SeatClaim[] } }).data?.claims ?? []
       } catch (error) {
         if (this.options.claimFile === undefined) throw error
       }
@@ -118,6 +126,17 @@ export class SeagullIdentityService {
       return JSON.parse(raw) as SeatClaim[]
     }
     return []
+  }
+
+  /** The claims endpoint URL, preferring the runtime connector-key identity. */
+  private claimsUrl(): string | undefined {
+    if (this.runtimeBaseUrl !== undefined && this.runtimeEmployeeId !== undefined) {
+      return `${this.runtimeBaseUrl}/v1/connectors/claims?employeeId=${encodeURIComponent(this.runtimeEmployeeId)}`
+    }
+    if (this.options.gatewayUrl !== undefined && this.options.employeeId !== undefined) {
+      return `${this.options.gatewayUrl}?employeeId=${encodeURIComponent(this.options.employeeId)}`
+    }
+    return undefined
   }
 
   private async fetchJson(url: string): Promise<unknown> {
