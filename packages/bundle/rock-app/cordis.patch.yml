@@ -131,7 +131,7 @@
       name: '@rock/seagull-identity'
       disabled: !!js "!process.env.SEAGULL_EMPLOYEE_ID"
       config:
-        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/clients/claims'"
+        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/clients/claims'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
         claimFile: !!js "process.env.ROCK_CLAIM_FILE || '.rock/claims.json'"
         bindings:
@@ -143,7 +143,7 @@
     - id: gateway-reporter
       name: '@rock/gateway-reporter'
       config:
-        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/report'"
+        gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/report'"
         connectorClientId: !!js "process.env.ROCK_CONNECTOR_CLIENT_ID || 'rock-employee-a'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
         bufferPath: !!js "process.env.ROCK_BUFFER_PATH || '.rock/events.jsonl'"
@@ -155,7 +155,7 @@
       name: '@rock/rock-bot-manager'
       config:
         storePath: !!js "process.env.ROCK_BOT_STORE || '.rock/bots.json'"
-        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/gateway/tasks'"
+        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
     # ── plugin⑥ rock-observability: local session turns/steps/tokens fold ──
@@ -179,7 +179,7 @@
     - id: rock-tasks
       name: '@rock/rock-tasks'
       config:
-        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/gateway/tasks'"
+        tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
 # ── assistant preset: the onboarding guide runs its own loop (D-035) ──

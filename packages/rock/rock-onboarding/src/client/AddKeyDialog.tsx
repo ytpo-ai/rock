@@ -7,7 +7,7 @@ import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConnectorIdentity } from '@rock/rock-onboarding/types'
 import css from './rock-onboarding.module.css'
 
-const DEFAULT_BASE_URL = 'http://localhost:3000'
+const DEFAULT_BASE_URL = 'http://localhost:3100'
 
 /** Host operations injected into the Cordis-free onboarding dialog. */
 export interface AddKeyDialogInjected {
