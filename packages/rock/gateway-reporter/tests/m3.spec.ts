@@ -41,9 +41,17 @@ describe('mapToM3', () => {
       type: 'step.start',
       payload: { stepId: 1 },
     })
-    expect(mapToM3(event('turn/end', { turn: 1, reason: 'completed' }))).toMatchObject({
+    expect(mapToM3(event('turn/end', { turn: 1, reason: { kind: 'completed' } }))).toMatchObject({
       type: 'run.complete',
-      payload: { outcome: 'completed' },
+      payload: { outcome: 'success' },
+    })
+    expect(mapToM3(event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }))).toMatchObject({
+      type: 'run.complete',
+      payload: { outcome: 'cancelled' },
+    })
+    expect(mapToM3(event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'boom', code: 'UNKNOWN' } } }))).toMatchObject({
+      type: 'run.complete',
+      payload: { outcome: 'failed' },
     })
   })
 

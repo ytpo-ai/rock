@@ -65,8 +65,23 @@ export function mapToM3(event: SessionEvent): M3Event {
     case 'turn/start':
       return { type: 'session.start', payload: {} }
     case 'turn/end':
-      return { type: 'run.complete', payload: { outcome: String(event.data.reason) } }
+      return { type: 'run.complete', payload: { outcome: turnEndOutcome(event.data.reason) } }
     default:
       return { type: event.type, payload: (event.data ?? {}) as Record<string, unknown> }
+  }
+}
+
+/** Map a harness turn-end reason to the Seagull `run.complete` outcome enum. */
+function turnEndOutcome(reason: { kind: string }): 'success' | 'failed' | 'cancelled' {
+  switch (reason.kind) {
+    case 'completed':
+    case 'max-tokens':
+      return 'success'
+    case 'aborted':
+    case 'interrupted':
+    case 'forked':
+      return 'cancelled'
+    default:
+      return 'failed'
   }
 }
