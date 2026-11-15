@@ -8,24 +8,16 @@
 # stay disabled until their deployment env is present, and `gateway-reporter`
 # buffers session events to a local JSONL file when the gateway is unreachable.
 
-# ── REQ-006 Rock console shell: strip the agent-chat surface ───────────────
-# Rock is an ops console, not a chat app. Disable the browser rows that render
-# the conversational surface (chat, composer, home whale), the workspace/session
-# browser, agent teams/subagents, the automation (schedule) page, and the
-# "browse more plugins" More menu. Host session infra (session-query /
-# session-stats / session-persistence) stays mounted so rock-observability keeps
-# reading local session data.
+# ── Rock console shell: strip the agent-chat surface, keep the assistant ────
+# Rock is an ops console with one interactive exception (D-035): the assistant
+# session. ui-chat/ui-conversation/ui-approval/ui-input-trigger stay enabled for
+# that session; the workspace/session browser, agent teams/subagents, automation
+# (schedule), and "browse more plugins" More menu remain disabled. Host session
+# infra (session-query / session-stats / session-persistence) stays mounted so
+# rock-observability keeps reading local session data.
 
-# agent chat + session dialog
-- id: ui-chat
-  disabled: true
-- id: ui-conversation
-  disabled: true
+# agent chat + session dialog (assistant session kept, D-035 / REQ-010)
 - id: ui-model-selection
-  disabled: true
-- id: ui-approval
-  disabled: true
-- id: ui-input-trigger
   disabled: true
 - id: ui-commands
   disabled: true
@@ -49,8 +41,6 @@
   disabled: true
 - id: ui-attachment
   disabled: true
-- id: ui-file-drag
-  disabled: true
 - id: ui-tool
   disabled: true
 - id: ui-cordis
@@ -67,9 +57,7 @@
   disabled: true
 - id: workspace-changes
   disabled: true
-# secret masking rides ui-conversation's `uiConversation`; gone with chat.
-- id: ui-secret-mask
-  disabled: true
+# secret masking rides ui-conversation's `uiConversation`; kept with the session.
 
 # workspace / session browsing
 # NOTE: ui-workspace stays mounted — it provides the `uiWorkspace` service the
@@ -189,6 +177,29 @@
       config:
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3000') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+
+# ── assistant preset: the onboarding guide runs its own loop (D-035) ──
+- insert:
+    - id: preset-assistant
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: assistant
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the new employee's onboarding assistant (专属助理). Guide them
+                through workstation setup step by step, running shell commands directly:
+                1. Detect which agent tools are installed (codex, pi) with `which <tool>`
+                   and `<tool> --version`.
+                2. List what is missing and ask for consent before installing anything.
+                3. Install each missing tool through the shell tool and report its outcome.
+                Keep replies short and report each command's result. Do not delegate to a
+                subagent; run shell commands directly.
+              complete: true
+              includeRuntimeContext: false
 
 # ── thin-relay preset: the Rock agent delegates, it does not think ──
 - insert:
