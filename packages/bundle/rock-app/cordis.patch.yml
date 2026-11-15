@@ -110,19 +110,28 @@
         maxDepth: provider-managed
 
     # ── plugin① cloud-llm-adapter: LLM route per provider ──
-    # Opt-in: disabled until SEAGULL_AGENT_API_KEY is set, so `dsh rock` boots
-    # standalone on the ordinary web model settings. Custom bots may add any
-    # official OpenAI-compatible provider (baseUrl + apiKey) here.
+    # Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` URL; the
+    # Seagull LLM Proxy resolves the agent from the URL + connector key, so
+    # skill injection targets the right bot (no shared agent API key).
     - id: llm-cloud
       name: '@rock/cloud-llm-adapter'
-      disabled: !!js "!process.env.SEAGULL_AGENT_API_KEY"
       config:
         providers:
           seagull-cloud:
             baseUrl: !!js "process.env.SEAGULL_CLOUD_BASE_URL || 'http://127.0.0.1:3000'"
-            apiKey: !!js "process.env.SEAGULL_AGENT_API_KEY || 'rock-unset'"
             name: Seagull Cloud
             defaultModel: seagull-relay
+            relay: true
+
+    # ── plugin④ rock-llm-relay: loopback LLM relay for external tools (D-034) ──
+    # External tools (Codex) point base_url at http://127.0.0.1:4090/v1/bots/{agentBotId};
+    # the relay injects the connector key (from rock-onboarding) and forwards to the cloud Proxy.
+    - id: llm-relay
+      name: '@rock/rock-llm-relay'
+      config:
+        port: 4090
+        cloudBaseUrl: !!js "process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100'"
+        connectorClientId: f80ad5b86b76800334741870
 
     # ── rock-onboarding: first-run connector-key entry (REQ-013) ──
     - id: rock-onboarding
@@ -194,15 +203,17 @@
             config:
               prefix: |-
                 You are the new employee's onboarding assistant (专属助理). Guide them
-                through workstation setup step by step, running shell commands directly:
-                1. Detect which agent tools are installed (codex, pi) with `which <tool>`
-                   and `<tool> --version`.
-                2. List what is missing and ask for consent before installing anything.
-                3. Install each missing tool through the shell tool and report its outcome.
-                Keep replies short and report each command's result. Do not delegate to a
-                subagent; run shell commands directly.
+                through workstation setup. Follow the system-injected onboarding skill
+                (`rock-onboarding-tool-install`) for tool detection and installation:
+                detect codex/pi, list what is missing, ask once for consent, then install
+                each missing tool through the shell tool and report its outcome. Do not
+                delegate to a subagent; run shell commands directly.
               complete: true
               includeRuntimeContext: false
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
 
 # ── thin-relay preset: the Rock agent delegates, it does not think ──
 - insert:

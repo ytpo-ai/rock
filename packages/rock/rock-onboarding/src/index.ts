@@ -62,6 +62,13 @@ export default class RockOnboardingController extends TypertRemoteService {
     return this.service.getRecord()
   }
 
+  /** Current Seagull onboarding status, or undefined when not synced yet. */
+  @Remote
+  getOnboardingStatus(): string | undefined {
+    const identity = this.ctx.get('seagullIdentity') as { getOnboardingStatus(): string | undefined } | undefined
+    return identity?.getOnboardingStatus()
+  }
+
   /** Validate and persist a base URL + pasted key; fails with `rockOnboarding/invalid`. */
   @Remote
   async addKey(baseUrl: string, key: string): Promise<ConnectorIdentity> {

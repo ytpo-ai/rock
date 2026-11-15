@@ -27,8 +27,8 @@ const execFileAsync = promisify(execFile)
 
 /** Probe targets the workbench ships by default. */
 const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
-  { id: 'codex', command: 'codex' },
-  { id: 'pi', command: 'pi' },
+  { id: 'codex', command: 'codex', installDocUrl: 'https://developers.openai.com/codex/cli' },
+  { id: 'pi', command: 'pi', installDocUrl: 'https://github.com/badlogic/pi-mono' },
   { id: 'opencode', command: 'opencode' },
   { id: 'dsh', command: 'dsh' },
   { id: 'claude-code', command: 'claude' },
@@ -44,7 +44,11 @@ export interface Config {
 export default class RockToolInventoryController extends TypertRemoteService {
   static inject = []
   static Config: z<Config> = z.object({
-    tools: z.array(z.object({ id: z.string().min(1), command: z.string().min(1) })).default([...DEFAULT_TOOLS]),
+    tools: z.array(z.object({
+      id: z.string().min(1),
+      command: z.string().min(1),
+      installDocUrl: z.string().default(''),
+    })).default([...DEFAULT_TOOLS]),
   })
 
   private readonly tools: readonly ToolDescriptor[]
@@ -63,11 +67,12 @@ export default class RockToolInventoryController extends TypertRemoteService {
 
 /** Probe one tool with a bounded `--version` run. */
 async function probeTool(tool: ToolDescriptor): Promise<ToolStatus> {
+  const installDocUrl = tool.installDocUrl === undefined || tool.installDocUrl === '' ? undefined : tool.installDocUrl
   try {
     const { stdout } = await execFileAsync(tool.command, ['--version'], { timeout: 5000 })
-    return toolStatusFrom(tool.id, stdout, undefined)
+    return { ...toolStatusFrom(tool.id, stdout, undefined), ...installDocUrl === undefined ? {} : { installDocUrl } }
   } catch (error) {
-    return toolStatusFrom(tool.id, undefined, error)
+    return { ...toolStatusFrom(tool.id, undefined, error), ...installDocUrl === undefined ? {} : { installDocUrl } }
   }
 }
 

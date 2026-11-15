@@ -7,7 +7,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import type { BotDefinition } from '@rock/rock-bot-manager'
-import type { AgentLoopPatch, RenderedAgent, SeatClaim, ToolBinding, ToolType } from './types.ts'
+import type { AgentLoopPatch, AssistantRef, RenderedAgent, SeatClaim, ToolBinding, ToolType } from './types.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface SeagullIdentityOptions {
@@ -34,6 +34,8 @@ export interface SeagullIdentityOptions {
 /** Synced Seagull identity state plus rendering helpers. */
 export class SeagullIdentityService {
   private claims: SeatClaim[] = []
+  private assistants: AssistantRef[] = []
+  private onboardingStatus: string | undefined
   private localBots: readonly BotDefinition[]
   private claimedBindingOf: ((id: string) => string | undefined) | undefined
   private runtimeBaseUrl?: string
@@ -46,6 +48,16 @@ export class SeagullIdentityService {
   /** Current seat claims (empty before {@link sync} completes). */
   getClaims(): readonly SeatClaim[] {
     return this.claims
+  }
+
+  /** Current dedicated assistants (empty before {@link sync} completes). */
+  getAssistants(): readonly AssistantRef[] {
+    return this.assistants
+  }
+
+  /** Current onboarding status (`pending`/`in-progress`/`done`/`skipped`), or undefined before sync. */
+  getOnboardingStatus(): string | undefined {
+    return this.onboardingStatus
   }
 
   /** Replace the locally-defined custom bots (live update from `rock-bot-manager`). */
@@ -66,7 +78,10 @@ export class SeagullIdentityService {
 
   /** Load the claim list from the gateway, falling back to the local file. */
   async sync(): Promise<void> {
-    this.claims = await this.loadClaims()
+    const result = await this.loadClaims()
+    this.claims = result.claims
+    this.assistants = result.assistants
+    this.onboardingStatus = result.onboarding
   }
 
   /** Resolve the tool type an agent bot binds to (local tool binding). */
@@ -111,21 +126,28 @@ export class SeagullIdentityService {
     }
   }
 
-  private async loadClaims(): Promise<SeatClaim[]> {
+  private async loadClaims(): Promise<{ claims: SeatClaim[]; assistants: AssistantRef[]; onboarding: string | undefined }> {
     const url = this.claimsUrl()
     if (url !== undefined) {
       try {
         const data = await this.fetchJson(url)
-        return (data as { data?: { claims?: SeatClaim[] } }).data?.claims ?? []
+        const envelope = (data as {
+          data?: { claims?: SeatClaim[]; assistants?: AssistantRef[]; onboarding?: { status?: string } | null }
+        }).data
+        return {
+          claims: envelope?.claims ?? [],
+          assistants: envelope?.assistants ?? [],
+          onboarding: typeof envelope?.onboarding?.status === 'string' ? envelope.onboarding.status : undefined,
+        }
       } catch (error) {
         if (this.options.claimFile === undefined) throw error
       }
     }
     if (this.options.claimFile !== undefined) {
       const raw = await readFile(this.options.claimFile, 'utf8')
-      return JSON.parse(raw) as SeatClaim[]
+      return { claims: JSON.parse(raw) as SeatClaim[], assistants: [], onboarding: undefined }
     }
-    return []
+    return { claims: [], assistants: [], onboarding: undefined }
   }
 
   /** The claims endpoint URL, preferring the runtime connector-key identity. */

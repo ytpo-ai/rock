@@ -38,10 +38,8 @@ export interface Config {
   host?: string
   /** Loopback bind port. */
   port?: number
-  /** Seagull cloud LLM Proxy origin; the relay appends `/v1<path-suffix>`. */
+  /** Seagull cloud LLM Proxy origin; the relay appends `/v1/bots/{agentBotId}<path-suffix>`. */
   cloudBaseUrl: string
-  /** Bearer agent API key presented to the cloud Proxy. */
-  agentApiKey?: string
   /** Rock instance identity stamped as `x-seagull-connector-client-id`. */
   connectorClientId: string
 }
@@ -50,7 +48,6 @@ export const Config: z<Config> = z.object({
   host: z.string().min(1).default(DEFAULT_HOST),
   port: z.number().step(1).min(1).max(65535).default(DEFAULT_PORT),
   cloudBaseUrl: z.string().min(1),
-  agentApiKey: z.string().min(1),
   connectorClientId: z.string().min(1),
 })
 
@@ -60,7 +57,10 @@ export function apply(ctx: Context, config: Config): void {
     host: config.host ?? DEFAULT_HOST,
     port: config.port ?? DEFAULT_PORT,
     cloudBaseUrl: config.cloudBaseUrl,
-    ...config.agentApiKey === undefined ? {} : { agentApiKey: config.agentApiKey },
+    resolveConnectorKey: () => {
+      const onboarding = ctx.get('rockOnboarding') as { getRecord(): { key: string } | null } | undefined
+      return onboarding?.getRecord()?.key
+    },
     connectorClientId: config.connectorClientId,
     resolveEmployeeId: (agentBotId) => {
       const identity = ctx.get('seagullIdentity') as IdentityLike | undefined

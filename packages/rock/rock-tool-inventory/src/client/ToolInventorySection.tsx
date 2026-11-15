@@ -37,6 +37,7 @@ export function ToolInventorySection({ t, remote }: ToolInventorySectionProps): 
           <th scope="col">{t('column.tool')}</th>
           <th scope="col">{t('column.status')}</th>
           <th scope="col">{t('column.version')}</th>
+          <th scope="col">{t('column.install')}</th>
         </tr>
       </thead>
       <tbody>
@@ -45,6 +46,11 @@ export function ToolInventorySection({ t, remote }: ToolInventorySectionProps): 
             <td>{tool.id}</td>
             <td>{tool.installed ? t('status.installed') : t('status.missing')}</td>
             <td>{tool.version ?? '—'}</td>
+            <td>
+              {!tool.installed && tool.installDocUrl !== undefined
+                ? <a href={tool.installDocUrl} target="_blank" rel="noreferrer">{t('action.install')}</a>
+                : '—'}
+            </td>
           </tr>
         ))}
       </tbody>

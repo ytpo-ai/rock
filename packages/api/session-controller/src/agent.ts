@@ -13,6 +13,15 @@ import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-ses
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-typert-registry'
 
+/**
+ * Rock dedicated-assistant routing (D-035): the `assistant` preset runs on the
+ * Seagull cloud LLM proxy, scoped to the employee's dedicated assistant agent
+ * id so the proxy can inject that agent's onboarding skill.
+ */
+const ROCK_ASSISTANT_PRESET = 'assistant'
+const ROCK_ASSISTANT_PROVIDER = 'seagull-cloud'
+const ROCK_ASSISTANT_MODEL = 'seagull-relay'
+
 /** Cold Session identity absent from persistence. */
 export class ApiSessionNotFound extends Error {}
 
@@ -312,7 +321,7 @@ export class ApiSessionAgentController {
     }
     return (await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(composition.agentPreset),
       setup: composition.setup,
     })).agent
   }
@@ -366,7 +375,7 @@ export class ApiSessionAgentController {
     try {
       return (await this.ctx.agents.resume({
         resumeSessionId: sessionId,
-        agentOptions: this.agentOptions(),
+        agentOptions: this.agentOptions(composition.agentPreset),
         setup: this.reuseSetup(composition),
       })).agent
     } catch (error: unknown) {
@@ -441,7 +450,7 @@ export class ApiSessionAgentController {
     }
     return (await this.ctx.agents.create({
       sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(composition.agentPreset),
       meta: {
         cwd,
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
@@ -450,14 +459,25 @@ export class ApiSessionAgentController {
     })).agent
   }
 
-  private agentOptions(): AgentOptions {
+  private agentOptions(presetId?: string): AgentOptions {
     const defaults = this.ctx.agentDefaultModel
+    const assistant = presetId === ROCK_ASSISTANT_PRESET ? this.assistantIdentity() : undefined
     // A Session that records no selection or request follows default changes.
     return {
-      get provider() { return defaults.currentSelection().provider },
-      get model() { return defaults.currentSelection().model },
+      get provider() { return assistant !== undefined ? ROCK_ASSISTANT_PROVIDER : defaults.currentSelection().provider },
+      get model() { return assistant !== undefined ? ROCK_ASSISTANT_MODEL : defaults.currentSelection().model },
       get reasoningEffort() { return defaults.currentSelection().reasoningEffort },
+      ...assistant === undefined ? {} : { agentId: assistant.agentBotId },
     }
+  }
+
+  /**
+   * The employee's dedicated assistant agent id (Rock), or undefined when the
+   * Rock identity plugin is absent or has not synced yet.
+   */
+  private assistantIdentity(): { agentBotId: string } | undefined {
+    const identity = this.ctx.get('seagullIdentity') as { getAssistants(): readonly { agentBotId: string }[] } | undefined
+    return identity?.getAssistants()[0]
   }
 
   /**

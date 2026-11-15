@@ -6,7 +6,7 @@ function relay(overrides: Partial<ConstructorParameters<typeof RockLlmRelay>[0]>
     host: '127.0.0.1',
     port: 0,
     cloudBaseUrl: 'http://cloud.test',
-    agentApiKey: 'sk-agent-test',
+    resolveConnectorKey: () => 'sk-connector-test',
     connectorClientId: 'rock-a',
     resolveEmployeeId: agentBotId => agentBotId === 'agent-bot-C' ? 'employee-a' : undefined,
     ...overrides,
@@ -48,13 +48,30 @@ describe('RockLlmRelay', () => {
 
     expect(forward).toHaveBeenCalledTimes(1)
     const [url, init] = forward.mock.calls[0]!
-    expect(url).toBe('http://cloud.test/v1/chat/completions')
+    expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/chat/completions')
     const headers = init.headers as Headers
     expect(headers.get('x-seagull-agent-bot-id')).toBe('agent-bot-C')
     expect(headers.get('x-seagull-employee-id')).toBe('employee-a')
     expect(headers.get('x-seagull-connector-client-id')).toBe('rock-a')
     expect(headers.get('x-seagull-relayed')).toBe('true')
-    expect(headers.get('authorization')).toBe('Bearer sk-agent-test')
+    expect(headers.get('authorization')).toBe('Bearer sk-connector-test')
+  })
+
+  it('forwards the /responses suffix to the per-bot cloud endpoint', async () => {
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const server = relay({ forward })
+    servers.push(server)
+    const port = await server.start()
+
+    await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/responses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'seagull-relay', input: [] }),
+    })
+
+    const [url, init] = forward.mock.calls[0]!
+    expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/responses')
+    expect((init.headers as Headers).get('authorization')).toBe('Bearer sk-connector-test')
   })
 
   it('returns 404 for a path that does not name an agent bot', async () => {

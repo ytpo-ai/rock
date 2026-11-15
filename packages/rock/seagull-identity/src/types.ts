@@ -11,6 +11,20 @@ export interface SeatClaim {
   employeeId: string
   /** Claim time (ISO-8601). */
   claimedAt: string
+  /** Human-readable bot name resolved on Seagull; absent when the agent is unavailable. */
+  name?: string
+  /** Role/persona label set on Seagull for this bot. */
+  role?: string
+}
+
+/** One employee's dedicated assistant bot (D-035), resolved from the Seagull employee binding. */
+export interface AssistantRef {
+  /** Seagull assistant agent bot id. */
+  agentBotId: string
+  /** Human-readable assistant name resolved on Seagull; absent when the agent is unavailable. */
+  name?: string
+  /** Role/persona label set on Seagull for the assistant. */
+  role?: string
 }
 
 /** Local tool type an agent bot binds to on the employee workbench (e.g. codex / pi / dsh / acp / claude-code). */

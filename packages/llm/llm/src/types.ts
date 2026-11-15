@@ -598,6 +598,12 @@ export interface GenerateOptions<Purpose extends string = LlmRequestPurpose> {
    */
   sessionId?: Branded<'SessionId'>
   /**
+   * Optional agent identity stamped by the loop for request routing. Rock uses
+   * it to carry the Seagull agent-bot id, so a relayed adapter can scope the
+   * request to one bot without deriving it from the session id.
+   */
+  agentId?: string
+  /**
    * Provider-neutral classification for an auxiliary model call. Adapters may
    * map the purpose to model-hidden transport metadata. Ordinary conversation
    * requests leave it unset.

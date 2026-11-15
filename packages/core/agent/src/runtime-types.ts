@@ -38,6 +38,8 @@ export interface AgentOptions {
   reasoningEffort?: ReasoningEffortId | undefined
   /** Maximum output tokens for each conversation-model request. */
   maxTokens?: number
+  /** Optional agent identity stamped on every model request (Rock: the Seagull agent-bot id). */
+  agentId?: string
 }
 
 /** Options for {@link Agent.cancel}. */

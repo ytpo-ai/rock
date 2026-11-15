@@ -17,10 +17,10 @@ export interface RockLlmRelayOptions {
   host: string
   /** Loopback bind port. */
   port: number
-  /** Seagull cloud LLM Proxy origin; the relay appends `/v1<path-suffix>`. */
+  /** Seagull cloud LLM Proxy origin; the relay appends `/v1/bots/{agentBotId}<path-suffix>`. */
   cloudBaseUrl: string
-  /** Bearer agent API key presented to the cloud Proxy. */
-  agentApiKey?: string
+  /** Resolve the connector key presented as the cloud Bearer (D-034/REQ-013). */
+  resolveConnectorKey?: () => string | undefined
   /** Rock instance identity stamped as `x-seagull-connector-client-id`. */
   connectorClientId: string
   /** Resolve the claiming employee for one agent bot, or `undefined`. */

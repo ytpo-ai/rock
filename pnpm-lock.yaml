@@ -2852,6 +2852,12 @@ importers:
       '@deepseek-ai/dsh-subagent-codex':
         specifier: workspace:*
         version: link:../../subagent/subagent-codex
+      '@deepseek-ai/dsh-tool-ask-user':
+        specifier: workspace:*
+        version: link:../../interaction/tool-ask-user
+      '@deepseek-ai/dsh-tool-bash':
+        specifier: workspace:*
+        version: link:../../shell/tool-bash
       '@deepseek-ai/dsh-tool-subagent':
         specifier: workspace:*
         version: link:../../subagent/tool-subagent
@@ -2867,6 +2873,9 @@ importers:
       '@rock/rock-console':
         specifier: workspace:*
         version: link:../../rock/rock-console
+      '@rock/rock-llm-relay':
+        specifier: workspace:*
+        version: link:../../rock/rock-llm-relay
       '@rock/rock-observability':
         specifier: workspace:*
         version: link:../../rock/rock-observability
@@ -15477,6 +15486,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:*
         version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-workspace':
+        specifier: workspace:*
+        version: link:../../client/ui-workspace
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -15486,6 +15498,12 @@ importers:
 
   packages/rock/rock-tasks:
     dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -15493,6 +15511,12 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:*
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-preset-registry':
+        specifier: workspace:*
+        version: link:../../preset/agent-preset-registry
       '@deepseek-ai/dsh-api-remotes':
         specifier: workspace:*
         version: link:../../api/remotes
@@ -15511,6 +15535,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:*
         version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       react:
         specifier: ^18.2.0
         version: 18.3.1

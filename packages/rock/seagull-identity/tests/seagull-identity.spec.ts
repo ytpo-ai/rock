@@ -69,6 +69,28 @@ describe('SeagullIdentityService', () => {
     expect(service.getClaims()).toHaveLength(2)
   })
 
+  it('syncs the dedicated assistant alongside claims from the gateway', async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      data: {
+        claims: CLAIMS,
+        assistants: [{ agentBotId: 'assistant-1', name: 'Van的专属助理', role: '专属助理' }],
+      },
+    })
+
+    const service = new SeagullIdentityService({
+      gatewayUrl: 'http://gateway.test/claims',
+      employeeId: 'employee-a',
+      bindings: {},
+      defaultToolType: 'codex',
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+      fetchJson,
+    })
+    await service.sync()
+
+    expect(service.getAssistants()).toEqual([{ agentBotId: 'assistant-1', name: 'Van的专属助理', role: '专属助理' }])
+  })
+
   it('merges local custom bots into the rendered agents with their own provider/model', async () => {
     const claimFile = join(dir, 'claims.json')
     await writeFile(claimFile, JSON.stringify(CLAIMS), 'utf8')

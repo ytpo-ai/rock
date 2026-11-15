@@ -11,6 +11,8 @@ export interface ToolDescriptor {
   id: string
   /** CLI command used to probe the tool. */
   command: string
+  /** Official install documentation URL surfaced for missing tools. */
+  installDocUrl?: string
 }
 
 /** Detected state of one agent tool on this machine. */
@@ -21,4 +23,6 @@ export interface ToolStatus {
   installed: boolean
   /** Detected version string, when the tool reported one. */
   version?: string
+  /** Official install documentation URL, when the descriptor provides one. */
+  installDocUrl?: string
 }

@@ -37,12 +37,16 @@ export interface CloudProviderConfig {
   models?: string[]
   /** Placeholder model id for catalog and omitted-request fallback. */
   defaultModel: string
+  /** Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` scoped URL. */
+  relay?: boolean
 }
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface CloudLlmAdapterOptions {
   /** Provider routes keyed by the id passed to `GenerateOptions.provider`. */
   providers: Record<string, CloudProviderConfig>
+  /** Resolve the Rock connector key for `relay` routes; undefined means the route has no key yet. */
+  resolveConnectorKey?: () => string | undefined
 }
 
 /** One OpenAI chat message after translation from the harness vocabulary. */
@@ -285,11 +289,16 @@ export class CloudLlmAdapter extends LlmAdapter {
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const route = this.providerConfig(options.provider)
-    const url = `${route.baseUrl.replace(/\/$/, '')}/v1/chat/completions`
+    const relay = route.relay === true
+    const agentId = options.agentId ?? (options.sessionId === undefined ? undefined : String(options.sessionId))
+    const url = relay
+      ? `${route.baseUrl.replace(/\/$/, '')}/v1/bots/${agentId ?? ''}/chat/completions`
+      : `${route.baseUrl.replace(/\/$/, '')}/v1/chat/completions`
+    const apiKey = relay ? this.config.resolveConnectorKey?.() : route.apiKey
     const headers = new Headers()
     headers.set('content-type', 'application/json')
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
-    if (route.apiKey !== undefined) headers.set('authorization', `Bearer ${route.apiKey}`)
+    if (apiKey !== undefined && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`)
 
     const body = {
       model: options.model,

@@ -53,10 +53,12 @@ export interface Config {
 const botSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  role: z.string().default(''),
   llm: z.object({
     provider: z.string().min(1),
     baseUrl: z.string().min(1).default(''),
     apiKeyRef: z.string().role('secret').default(''),
+    apiKey: z.string().role('secret').default(''),
     model: z.string().min(1),
   }),
   tool: z.object({ toolType: z.string().min(1) }),
@@ -108,10 +110,12 @@ function cleanBot(bot: BotDefinition): BotDefinition {
   return {
     id: bot.id,
     name: bot.name,
+    ...bot.role === undefined || bot.role === '' ? {} : { role: bot.role },
     llm: {
       provider: bot.llm.provider,
       ...bot.llm.baseUrl === undefined || bot.llm.baseUrl === '' ? {} : { baseUrl: bot.llm.baseUrl },
       ...bot.llm.apiKeyRef === undefined || bot.llm.apiKeyRef === '' ? {} : { apiKeyRef: bot.llm.apiKeyRef },
+      ...bot.llm.apiKey === undefined || bot.llm.apiKey === '' ? {} : { apiKey: bot.llm.apiKey },
       model: bot.llm.model,
     },
     tool: { toolType: bot.tool.toolType },

@@ -74,7 +74,7 @@ export class RockLlmRelay {
   }
 
   private async forward(route: RelayRoute, body: string): Promise<Response> {
-    const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1${route.pathSuffix}`
+    const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1/bots/${route.agentBotId}${route.pathSuffix}`
     const headers = new Headers()
     headers.set('content-type', 'application/json')
     headers.set(PROVENANCE_HEADERS.agentBotId, route.agentBotId)
@@ -82,7 +82,8 @@ export class RockLlmRelay {
     headers.set(PROVENANCE_HEADERS.relayed, 'true')
     const employeeId = this.options.resolveEmployeeId(route.agentBotId)
     if (employeeId !== undefined) headers.set(PROVENANCE_HEADERS.employeeId, employeeId)
-    if (this.options.agentApiKey !== undefined) headers.set('authorization', `Bearer ${this.options.agentApiKey}`)
+    const connectorKey = this.options.resolveConnectorKey?.()
+    if (connectorKey !== undefined && connectorKey !== '') headers.set('authorization', `Bearer ${connectorKey}`)
 
     const doForward = this.options.forward ?? ((target: string, init: RequestInit) => fetch(target, init))
     return doForward(url, { method: 'POST', headers, body })

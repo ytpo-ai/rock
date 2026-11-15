@@ -15,13 +15,15 @@ export interface AddKeyDialogInjected {
     hasKey(): Promise<RemoteResult<boolean>>
     addKey(baseUrl: string, key: string): Promise<RemoteResult<ConnectorIdentity>>
   }
+  /** Open the assistant session once the connector key is connected. */
+  onConnected: () => void
 }
 
 export type AddKeyDialogProps =
   PropsRuntime<'shell.overlay'> & PropsLocale<'rock-onboarding'> & InjectFace<AddKeyDialogInjected>
 
 /** Render the add-key dialog on first run; nothing once a key exists. */
-export function AddKeyDialog({ t, remote }: AddKeyDialogProps): ReactElement {
+export function AddKeyDialog({ t, remote, onConnected }: AddKeyDialogProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [key, setKey] = useState('')
@@ -38,6 +40,7 @@ export function AddKeyDialog({ t, remote }: AddKeyDialogProps): ReactElement {
       if (result.ok) {
         setError(null)
         setOpen(false)
+        onConnected()
       } else {
         setError(t('error.invalid'))
       }

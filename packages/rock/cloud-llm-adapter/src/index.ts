@@ -42,6 +42,8 @@ export interface ProviderConfig {
   models?: string[]
   /** Placeholder model id for catalog and omitted-request fallback. */
   defaultModel?: string
+  /** Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` scoped URL. */
+  relay?: boolean
 }
 
 /** Deployment-owned connection facts; every provider is patchable from cordis.yml. */
@@ -56,6 +58,7 @@ const providerSchema = z.object({
   name: z.string().default(''),
   models: z.array(z.string().min(1)).default([]),
   defaultModel: z.string().min(1).default(DEFAULT_MODEL),
+  relay: z.boolean().default(false),
 })
 
 export const Config: z<Config> = z.object({
@@ -71,9 +74,16 @@ export function apply(ctx: Context, config: Config): void {
       ...route.name === undefined || route.name === '' ? {} : { name: route.name },
       ...route.models === undefined || route.models.length === 0 ? {} : { models: route.models },
       defaultModel: route.defaultModel ?? DEFAULT_MODEL,
+      relay: route.relay === true,
     }]),
   )
   if (Object.keys(providers).length === 0) return
-  const adapter = new CloudLlmAdapter({ providers })
+  const adapter = new CloudLlmAdapter({
+    providers,
+    resolveConnectorKey: () => {
+      const onboarding = ctx.get('rockOnboarding') as { getRecord(): { key: string } | null } | undefined
+      return onboarding?.getRecord()?.key
+    },
+  })
   ctx.llm.registerAdapter(Object.keys(providers), adapter)
 }
