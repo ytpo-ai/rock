@@ -1,0 +1,81 @@
+/**
+ * Rock onboarding key store: persists the employee connector key locally and
+ * resolves a pasted key against the Seagull gateway.
+ *
+ * @module @rock/rock-onboarding/service
+ */
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import type { ConnectorIdentity, ConnectorKeyRecord } from './types.ts'
+
+/** Constructor options owned by the plugin's `apply`. */
+export interface ConnectorKeyServiceOptions {
+  /** Local JSON file persisting the connector key record. */
+  keyPath: string
+  /** Resolves a raw key to its client identity, or null when invalid. */
+  resolve: (key: string) => Promise<ConnectorIdentity | null>
+}
+
+/** Persisted connector-key state plus resolution helpers. */
+export class ConnectorKeyService {
+  private record: ConnectorKeyRecord | null = null
+
+  constructor(private readonly options: ConnectorKeyServiceOptions) {}
+
+  /** Load the persisted record (null before {@link load} completes or when absent). */
+  async load(): Promise<void> {
+    this.record = await readRecord(this.options.keyPath)
+  }
+
+  /** The stored record, or null when no key has been added yet. */
+  getRecord(): ConnectorKeyRecord | null {
+    return this.record
+  }
+
+  /** The stored identity, or null when no key has been added yet. */
+  getIdentity(): ConnectorIdentity | null {
+    if (this.record === null) return null
+    return { clientId: this.record.clientId, employeeId: this.record.employeeId }
+  }
+
+  /** Validate a pasted key, persist it, and return the resolved identity. */
+  async addKey(key: string): Promise<ConnectorIdentity> {
+    const trimmed = key.trim()
+    if (trimmed.length === 0) throw new Error('connector key must be non-empty')
+    const identity = await this.options.resolve(trimmed)
+    if (identity === null) throw new Error('invalid connector key')
+    this.record = { key: trimmed, clientId: identity.clientId, employeeId: identity.employeeId }
+    await persistRecord(this.options.keyPath, this.record)
+    return identity
+  }
+}
+
+/** Read a persisted key record, returning null for an absent or malformed file. */
+async function readRecord(keyPath: string): Promise<ConnectorKeyRecord | null> {
+  let raw: string
+  try {
+    raw = await readFile(keyPath, 'utf8')
+  } catch {
+    return null
+  }
+  const parsed: unknown = JSON.parse(raw)
+  if (!validRecord(parsed)) return null
+  return parsed
+}
+
+/** Persist one key record atomically. */
+async function persistRecord(keyPath: string, record: ConnectorKeyRecord): Promise<void> {
+  await mkdir(dirname(keyPath), { recursive: true })
+  const tmp = `${keyPath}.${process.pid}.tmp`
+  await writeFile(tmp, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
+  await rename(tmp, keyPath)
+}
+
+/** Whether an unknown value is a well-formed key record. */
+function validRecord(value: unknown): value is ConnectorKeyRecord {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.key === 'string' && record.key.length > 0
+    && typeof record.clientId === 'string' && record.clientId.length > 0
+    && typeof record.employeeId === 'string' && record.employeeId.length > 0
+}

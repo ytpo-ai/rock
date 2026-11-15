@@ -181,6 +181,7 @@
     { "path": "./packages/rock/rock-console/tsconfig.client.json" },
     { "path": "./packages/rock/rock-tool-inventory/tsconfig.client.json" },
     { "path": "./packages/rock/rock-tasks/tsconfig.client.json" },
+    { "path": "./packages/rock/rock-onboarding/tsconfig.client.json" },
     { "path": "./apps/web" }
   ]
 }

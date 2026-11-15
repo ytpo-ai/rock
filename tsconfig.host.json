@@ -506,6 +506,7 @@
     { "path": "./packages/rock/rock-bot-manager" },
     { "path": "./packages/rock/rock-llm-relay" },
     { "path": "./packages/rock/rock-observability" },
+    { "path": "./packages/rock/rock-onboarding" },
     { "path": "./packages/rock/rock-console" },
     { "path": "./packages/rock/rock-tool-inventory" },
     { "path": "./packages/rock/rock-tasks" },

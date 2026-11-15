@@ -167,6 +167,10 @@
     - id: rock-console
       name: '@rock/rock-console'
 
+    # ── rock-onboarding: first-run connector-key entry (REQ-013) ──
+    - id: rock-onboarding
+      name: '@rock/rock-onboarding'
+
     # ── rock-tool-inventory: read-only installed-tool probes ──
     - id: rock-tool-inventory
       name: '@rock/rock-tool-inventory'

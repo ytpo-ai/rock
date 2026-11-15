@@ -462,6 +462,7 @@
       "@rock/rock-bot-manager": ["./packages/rock/rock-bot-manager/src"],
       "@rock/rock-llm-relay": ["./packages/rock/rock-llm-relay/src"],
       "@rock/rock-observability": ["./packages/rock/rock-observability/src"],
+      "@rock/rock-onboarding": ["./packages/rock/rock-onboarding/src"],
       "@rock/rock-console": ["./packages/rock/rock-console/src"],
       "@rock/rock-tool-inventory": ["./packages/rock/rock-tool-inventory/src"],
       "@rock/rock-tasks": ["./packages/rock/rock-tasks/src"],
