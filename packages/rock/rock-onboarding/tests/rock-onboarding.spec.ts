@@ -31,7 +31,6 @@ describe('ConnectorKeyService', () => {
       keyPath: join(dir, 'connector-key.json'),
       resolve: async () => null,
     })
-    await reloaded.load()
     expect(reloaded.getIdentity()).toEqual({ clientId: 'client-1', employeeId: 'emp-1' })
   })
 

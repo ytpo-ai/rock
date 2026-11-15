@@ -43,7 +43,6 @@ export default class RockOnboardingController extends TypertRemoteService {
       keyPath: config.keyPath ?? DEFAULT_KEY_PATH,
       resolve: (baseUrl, key) => resolveKey(baseUrl, key),
     })
-    void this.service.load()
   }
 
   /** Whether a connector key has been added locally. */

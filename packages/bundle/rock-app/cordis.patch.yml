@@ -124,6 +124,10 @@
             name: Seagull Cloud
             defaultModel: seagull-relay
 
+    # ── rock-onboarding: first-run connector-key entry (REQ-013) ──
+    - id: rock-onboarding
+      name: '@rock/rock-onboarding'
+
     # ── plugin② seagull-identity: seat-claim sync + tool binding ──
     # Always mounted; syncs claims using the connector-key identity from
     # rock-onboarding (falls back to the env config below when no key yet).
@@ -165,10 +169,6 @@
     # ── rock-console: default landing panel (the console has no chat) ──
     - id: rock-console
       name: '@rock/rock-console'
-
-    # ── rock-onboarding: first-run connector-key entry (REQ-013) ──
-    - id: rock-onboarding
-      name: '@rock/rock-onboarding'
 
     # ── rock-tool-inventory: read-only installed-tool probes ──
     - id: rock-tool-inventory

@@ -4,7 +4,8 @@
  *
  * @module @rock/rock-onboarding/service
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { ConnectorIdentity, ConnectorKeyRecord } from './types.ts'
 
@@ -18,13 +19,10 @@ export interface ConnectorKeyServiceOptions {
 
 /** Persisted connector-key state plus resolution helpers. */
 export class ConnectorKeyService {
-  private record: ConnectorKeyRecord | null = null
+  private record: ConnectorKeyRecord | null
 
-  constructor(private readonly options: ConnectorKeyServiceOptions) {}
-
-  /** Load the persisted record (null before {@link load} completes or when absent). */
-  async load(): Promise<void> {
-    this.record = await readRecord(this.options.keyPath)
+  constructor(private readonly options: ConnectorKeyServiceOptions) {
+    this.record = readRecord(options.keyPath)
   }
 
   /** The stored record, or null when no key has been added yet. */
@@ -52,11 +50,11 @@ export class ConnectorKeyService {
   }
 }
 
-/** Read a persisted key record, returning null for an absent or malformed file. */
-async function readRecord(keyPath: string): Promise<ConnectorKeyRecord | null> {
+/** Read a persisted key record synchronously, returning null for an absent or malformed file. */
+function readRecord(keyPath: string): ConnectorKeyRecord | null {
   let raw: string
   try {
-    raw = await readFile(keyPath, 'utf8')
+    raw = readFileSync(keyPath, 'utf8')
   } catch {
     return null
   }
