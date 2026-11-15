@@ -79,9 +79,10 @@ async function resolveKey(baseUrl: string, key: string): Promise<ConnectorIdenti
       body: JSON.stringify({ key }),
     })
     if (!response.ok) return null
-    const body = await response.json() as { ok?: boolean; clientId?: string; employeeId?: string }
-    if (!body.ok || !body.clientId || !body.employeeId) return null
-    return { clientId: body.clientId, employeeId: body.employeeId }
+    const envelope = await response.json() as { data?: { ok?: boolean; clientId?: string; employeeId?: string } }
+    const identity = envelope.data
+    if (identity === undefined || !identity.ok || !identity.clientId || !identity.employeeId) return null
+    return { clientId: identity.clientId, employeeId: identity.employeeId }
   } catch {
     return null
   }
