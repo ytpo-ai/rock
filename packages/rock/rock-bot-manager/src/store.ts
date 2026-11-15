@@ -47,3 +47,36 @@ export class JsonFileBotStore implements BotStore {
 function isMissingFile(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
 }
+
+/** A persisted `agentBotId → toolType` map for cloud-sourced bots. */
+export interface BindingStore {
+  /** Read the persisted bindings, or an empty map when the file is absent. */
+  load(): Promise<Record<string, string>>
+  /** Persist the whole map atomically. */
+  save(bindings: Record<string, string>): Promise<void>
+}
+
+/** File-system-backed binding store rooted at one JSON file path. */
+export class JsonFileBindingStore implements BindingStore {
+  constructor(private readonly filePath: string) {}
+
+  async load(): Promise<Record<string, string>> {
+    let raw: string
+    try {
+      raw = await readFile(this.filePath, 'utf8')
+    } catch (error) {
+      if (isMissingFile(error)) return {}
+      throw error
+    }
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return parsed as Record<string, string>
+  }
+
+  async save(bindings: Record<string, string>): Promise<void> {
+    await mkdir(dirname(this.filePath), { recursive: true })
+    const tmp = `${this.filePath}.${process.pid}.tmp`
+    await writeFile(tmp, `${JSON.stringify(bindings, null, 2)}\n`, 'utf8')
+    await rename(tmp, this.filePath)
+  }
+}

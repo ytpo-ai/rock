@@ -35,6 +35,7 @@ export interface SeagullIdentityOptions {
 export class SeagullIdentityService {
   private claims: SeatClaim[] = []
   private localBots: readonly BotDefinition[]
+  private claimedBindingOf: ((id: string) => string | undefined) | undefined
 
   constructor(private readonly options: SeagullIdentityOptions) {
     this.localBots = options.botDefinitions ?? []
@@ -50,6 +51,11 @@ export class SeagullIdentityService {
     this.localBots = bots
   }
 
+  /** Resolve claimed-bot bindings from the manager (runtime-persisted), else static config. */
+  setClaimedBindingOf(resolver: ((id: string) => string | undefined) | undefined): void {
+    this.claimedBindingOf = resolver
+  }
+
   /** Load the claim list from the gateway, falling back to the local file. */
   async sync(): Promise<void> {
     this.claims = await this.loadClaims()
@@ -59,7 +65,7 @@ export class SeagullIdentityService {
   toolBindingOf(agentBotId: string): ToolType {
     const local = this.localBots.find(bot => bot.id === agentBotId)
     if (local !== undefined) return local.tool.toolType
-    return this.options.bindings[agentBotId] ?? this.options.defaultToolType
+    return this.claimedBindingOf?.(agentBotId) ?? this.options.bindings[agentBotId] ?? this.options.defaultToolType
   }
 
   /** Render the agent-loop agent entries for every claimed bot and local bot. */

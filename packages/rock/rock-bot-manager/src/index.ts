@@ -18,13 +18,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { RockBotService } from './service.ts'
-import { JsonFileBotStore } from './store.ts'
+import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
-import type { BotDefinition, BotInput } from './types.ts'
+import { buildUnifiedBots } from './unify.ts'
+import type { BotDefinition, BotInput, BotRow } from './types.ts'
 
 export type * from './types.ts'
 
 const DEFAULT_STORE_PATH = '.rock/bots.json'
+const DEFAULT_BINDINGS_PATH = '.rock/bindings.json'
 
 /** Tool types the binding selector offers before deployment overrides them. */
 const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-code']
@@ -39,6 +41,8 @@ export interface Config {
   employeeId?: string
   /** Tool types offered by the binding selector. */
   toolTypes?: string[]
+  /** JSON file persisting cloud-sourced bot bindings. */
+  bindingsPath?: string
 }
 
 /** Remote service carrying the local bot registry. */
@@ -49,6 +53,7 @@ export default class RockBotController extends TypertRemoteService {
     tasksUrl: z.string().default(''),
     employeeId: z.string().default(''),
     toolTypes: z.array(z.string().min(1)).default(DEFAULT_TOOL_TYPES),
+    bindingsPath: z.string().min(1).default(DEFAULT_BINDINGS_PATH),
   })
 
   private readonly service: RockBotService
@@ -59,6 +64,7 @@ export default class RockBotController extends TypertRemoteService {
     this.config = config
     this.service = new RockBotService({
       store: new JsonFileBotStore(config.storePath ?? DEFAULT_STORE_PATH),
+      bindingsStore: new JsonFileBindingStore(config.bindingsPath ?? DEFAULT_BINDINGS_PATH),
     })
     void this.service.load().then(() => {
       ctx.logger.info(`rock-bot-manager: loaded ${this.service.list().length} local bot(s)`)
@@ -126,6 +132,43 @@ export default class RockBotController extends TypertRemoteService {
     return [...(this.config.toolTypes ?? DEFAULT_TOOL_TYPES)]
   }
 
+  /** Unified bot rows across local, claimed, and assistant sources (D-036). */
+  @Remote
+  async listBotsUnified(): Promise<BotRow[]> {
+    const activeIds = new Set(activeBotIdsFrom(await this.fetchTasks()))
+    const identity = this.optionalIdentity()
+    return buildUnifiedBots({
+      localBots: this.service.list(),
+      claimed: identity === undefined ? [] : identity.getClaims().map(claim => ({ agentBotId: claim.agentBotId })),
+      assistants: [],
+      activeIds,
+      bindingOf: id => this.service.getBinding(id) ?? identity?.toolBindingOf(id) ?? 'codex',
+    })
+  }
+
+  /** Tool type ids detected as installed on this machine. */
+  @Remote
+  async installedTools(): Promise<string[]> {
+    const inventory = this.optionalInventory()
+    if (inventory === undefined) return []
+    const statuses = await inventory.listTools()
+    return statuses.filter(status => status.installed).map(status => status.id)
+  }
+
+  /** Rebind a bot — local definition or cloud-sourced binding — and persist. */
+  @Remote
+  async rebindBot(id: string, toolType: string): Promise<void> {
+    try {
+      if (this.service.get(id) !== undefined) {
+        await this.service.update(id, { tool: { toolType } })
+      } else {
+        await this.service.setBinding(id, toolType)
+      }
+    } catch (error) {
+      throw botRemoteError(error)
+    }
+  }
+
   /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
   private async fetchTasks(): Promise<Array<Record<string, unknown>>> {
     const url = this.config.tasksUrl
@@ -139,6 +182,16 @@ export default class RockBotController extends TypertRemoteService {
     } catch {
       return []
     }
+  }
+
+  /** The optional identity service, structurally typed to avoid a package cycle. */
+  private optionalIdentity(): { getClaims(): readonly { agentBotId: string }[]; toolBindingOf(id: string): string } | undefined {
+    return this.ctx.get('seagullIdentity') as { getClaims(): readonly { agentBotId: string }[]; toolBindingOf(id: string): string } | undefined
+  }
+
+  /** The optional tool-inventory service, structurally typed to avoid a package cycle. */
+  private optionalInventory(): { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined {
+    return this.ctx.get('rockToolInventory') as { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined
   }
 }
 

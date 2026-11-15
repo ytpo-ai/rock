@@ -89,8 +89,11 @@ export function apply(ctx: Context, config: Config): void {
   })
   // Live local bots from the optional `rock-bot-manager` service override the
   // static config fallback; the manager UI is the primary editor.
-  const rockBots = ctx.get('rockBots') as { list(): readonly BotDefinition[] } | undefined
-  if (rockBots !== undefined) service.setBotDefinitions(rockBots.list())
+  const rockBots = ctx.get('rockBots') as { list(): readonly BotDefinition[]; getBinding(id: string): string | undefined } | undefined
+  if (rockBots !== undefined) {
+    service.setBotDefinitions(rockBots.list())
+    service.setClaimedBindingOf(id => rockBots.getBinding(id))
+  }
   void service.sync().then(() => {
     ctx.logger.info(`seagull-identity: synced ${service.getClaims().length} seat claim(s) + ${service.renderAgents().length - service.getClaims().length} local bot(s)`)
   })

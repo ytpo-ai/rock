@@ -43,6 +43,29 @@ export interface BotDefinition {
 /** A full-bot create payload; the id is optional (falls back to the name). */
 export type BotInput = Omit<BotDefinition, 'id'> & { id?: string }
 
+/** Where a managed bot comes from in the unified panel (D-036). */
+export type BotSource = 'claimed' | 'local' | 'assistant'
+
+/** One unified bot row the management panel renders, regardless of source. */
+export interface BotRow {
+  /** Stable bot id (agent bot id for claimed/assistant, local id for local). */
+  id: string
+  /** Human-readable display name. */
+  name: string
+  /** Bot source driving the edit/delete permissions (D-036). */
+  source: BotSource
+  /** Upstream LLM route for local bots; absent for cloud-managed sources. */
+  llm?: BotLlm
+  /** Current execution-backend binding. */
+  tool: BotTool
+  /** Whether the binding may be edited. */
+  canRebind: boolean
+  /** Whether the bot may be removed. */
+  canDelete: boolean
+  /** Whether the bot has an active (non-terminal) cloud task. */
+  active: boolean
+}
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** A bot with the same id already exists. */

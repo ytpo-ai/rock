@@ -6,12 +6,14 @@
  * @module @rock/rock-bot-manager/service
  */
 import type { BotDefinition, BotLlm, BotTool } from './types.ts'
-import type { BotStore } from './store.ts'
+import type { BindingStore, BotStore } from './store.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface RockBotServiceOptions {
   /** Persistence backend for the bot list. */
   store: BotStore
+  /** Persistence backend for claimed-bot bindings; absent → in-memory only. */
+  bindingsStore?: BindingStore
 }
 
 /** A full-bot create/update payload (id is assigned/validated by the service). */
@@ -20,12 +22,16 @@ export type BotInput = Omit<BotDefinition, 'id'> & { id?: string }
 /** Registry of locally-defined agent bots, persisted through a store. */
 export class RockBotService {
   private bots: BotDefinition[] = []
+  private bindings: Record<string, string> = {}
 
   constructor(private readonly options: RockBotServiceOptions) {}
 
-  /** Load the persisted list (empty before {@link load} completes). */
+  /** Load the persisted lists (empty before {@link load} completes). */
   async load(): Promise<void> {
     this.bots = (await this.options.store.load()).map(normalizeBot)
+    if (this.options.bindingsStore !== undefined) {
+      this.bindings = await this.options.bindingsStore.load()
+    }
   }
 
   /** Current bots in insertion order. */
@@ -36,6 +42,18 @@ export class RockBotService {
   /** Get one bot by id, or `undefined`. */
   get(id: string): BotDefinition | undefined {
     return this.bots.find(bot => bot.id === id)
+  }
+
+  /** Resolve a cloud-sourced bot's persisted binding, or `undefined`. */
+  getBinding(agentBotId: string): string | undefined {
+    return this.bindings[agentBotId]
+  }
+
+  /** Persist a cloud-sourced bot's tool binding. */
+  async setBinding(agentBotId: string, toolType: string): Promise<void> {
+    if (toolType.length === 0) throw new Error(`binding "${agentBotId}" needs a non-empty toolType`)
+    this.bindings = { ...this.bindings, [agentBotId]: toolType }
+    if (this.options.bindingsStore !== undefined) await this.options.bindingsStore.save(this.bindings)
   }
 
   /** Add one bot; a duplicate id fails with a typed error. */
