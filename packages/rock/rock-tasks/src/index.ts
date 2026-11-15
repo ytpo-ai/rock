@@ -113,21 +113,42 @@ export default class RockTasksController extends TypertRemoteService {
   private async launchSession(botId: string, task: TaskSummary): Promise<void> {
     const presetId = 'rock'
     const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
+
+    // Services the thin-relay session depends on; read through ctx.get so the
+    // lookup is not topology-sensitive (the property proxy is reserved for
+    // declared injections, which this plugin does not list).
+    const agentPresets = this.ctx.get('agentPresets') as {
+      resolve(id: string): Promise<{ id: string }>
+      acquireScope(id: string): Promise<{ key: unknown } & AsyncDisposable>
+      mount(ctx: Context, id: string): Promise<unknown>
+    } | undefined
+    const agents = this.ctx.get('agents') as {
+      create(options: {
+        sessionId: SessionId
+        meta?: { agentPreset?: string }
+        agentOptions?: AgentOptions
+        setup?: (agentCtx: Context) => Promise<void>
+      }): Promise<{ agent: { followup(message: unknown): void } }>
+    } | undefined
+
+    if (agentPresets === undefined) throw new Error('agentPresets service unavailable')
+    if (agents === undefined) throw new Error('agents service unavailable')
+
     this.ctx.logger.info(`rock-tasks: launchSession resolving preset ${presetId}`)
-    const preset = await this.ctx.agentPresets.resolve(presetId)
+    const preset = await agentPresets.resolve(presetId)
     this.ctx.logger.info(`rock-tasks: launchSession preset ${presetId} resolved`)
-    await using scope = await this.ctx.agentPresets.acquireScope(preset.id)
+    await using scope = await agentPresets.acquireScope(preset.id)
     void scope
 
     const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
     const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay', agentId: botId }
     this.ctx.logger.info(`rock-tasks: launchSession creating agent ${sessionId}`)
-    const handle = await this.ctx.agents.create({
+    const handle = await agents.create({
       sessionId,
       meta: { agentPreset: preset.id },
       agentOptions,
       setup: async (agentCtx) => {
-        await this.ctx.agentPresets.mount(agentCtx, preset.id)
+        await agentPresets.mount(agentCtx, preset.id)
       },
     })
     this.ctx.logger.info(`rock-tasks: launchSession agent ${sessionId} created`)
