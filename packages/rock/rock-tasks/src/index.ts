@@ -112,14 +112,16 @@ export default class RockTasksController extends TypertRemoteService {
   /** Launch the bot's thin-relay session and submit the task as its first message. */
   private async launchSession(botId: string, task: TaskSummary): Promise<void> {
     const presetId = 'rock'
+    const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
+    this.ctx.logger.info(`rock-tasks: launchSession resolving preset ${presetId}`)
     const preset = await this.ctx.agentPresets.resolve(presetId)
+    this.ctx.logger.info(`rock-tasks: launchSession preset ${presetId} resolved`)
     await using scope = await this.ctx.agentPresets.acquireScope(preset.id)
     void scope
 
     const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
-    const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
-    const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay' }
-
+    const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay', agentId: botId }
+    this.ctx.logger.info(`rock-tasks: launchSession creating agent ${sessionId}`)
     const handle = await this.ctx.agents.create({
       sessionId,
       meta: { agentPreset: preset.id },
@@ -128,12 +130,13 @@ export default class RockTasksController extends TypertRemoteService {
         await this.ctx.agentPresets.mount(agentCtx, preset.id)
       },
     })
+    this.ctx.logger.info(`rock-tasks: launchSession agent ${sessionId} created`)
 
     handle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: prompt }],
       source: { kind: 'user' },
     }))
-    this.ctx.logger.info(`rock-tasks: launched session ${sessionId} for bot ${botId}`)
+    this.ctx.logger.info(`rock-tasks: launchSession followup submitted for ${sessionId}`)
 
     await this.registerSession(botId, String(sessionId)).catch((error: unknown) => {
       this.ctx.logger.warn(`rock-tasks: session registration failed for ${sessionId}: ${messageOf(error)}`)
