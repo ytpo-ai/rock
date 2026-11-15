@@ -1,6 +1,6 @@
 /**
  * Rock onboarding vocabulary: the resolved connector-client identity and the
- * locally persisted key record.
+ * locally persisted key record (including the Seagull base URL).
  *
  * @module @rock/rock-onboarding/types
  */
@@ -13,8 +13,10 @@ export interface ConnectorIdentity {
   employeeId: string
 }
 
-/** One persisted connector-key record, including the raw key. */
+/** One persisted connector-key record, including the Seagull base URL and raw key. */
 export interface ConnectorKeyRecord extends ConnectorIdentity {
+  /** Seagull backend base URL (e.g. `http://localhost:3000`). */
+  baseUrl: string
   /** Raw `sk-connector-*` key, stored locally on the workbench. */
   key: string
 }

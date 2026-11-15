@@ -1,6 +1,6 @@
 /**
- * Rock onboarding key store: persists the employee connector key locally and
- * resolves a pasted key against the Seagull gateway.
+ * Rock onboarding key store: persists the Seagull base URL and employee
+ * connector key locally, and resolves a pasted key against that base URL.
  *
  * @module @rock/rock-onboarding/service
  */
@@ -12,8 +12,8 @@ import type { ConnectorIdentity, ConnectorKeyRecord } from './types.ts'
 export interface ConnectorKeyServiceOptions {
   /** Local JSON file persisting the connector key record. */
   keyPath: string
-  /** Resolves a raw key to its client identity, or null when invalid. */
-  resolve: (key: string) => Promise<ConnectorIdentity | null>
+  /** Resolves a base URL + raw key to its client identity, or null when invalid. */
+  resolve: (baseUrl: string, key: string) => Promise<ConnectorIdentity | null>
 }
 
 /** Persisted connector-key state plus resolution helpers. */
@@ -38,13 +38,15 @@ export class ConnectorKeyService {
     return { clientId: this.record.clientId, employeeId: this.record.employeeId }
   }
 
-  /** Validate a pasted key, persist it, and return the resolved identity. */
-  async addKey(key: string): Promise<ConnectorIdentity> {
-    const trimmed = key.trim()
-    if (trimmed.length === 0) throw new Error('connector key must be non-empty')
-    const identity = await this.options.resolve(trimmed)
+  /** Validate a base URL + pasted key, persist them, and return the resolved identity. */
+  async addKey(baseUrl: string, key: string): Promise<ConnectorIdentity> {
+    const trimmedBase = baseUrl.trim().replace(/\/+$/, '')
+    const trimmedKey = key.trim()
+    if (trimmedBase.length === 0) throw new Error('base URL must be non-empty')
+    if (trimmedKey.length === 0) throw new Error('connector key must be non-empty')
+    const identity = await this.options.resolve(trimmedBase, trimmedKey)
     if (identity === null) throw new Error('invalid connector key')
-    this.record = { key: trimmed, clientId: identity.clientId, employeeId: identity.employeeId }
+    this.record = { baseUrl: trimmedBase, key: trimmedKey, clientId: identity.clientId, employeeId: identity.employeeId }
     await persistRecord(this.options.keyPath, this.record)
     return identity
   }
@@ -75,7 +77,8 @@ async function persistRecord(keyPath: string, record: ConnectorKeyRecord): Promi
 function validRecord(value: unknown): value is ConnectorKeyRecord {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.key === 'string' && record.key.length > 0
+  return typeof record.baseUrl === 'string' && record.baseUrl.length > 0
+    && typeof record.key === 'string' && record.key.length > 0
     && typeof record.clientId === 'string' && record.clientId.length > 0
     && typeof record.employeeId === 'string' && record.employeeId.length > 0
 }

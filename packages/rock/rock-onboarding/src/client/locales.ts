@@ -1,15 +1,16 @@
-/** Rock onboarding section copy, owned by the Rock workbench. */
+/** Rock onboarding dialog copy, owned by the Rock workbench. */
 
 export const NS = 'rock-onboarding'
 
 /** English dictionary. */
 export const en = {
-  nav: 'Add connector key',
   title: 'Add your connector key',
-  description: 'Paste the sk-connector key from your personal center to connect this workbench.',
+  description: 'Connect this workbench to Seagull with the key from your personal center.',
+  'baseUrl.label': 'Seagull base URL',
+  'key.label': 'Connector key',
   placeholder: 'sk-connector-...',
   submit: 'Connect',
-  'toast.added': 'Connector key added',
+  cancel: 'Cancel',
   'error.invalid': 'Invalid connector key',
 } as const
 
@@ -18,11 +19,12 @@ export type RockOnboardingKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockOnboardingKey, string> = {
-  nav: '添加 Connector Key',
   title: '添加你的 Connector Key',
-  description: '从个人中心粘贴 sk-connector key，连接本工作台',
+  description: '用个人中心的 key 连接本工作台到 Seagull',
+  'baseUrl.label': 'Seagull 基础 URL',
+  'key.label': 'Connector Key',
   placeholder: 'sk-connector-...',
   submit: '连接',
-  'toast.added': 'Connector Key 已添加',
+  cancel: '取消',
   'error.invalid': 'Connector Key 无效',
 }
