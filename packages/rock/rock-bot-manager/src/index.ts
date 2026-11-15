@@ -78,6 +78,11 @@ export default class RockBotController extends TypertRemoteService {
     return this.service.list()
   }
 
+  /** Host-side read of a claimed bot's persisted binding (no Remote serialization). */
+  getBinding(id: string): string | undefined {
+    return this.service.getBinding(id)
+  }
+
   /** All local bots in insertion order. */
   @Remote
   listBots(): BotDefinition[] {
