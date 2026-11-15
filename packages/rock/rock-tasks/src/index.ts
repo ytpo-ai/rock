@@ -14,8 +14,14 @@
  * @module @rock/rock-tasks
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type { AgentOptions } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { taskFrom, tasksFrom } from './tasks.ts'
 import type { TaskBot, TaskSummary } from './types.ts'
 
@@ -66,9 +72,18 @@ export default class RockTasksController extends TypertRemoteService {
     }
   }
 
-  /** Assign the task to a bot and enter in-progress; returns the updated task. */
+  /** Assign the task to a bot, launch its thin-relay session, and return the updated task. */
   @Remote
   async runTask(taskId: string, botId: string): Promise<TaskSummary> {
+    const task = await this.assignTask(taskId, botId)
+    await this.launchSession(botId, task).catch((error: unknown) => {
+      this.ctx.logger.warn(`rock-tasks: session launch failed for task ${taskId}: ${messageOf(error)}`)
+    })
+    return task
+  }
+
+  /** Assign the task to a bot (backend run endpoint); returns the updated task. */
+  private async assignTask(taskId: string, botId: string): Promise<TaskSummary> {
     const url = this.config.tasksUrl
     const employeeId = this.resolveEmployeeId()
     if (url.length === 0 || employeeId.length === 0) {
@@ -92,6 +107,51 @@ export default class RockTasksController extends TypertRemoteService {
       if (error instanceof RemoteError) throw error
       throw new RemoteError('rockTasks/runFailed', messageOf(error), {}, { cause: error })
     }
+  }
+
+  /** Launch the bot's thin-relay session and submit the task as its first message. */
+  private async launchSession(botId: string, task: TaskSummary): Promise<void> {
+    const presetId = 'rock'
+    const preset = await this.ctx.agentPresets.resolve(presetId)
+    await using scope = await this.ctx.agentPresets.acquireScope(preset.id)
+    void scope
+
+    const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
+    const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
+    const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay' }
+
+    const handle = await this.ctx.agents.create({
+      sessionId,
+      meta: { agentPreset: preset.id },
+      agentOptions,
+      setup: async (agentCtx) => {
+        await this.ctx.agentPresets.mount(agentCtx, preset.id)
+      },
+    })
+
+    handle.agent.followup(createUserMessage({
+      content: [{ type: 'text', text: prompt }],
+      source: { kind: 'user' },
+    }))
+    this.ctx.logger.info(`rock-tasks: launched session ${sessionId} for bot ${botId}`)
+
+    await this.registerSession(botId, String(sessionId)).catch((error: unknown) => {
+      this.ctx.logger.warn(`rock-tasks: session registration failed for ${sessionId}: ${messageOf(error)}`)
+    })
+  }
+
+  /** Register the launched DSH session (sessionId → bot) so the gateway can validate reported events. */
+  private async registerSession(botId: string, sessionId: string): Promise<void> {
+    const url = this.config.tasksUrl
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) return
+    const sessionsUrl = `${url.replace(/\/tasks$/, '')}/sessions`
+    const response = await fetch(sessionsUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ employeeId, agentBotId: botId, sessionId }),
+    })
+    if (!response.ok) throw new Error(`register session failed HTTP ${response.status}`)
   }
 
   /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
