@@ -1,55 +1,269 @@
-/** Rock task-management panel: read-only list of the cloud task queue. */
-import { useEffect, useState, type ReactElement } from 'react'
+/** Rock task-management panel: status-grouped task cards with filter, history, and the run-bot dialog. */
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { TaskSummary } from '@rock/rock-tasks/types'
+import { Button, Menu, Modal, StateDot, Switch, Tag, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { TaskBot, TaskSummary } from '@rock/rock-tasks/types'
+import type { RockTasksKey } from './locales.ts'
 import css from './rock-tasks.module.css'
 
 /** Host operations injected into the Cordis-free task table. */
 export interface TasksSectionInjected {
   remote: {
     listTasks(): Promise<RemoteResult<TaskSummary[]>>
+    listBots(): Promise<RemoteResult<TaskBot[]>>
+    runTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
   }
 }
 
 export type TasksSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<TasksSectionInjected>
 
-/** Render the cloud task queue as a flat read-only table. */
+/** Canonical status order for grouping and filtering. */
+const STATUS_ORDER = ['pending', 'planning', 'planned', 'in-progress', 'awaiting-review', 'blocked', 'accepted', 'rejected', 'done'] as const
+
+/** Terminal statuses folded under the history toggle. */
+const TERMINAL = new Set(['accepted', 'rejected', 'done'])
+
+/** Statuses the backend allows `run` from. */
+const RUNNABLE = new Set(['pending', 'in-progress', 'rejected', 'blocked'])
+
+/** One status-group of task cards. */
+interface StatusGroup {
+  status: string
+  tasks: TaskSummary[]
+}
+
+/** Localized status label, falling back to the raw status. */
+function statusLabel(t: (key: RockTasksKey) => string, status: string): string {
+  const key = `status.${status}` as RockTasksKey
+  return (STATUS_ORDER as readonly string[]).includes(status) ? t(key) : status
+}
+
+/** Tag tone for one work-queue status. */
+function statusTone(status: string): TagTone {
+  switch (status) {
+    case 'accepted':
+    case 'done': return 'success'
+    case 'rejected': return 'danger'
+    case 'awaiting-review':
+    case 'blocked': return 'warning'
+    case 'in-progress': return 'info'
+    case 'planning':
+    case 'planned': return 'info'
+    default: return 'neutral'
+  }
+}
+
+/** State dot for one work-queue status. */
+function statusDot(status: string): StateDotState {
+  switch (status) {
+    case 'accepted':
+    case 'done': return 'done'
+    case 'rejected': return 'error'
+    case 'blocked': return 'warning'
+    case 'in-progress': return 'ongoing'
+    default: return 'idle'
+  }
+}
+
+/** Render the task cards grouped by status, with filter, history, and the run-bot dialog. */
 export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [tasks, setTasks] = useState<TaskSummary[]>([])
+  const [bots, setBots] = useState<TaskBot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [filterMenu, setFilterMenu] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [runTarget, setRunTarget] = useState<TaskSummary | null>(null)
+  const [selectedBot, setSelectedBot] = useState('')
+  const [botMenu, setBotMenu] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [toast, setToast] = useState<{ text: string; key: number } | null>(null)
+
   useEffect(() => {
     let cancelled = false
     void remote.listTasks().then((result) => {
-      if (!cancelled && result.ok) setTasks(result.value)
+      setLoading(false)
+      if (cancelled) return
+      if (result.ok) setTasks(result.value)
+      else setLoadFailed(true)
+    })
+    void remote.listBots().then((result) => {
+      if (!cancelled && result.ok) setBots(result.value)
     })
     return () => { cancelled = true }
   }, [remote])
 
-  if (tasks.length === 0) {
-    return <p className={css.empty}>{t('tasks.empty')}</p>
+  const retryLoad = (): void => {
+    setLoading(true)
+    setLoadFailed(false)
+    void remote.listTasks().then((result) => {
+      setLoading(false)
+      if (result.ok) setTasks(result.value)
+      else setLoadFailed(true)
+    })
+    void remote.listBots().then((result) => { if (result.ok) setBots(result.value) })
   }
+
+  const visible = useMemo(() => tasks.filter((task) => {
+    if (!showHistory && TERMINAL.has(task.status)) return false
+    if (statusFilter !== 'all' && task.status !== statusFilter) return false
+    return true
+  }), [tasks, showHistory, statusFilter])
+
+  const groups = useMemo<StatusGroup[]>(() => {
+    const map = new Map<string, TaskSummary[]>()
+    for (const task of visible) {
+      const list = map.get(task.status) ?? []
+      list.push(task)
+      map.set(task.status, list)
+    }
+    return STATUS_ORDER.flatMap((status) => {
+      const tasks = map.get(status)
+      return tasks === undefined ? [] : [{ status, tasks }]
+    })
+  }, [visible])
+
+  const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
+
+  const openRun = (task: TaskSummary): void => {
+    setRunTarget(task)
+    setSelectedBot(task.owner.length > 0 ? task.owner : '')
+  }
+
+  const submitRun = (): void => {
+    if (runTarget === null || selectedBot.length === 0) return
+    setRunning(true)
+    void remote.runTask(runTarget.id, selectedBot).then((result) => {
+      setRunning(false)
+      if (!result.ok) {
+        setToast({ text: t('toast.run.failed'), key: Date.now() })
+        return
+      }
+      setToast({ text: t('toast.run.success'), key: Date.now() })
+      setRunTarget(null)
+      void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
+    })
+  }
+
+  const filterOptions = [
+    { id: 'all', label: t('tasks.filter.all') },
+    ...STATUS_ORDER.map(status => ({ id: status, label: statusLabel(t, status) })),
+  ]
+
+  const currentBot = runTarget !== null ? bots.find(bot => bot.id === selectedBot) : undefined
+
   return (
-    <table className={css.table}>
-      <thead>
-        <tr>
-          <th scope="col">{t('tasks.column.title')}</th>
-          <th scope="col">{t('tasks.column.type')}</th>
-          <th scope="col">{t('tasks.column.status')}</th>
-          <th scope="col">{t('tasks.column.owner')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {tasks.map(task => (
-          <tr key={task.id}>
-            <td>{task.title || task.id}</td>
-            <td>{task.type}</td>
-            <td>{task.status}</td>
-            <td>{task.owner}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className={css.root}>
+      <div className={css.toolbar}>
+        <Menu
+          open={filterMenu}
+          anchor={(
+            <Button size="sm" variant="outline" onClick={() => { setFilterMenu(!filterMenu) }}>
+              {statusFilter === 'all' ? t('tasks.filter.all') : statusLabel(t, statusFilter)}
+            </Button>
+          )}
+          items={filterOptions}
+          selectedId={statusFilter}
+          onSelect={(id) => { setStatusFilter(id); setFilterMenu(false) }}
+          onClose={() => { setFilterMenu(false) }}
+        />
+        <Switch checked={showHistory} onChange={setShowHistory} label={t('tasks.history')} />
+      </div>
+
+      {loading ? (
+        <div className={css.sections}>
+          <div className={css.skeletonCard} />
+          <div className={css.skeletonCard} />
+        </div>
+      ) : loadFailed ? (
+        <div className={css.loadError} role="alert">
+          <span>{t('load.failed')}</span>
+          <Button variant="ghost" size="sm" onClick={retryLoad}>{t('load.retry')}</Button>
+        </div>
+      ) : groups.length === 0 ? (
+        <p className={css.empty}>{t('tasks.empty')}</p>
+      ) : (
+        <div className={css.sections}>
+          {groups.map(group => (
+            <section key={group.status} className={css.statusSection}>
+              <header className={css.statusHeader}>
+                <StateDot state={statusDot(group.status)} />
+                <span className={css.statusTitle}>{statusLabel(t, group.status)}</span>
+                <Tag tone={statusTone(group.status)}>{group.tasks.length}</Tag>
+              </header>
+              <ul className={css.cards}>
+                {group.tasks.map(task => (
+                  <li key={task.id} className={css.card}>
+                    <div className={css.cardBody}>
+                      <div className={css.cardTitle}>{task.title || task.id}</div>
+                      <div className={css.cardMeta}>
+                        <Tag tone="outline">{task.type}</Tag>
+                        <span className={css.cardOwner}>{task.owner.length > 0 ? botName(task.owner) : t('run.none')}</span>
+                      </div>
+                      {task.description !== '' && <p className={css.cardDesc}>{task.description}</p>}
+                    </div>
+                    {RUNNABLE.has(task.status) && (
+                      <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {runTarget !== null && (
+        <Modal
+          open
+          onClose={() => { if (!running) setRunTarget(null) }}
+          title={t('run.title')}
+          description={t('run.description')}
+          closeLabel={t('run.cancel')}
+          footer={(
+            <>
+              <Button variant="ghost" disabled={running} onClick={() => { setRunTarget(null) }}>{t('run.cancel')}</Button>
+              <Button variant="primary" disabled={running || selectedBot.length === 0} onClick={submitRun}>{t('run.run')}</Button>
+            </>
+          )}
+        >
+          <div className={css.runDialog}>
+            <div className={css.runTaskTitle}>{runTarget.title || runTarget.id}</div>
+            {runTarget.owner.length > 0 && (
+              <div className={css.runCurrent}>
+                {t('run.current')}: {botName(runTarget.owner)}
+              </div>
+            )}
+            <div className={css.runField}>
+              <span className={css.runLabel}>{t('run.bot')}</span>
+              {bots.length === 0 ? (
+                <p className={css.noBot}>{t('run.noBot')}</p>
+              ) : (
+                <Menu
+                  open={botMenu}
+                  anchor={(
+                    <Button size="sm" variant="outline" onClick={() => { setBotMenu(!botMenu) }}>
+                      {currentBot === undefined ? t('run.select') : currentBot.name}
+                    </Button>
+                  )}
+                  items={bots.map(bot => ({ id: bot.id, label: `${bot.name} · ${bot.toolType}` }))}
+                  selectedId={selectedBot}
+                  onSelect={(id) => { setSelectedBot(id); setBotMenu(false) }}
+                  onClose={() => { setBotMenu(false) }}
+                />
+              )}
+              {currentBot !== undefined && <Tag tone="info">{currentBot.toolType}</Tag>}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {toast !== null && <Toast key={toast.key} text={toast.text} tone="success" onDone={() => { setToast(null) }} />}
+    </div>
   )
 }

@@ -1,25 +1,144 @@
-.table {
-  width: 100%;
-  border-collapse: collapse;
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.table th {
-  text-align: left;
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-secondary);
-  font-weight: 500;
-}
-
-.table td {
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .empty {
   color: var(--dsw-alias-label-secondary);
   margin: 0;
 }
+
+.loadError {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.skeletonCard {
+  height: 64px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  opacity: 0.5;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.statusSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statusHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusTitle {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.cardBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cardTitle {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardOwner {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 0.85em;
+}
+
+.cardDesc {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 0.85em;
+  line-clamp: 2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.runDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.runTaskTitle {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.runCurrent {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 0.85em;
+}
+
+.runField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.noBot {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── Overview panel ── */
 
 .overview {
   display: flex;

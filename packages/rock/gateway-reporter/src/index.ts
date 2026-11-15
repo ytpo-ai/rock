@@ -53,8 +53,14 @@ export const Config: z<Config> = z.object({
   maxBatchSize: z.number().step(1).min(1).default(DEFAULT_MAX_BATCH_SIZE),
 })
 
+/** Resolved Rock provenance stamped on every reported event. */
+interface ReportIdentity {
+  employeeId?: string
+  connectorClientId: string
+}
+
 /** Map one harness session event into an outbound Rock report envelope. */
-function toReportEvent(session: Session, event: SessionEvent, config: Config): RockReportEvent {
+function toReportEvent(session: Session, event: SessionEvent, identity: ReportIdentity): RockReportEvent {
   const mapped = mapToM3(event)
   return {
     eventId: `${String(session.id)}:${String(event.seq)}`,
@@ -62,8 +68,8 @@ function toReportEvent(session: Session, event: SessionEvent, config: Config): R
     type: mapped.type,
     timestamp: new Date(event.time).toISOString(),
     payload: mapped.payload,
-    ...config.employeeId === undefined ? {} : { employeeId: config.employeeId },
-    connectorClientId: config.connectorClientId,
+    ...identity.employeeId === undefined ? {} : { employeeId: identity.employeeId },
+    connectorClientId: identity.connectorClientId,
     relayed: true,
   }
 }
@@ -80,19 +86,28 @@ async function postBatch(url: string, events: readonly RockReportEvent[]): Promi
 
 /** Mount the reporter: replay the buffer, subscribe to session events, and flush on an interval. */
 export function apply(ctx: Context, config: Config): void {
+  // Resolve runtime identity from the onboarding record so events carry the
+  // real employee/client identity; fall back to the static config (standalone).
+  const onboarding = ctx.get('rockOnboarding') as { getRecord(): { clientId: string; employeeId: string } | null } | undefined
+  const record = onboarding?.getRecord()
+  const identity = {
+    connectorClientId: record?.clientId ?? config.connectorClientId,
+    ...(record?.employeeId ?? config.employeeId) === undefined ? {} : { employeeId: record?.employeeId ?? config.employeeId },
+  }
+
   const reporter = new GatewayReporter({
     gatewayUrl: config.gatewayUrl,
-    connectorClientId: config.connectorClientId,
-    ...config.employeeId === undefined ? {} : { employeeId: config.employeeId },
+    connectorClientId: identity.connectorClientId,
+    ...identity.employeeId === undefined ? {} : { employeeId: identity.employeeId },
     ...config.bufferPath === undefined ? {} : { bufferPath: config.bufferPath },
     flushIntervalMs: config.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
     maxBatchSize: config.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE,
     post: postBatch,
   })
 
-  void reporter.replay().then(() => reporter.start())
+  void reporter.replay().then(() => { reporter.start() })
   ctx.on('session/event', (session, event) => {
-    reporter.enqueue(toReportEvent(session, event, config))
+    reporter.enqueue(toReportEvent(session, event, identity))
   })
-  ctx.effect(() => () => reporter.stop(), 'gateway-reporter.stop()')
+  ctx.effect(() => () => { reporter.stop() }, 'gateway-reporter.stop()')
 }

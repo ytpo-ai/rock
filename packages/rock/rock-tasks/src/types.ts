@@ -26,3 +26,15 @@ export interface TaskSummary {
   /** Parent requirement id, when recorded. */
   parentId?: string
 }
+
+/** One employee-visible bot the execute dialog can select. */
+export interface TaskBot {
+  /** Stable bot id (agent bot id for cloud bots, local id for local bots). */
+  id: string
+  /** Human-readable display name. */
+  name: string
+  /** Execution backend the bot delegates to. */
+  toolType: string
+  /** Bot source: `claimed` / `assistant` / `local`. */
+  source: string
+}

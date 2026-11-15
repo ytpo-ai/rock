@@ -16,8 +16,10 @@ export interface BotLlm {
   provider: string
   /** OpenAI-compatible endpoint origin; absent for providers already configured globally. */
   baseUrl?: string
-  /** Credential reference (never the raw key); the credential seam resolves it. */
+  /** Credential reference; retained for compatibility with the earlier seam. */
   apiKeyRef?: string
+  /** Raw provider API key the user entered; persisted in plaintext by explicit product choice, never logged. */
+  apiKey?: string
   /** Model id passed to the provider. */
   model: string
 }
@@ -34,6 +36,8 @@ export interface BotDefinition {
   id: string
   /** Human-readable display name. */
   name: string
+  /** Optional role/persona label; free text for local bots. */
+  role?: string
   /** Upstream LLM route. */
   llm: BotLlm
   /** Execution backend binding. */
@@ -52,6 +56,8 @@ export interface BotRow {
   id: string
   /** Human-readable display name. */
   name: string
+  /** Role/persona label: Seagull role for cloud bots, free text for local bots. */
+  role?: string
   /** Bot source driving the edit/delete permissions (D-036). */
   source: BotSource
   /** Upstream LLM route for local bots; absent for cloud-managed sources. */
@@ -64,6 +70,18 @@ export interface BotRow {
   canDelete: boolean
   /** Whether the bot has an active (non-terminal) cloud task. */
   active: boolean
+}
+
+/** Structured outcome of a card's "test" action against a bot's bound tool. */
+export interface BotTestResult {
+  /** Whether the bound tool answered the smoke-test prompt. */
+  ok: boolean
+  /** The tool type that was invoked. */
+  toolType: string
+  /** The tool's answer, on success. */
+  answer?: string
+  /** A safe failure diagnostic, on failure. */
+  error?: string
 }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {

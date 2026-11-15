@@ -13,6 +13,8 @@ export interface CloudBotRef {
   agentBotId: string
   /** Optional display name; falls back to the id. */
   name?: string
+  /** Role/persona label set on Seagull for this bot. */
+  role?: string
   /** Whether the binding may be edited; false locks it (assistant pre-onboarding). */
   canRebind?: boolean
 }
@@ -51,6 +53,7 @@ function localRow(bot: BotDefinition, active: boolean): BotRow {
   return {
     id: bot.id,
     name: bot.name,
+    ...bot.role === undefined ? {} : { role: bot.role },
     source: 'local',
     llm: bot.llm,
     tool: bot.tool,
@@ -65,6 +68,7 @@ function cloudRow(ref: CloudBotRef, source: BotSource, input: UnifiedBotsInput):
   return {
     id: ref.agentBotId,
     name: ref.name ?? ref.agentBotId,
+    ...ref.role === undefined ? {} : { role: ref.role },
     source,
     tool: { toolType: input.bindingOf(ref.agentBotId) },
     canRebind: ref.canRebind ?? false,

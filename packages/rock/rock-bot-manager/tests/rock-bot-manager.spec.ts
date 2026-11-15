@@ -10,7 +10,8 @@ import type { BotDefinition } from '../src/types.ts'
 const BOT: BotDefinition = {
   id: 'agent-bot-E',
   name: 'Local Bot E',
-  llm: { provider: 'deepseek', model: 'deepseek-chat', apiKeyRef: 'deepseek-key' },
+  role: 'QA',
+  llm: { provider: 'deepseek', model: 'deepseek-chat', apiKeyRef: 'deepseek-key', apiKey: 'sk-test' },
   tool: { toolType: 'codex' },
 }
 
@@ -30,9 +31,10 @@ describe('RockBotService', () => {
   it('creates, lists, updates, and removes bots with persistence', async () => {
     const service = new RockBotService({ store })
 
-    await expect(service.create(BOT)).resolves.toMatchObject({ id: 'agent-bot-E', llm: { provider: 'deepseek' } })
+    await expect(service.create(BOT)).resolves.toMatchObject({ id: 'agent-bot-E', role: 'QA', llm: { provider: 'deepseek' } })
     expect(service.list()).toHaveLength(1)
-    expect(service.get('agent-bot-E')).toMatchObject({ name: 'Local Bot E' })
+    expect(service.get('agent-bot-E')).toMatchObject({ name: 'Local Bot E', role: 'QA' })
+    expect(service.get('agent-bot-E')!.llm.apiKey).toBe('sk-test')
 
     await service.update('agent-bot-E', { llm: { ...BOT.llm, model: 'deepseek-reasoner' } })
     expect(service.get('agent-bot-E')!.llm.model).toBe('deepseek-reasoner')
@@ -44,6 +46,12 @@ describe('RockBotService', () => {
 
     await service.remove('agent-bot-E')
     expect(service.list()).toHaveLength(0)
+  })
+
+  it('omits an absent role instead of persisting an empty field', async () => {
+    const service = new RockBotService({ store })
+    await service.create({ ...BOT, role: undefined })
+    expect(service.get('agent-bot-E')).not.toHaveProperty('role')
   })
 
   it('rejects a duplicate id with a typed error', async () => {

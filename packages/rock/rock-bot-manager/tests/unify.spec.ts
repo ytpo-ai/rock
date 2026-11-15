@@ -5,6 +5,7 @@ import type { BotDefinition } from '../src/types.ts'
 const LOCAL: BotDefinition = {
   id: 'local-1',
   name: 'Local One',
+  role: 'Frontend',
   llm: { provider: 'deepseek', model: 'deepseek-chat' },
   tool: { toolType: 'codex' },
 }
@@ -19,20 +20,20 @@ describe('buildUnifiedBots', () => {
       bindingOf: () => 'codex',
     })
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: 'local-1', source: 'local', canRebind: true, canDelete: true, active: false })
+    expect(rows[0]).toMatchObject({ id: 'local-1', role: 'Frontend', source: 'local', canRebind: true, canDelete: true, active: false })
     expect(rows[0]?.llm).toEqual(LOCAL.llm)
   })
 
   it('projects claimed bots without delete rights and resolves their binding', () => {
     const rows = buildUnifiedBots({
       localBots: [],
-      claimed: [{ agentBotId: 'bot-C', canRebind: true }],
+      claimed: [{ agentBotId: 'bot-C', name: 'Bot C', role: 'QA', canRebind: true }],
       assistants: [],
       activeIds: new Set(['bot-C']),
       bindingOf: () => 'pi',
     })
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: 'bot-C', source: 'claimed', canRebind: true, canDelete: false, active: true })
+    expect(rows[0]).toMatchObject({ id: 'bot-C', name: 'Bot C', role: 'QA', source: 'claimed', canRebind: true, canDelete: false, active: true })
     expect(rows[0]?.tool).toEqual({ toolType: 'pi' })
     expect(rows[0]?.llm).toBeUndefined()
   })

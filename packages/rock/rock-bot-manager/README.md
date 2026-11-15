@@ -4,7 +4,7 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 
 ## 用途
 
-让本地闭环不再依赖 Seagull：用户在工作台新增自定义 bot，指定它自己的上游 LLM（官方 OpenAI-compatible provider + apiKey 引用）和执行后端，即可形成「agent bot → 执行」闭环。
+让本地闭环不再依赖 Seagull：用户在工作台新增自定义 bot，指定它自己的上游 LLM（官方 OpenAI-compatible provider + apiKey）和执行后端，即可形成「agent bot → 执行」闭环。管理面板以卡片列表展示每个 bot 的名称/角色/状态，并提供「自定义 bot」弹窗与逐 bot 的「测试」按钮。
 
 ```yaml
 - id: rock-bot-manager
@@ -18,6 +18,18 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `storePath` | `.rock/bots.json` | 本地 bot 列表 JSON 文件（原子写入） |
+| `toolRun` | 见下 | 每个工具类型的非交互一次性运行命令；`{prompt}` 会被替换为测试 prompt |
+| `bindingsPath` | `.rock/bindings.json` | 云端 bot 的工具绑定 JSON 文件 |
+
+`toolRun` 默认映射（均为尽力而为的起点，可在 cordis.yml 覆盖）：
+
+| toolType | command | args |
+|---|---|---|
+| `codex` | `codex` | `exec -- {prompt}` |
+| `pi` | `pi` | `exec {prompt}` |
+| `opencode` | `opencode` | `run {prompt}` |
+| `dsh` | `dsh` | `--profile headless {prompt}` |
+| `claude-code` | `claude` | `-p {prompt}` |
 
 ## 服务
 
@@ -29,9 +41,17 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 - `update(id, patch): Promise<BotDefinition>` — 未知 id 抛 `UNKNOWN_BOT`
 - `remove(id): Promise<void>` — 未知 id 抛 `UNKNOWN_BOT`
 
-`BotDefinition`：`{ id, name, llm: { provider, baseUrl?, apiKeyRef?, model }, tool: { toolType } }`。`apiKeyRef` 只存凭据引用，不落明文 key。
+`BotDefinition`：`{ id, name, role?, llm: { provider, baseUrl?, apiKeyRef?, apiKey?, model }, tool: { toolType } }`。`role` 是角色/人格标签（本地 bot 自由填写）；`apiKey` 存用户输入的明文 key（仅不落日志，文件仍为明文），`apiKeyRef` 保留兼容。
+
+## Remote（管理面板）
+
+- `listBotsUnified(): BotRow[]` — 本地/认领/专属助理三源合并的卡片行
+- `createBot` / `updateBot` / `removeBot` / `rebindBot` — bot CRUD 与工具绑定
+- `toolTypes()` / `installedTools()` — 可选工具类型与已安装状态
+- `testBot(id): BotTestResult` — 用固定 prompt「查询当前北京天气」对绑定工具做一次非交互 smoke test，返回 `{ ok, toolType, answer?, error? }`
 
 ## Known Limitations and Deferred Work
 
-- 持久化用 JSON 文件；尚未切到 `storage-sqlite`。
+- 持久化用 JSON 文件；尚未切到 `storage-sqlite`。`apiKey` 明文落盘 `bots.json`，属产品决策，未接凭据存储。
+- `testBot` 的默认 `toolRun` 命令是尽力而为的起点，`acp` 无默认 CLI 命令；实际命令随部署在 `config.toolRun` 覆盖。
 - 变更不广播「hot reload」事件，`seagull-identity` 的运行时重渲染属后续接线。

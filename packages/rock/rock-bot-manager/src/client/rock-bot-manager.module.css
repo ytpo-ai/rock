@@ -1,71 +1,170 @@
+/* Rock bot manager: a card grid for the unified bot list plus the toolbar and
+   add-bot modal form. Card surfaces reuse the settings-card tokens. */
+
 .root {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: minmax(140px, 1.4fr) minmax(120px, 1fr) auto auto;
-  gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
-}
-
-.identity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.llm {
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.binding {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.actions {
+.toolbar {
   display: flex;
   justify-content: flex-end;
 }
 
-.empty {
-  color: var(--dsw-alias-label-secondary);
+.cards {
+  list-style: none;
   margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cardName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cardRole {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cardMetaRow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.deleteAction {
+  margin-left: auto;
+}
+
+.testResult {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-l1);
+}
+
+.testResultLabel {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.testAnswer {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  max-height: 160px;
+  overflow: auto;
+}
+
+.testError {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-error);
+}
+
+.empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .form {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.form :global(input) {
-  min-width: 120px;
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formLabel {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.formField :global(input) {
+  width: 100%;
+}
+
+.formTool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Skeleton placeholders for the initial list load. */
+.skeletonCard {
+  height: 120px;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-skeleton);
 }

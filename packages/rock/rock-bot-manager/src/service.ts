@@ -116,10 +116,12 @@ function normalizeBot(bot: BotDefinition): BotDefinition {
   return {
     id: bot.id,
     name: bot.name,
+    ...bot.role === undefined ? {} : { role: bot.role },
     llm: {
       provider: bot.llm.provider,
       ...bot.llm.baseUrl === undefined ? {} : { baseUrl: bot.llm.baseUrl },
       ...bot.llm.apiKeyRef === undefined ? {} : { apiKeyRef: bot.llm.apiKeyRef },
+      ...bot.llm.apiKey === undefined ? {} : { apiKey: bot.llm.apiKey },
       model: bot.llm.model,
     },
     tool: { toolType: bot.tool.toolType },

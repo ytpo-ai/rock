@@ -15,9 +15,9 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { tasksFrom } from './tasks.ts'
-import type { TaskSummary } from './types.ts'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { taskFrom, tasksFrom } from './tasks.ts'
+import type { TaskBot, TaskSummary } from './types.ts'
 
 export type * from './types.ts'
 
@@ -50,18 +50,94 @@ export default class RockTasksController extends TypertRemoteService {
     return this.fetchTasks()
   }
 
+  /** All employee-visible bots (claimed ∪ assistant ∪ local) for the execute dialog. */
+  @Remote
+  async listBots(): Promise<TaskBot[]> {
+    const bots = this.ctx.get('rockBots') as {
+      listBotsUnified(): Promise<Array<{ id: string; name: string; source: string; tool: { toolType: string } }>>
+    } | undefined
+    if (bots === undefined) return []
+    try {
+      const rows = await bots.listBotsUnified()
+      return rows.map(row => ({ id: row.id, name: row.name, toolType: row.tool.toolType, source: row.source }))
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: listBots failed: ${messageOf(error)}`)
+      return []
+    }
+  }
+
+  /** Assign the task to a bot and enter in-progress; returns the updated task. */
+  @Remote
+  async runTask(taskId: string, botId: string): Promise<TaskSummary> {
+    const url = this.config.tasksUrl
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) {
+      throw new RemoteError('rockTasks/unconfigured', 'tasksUrl or employeeId unconfigured', {})
+    }
+    const requestUrl = `${url}/${encodeURIComponent(taskId)}/run`
+    this.ctx.logger.info(`rock-tasks: runTask task=${taskId} bot=${botId} employee=${employeeId}`)
+    try {
+      const response = await fetch(requestUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ employeeId, agentBotId: botId }),
+      })
+      if (!response.ok) {
+        throw new RemoteError('rockTasks/runFailed', `run task failed HTTP ${response.status}`, {})
+      }
+      const task = taskFrom(await response.json())
+      if (task === null) throw new RemoteError('rockTasks/runFailed', 'run task returned a malformed task', {})
+      return task
+    } catch (error) {
+      if (error instanceof RemoteError) throw error
+      throw new RemoteError('rockTasks/runFailed', messageOf(error), {}, { cause: error })
+    }
+  }
+
   /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
   private async fetchTasks(): Promise<TaskSummary[]> {
     const url = this.config.tasksUrl
-    const employeeId = this.config.employeeId
-    if (url.length === 0 || employeeId.length === 0) return []
-    try {
-      const response = await fetch(`${url}?employeeId=${encodeURIComponent(employeeId)}`)
-      if (!response.ok) return []
-      return tasksFrom(await response.json())
-    } catch {
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) {
+      this.ctx.logger.warn('rock-tasks: tasksUrl or employeeId unconfigured; returning an empty task list')
       return []
     }
+    const requestUrl = `${url}?employeeId=${encodeURIComponent(employeeId)}`
+    try {
+      const response = await fetch(requestUrl)
+      if (!response.ok) {
+        this.ctx.logger.warn(`rock-tasks: tasks fetch failed HTTP ${response.status} for ${requestUrl}`)
+        return []
+      }
+      const tasks = tasksFrom(await response.json())
+      this.ctx.logger.info(`rock-tasks: fetched ${tasks.length} task(s) for employee ${employeeId}`)
+      return tasks
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: tasks fetch failed for ${requestUrl}: ${messageOf(error)}`)
+      return []
+    }
+  }
+
+  /** Resolve the employee id from the onboarding record, falling back to static config. */
+  private resolveEmployeeId(): string {
+    const onboarding = this.ctx.get('rockOnboarding') as { getRecord(): { employeeId: string } | null } | undefined
+    const record = onboarding?.getRecord()
+    if (record?.employeeId) return record.employeeId
+    return this.config.employeeId
+  }
+}
+
+/** A safe, secret-free diagnostic for an unknown thrown value. */
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return 'unknown error'
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    'rockTasks/unconfigured': Record<string, never>
+    'rockTasks/runFailed': Record<string, never>
   }
 }
 
