@@ -21,9 +21,10 @@ import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { taskFrom, tasksFrom } from './tasks.ts'
-import type { TaskBot, TaskSummary } from './types.ts'
+import { TaskWorkRecordStore } from './work-records.ts'
+import type { TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
 
 export type * from './types.ts'
 
@@ -33,21 +34,30 @@ export interface Config {
   tasksUrl: string
   /** Employee id the tasks endpoint filters by. */
   employeeId: string
+  /** JSONL file for durable per-task agent-tool work records. */
+  workRecordsPath: string
 }
 
 /** Remote service carrying the projected task queue. */
 export default class RockTasksController extends TypertRemoteService {
-  static inject = []
+  static inject = ['sessions']
   static Config: z<Config> = z.object({
     tasksUrl: z.string().min(1).default(''),
     employeeId: z.string().min(1).default(''),
+    workRecordsPath: z.string().min(1).default(''),
   })
 
   private readonly config: Config
+  private readonly records: TaskWorkRecordStore
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockTasks')
     this.config = config
+    this.records = new TaskWorkRecordStore(config.workRecordsPath.length > 0 ? config.workRecordsPath : undefined)
+    this.records.replay()
+    ctx.on('session/event', (session: Session, event: SessionEvent) => {
+      this.records.record(String(session.id), event)
+    })
   }
 
   /** All projected tasks for the configured employee, in queue order. */
@@ -70,6 +80,12 @@ export default class RockTasksController extends TypertRemoteService {
       this.ctx.logger.warn(`rock-tasks: listBots failed: ${messageOf(error)}`)
       return []
     }
+  }
+
+  /** Durable agent-tool work records for one task (tool.call / tool.result). */
+  @Remote
+  listWorkRecords(taskId: string): TaskWorkRecord[] {
+    return this.records.list(taskId)
   }
 
   /** Assign the task to a bot, launch its thin-relay session, and return the updated task. */
@@ -153,19 +169,22 @@ export default class RockTasksController extends TypertRemoteService {
     })
     this.ctx.logger.info(`rock-tasks: launchSession agent ${sessionId} created`)
 
+    // Bind the launched session to the task so tool work records can be attributed.
+    this.records.linkSession(String(sessionId), task.id)
+
     handle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: prompt }],
       source: { kind: 'user' },
     }))
     this.ctx.logger.info(`rock-tasks: launchSession followup submitted for ${sessionId}`)
 
-    await this.registerSession(botId, String(sessionId)).catch((error: unknown) => {
+    await this.registerSession(botId, String(sessionId), task.id).catch((error: unknown) => {
       this.ctx.logger.warn(`rock-tasks: session registration failed for ${sessionId}: ${messageOf(error)}`)
     })
   }
 
-  /** Register the launched DSH session (sessionId → bot) so the gateway can validate reported events. */
-  private async registerSession(botId: string, sessionId: string): Promise<void> {
+  /** Register the launched DSH session (sessionId → bot + taskId) so the gateway can validate reported events and link them to the task. */
+  private async registerSession(botId: string, sessionId: string, taskId: string): Promise<void> {
     const url = this.config.tasksUrl
     const employeeId = this.resolveEmployeeId()
     if (url.length === 0 || employeeId.length === 0) return
@@ -173,7 +192,7 @@ export default class RockTasksController extends TypertRemoteService {
     const response = await fetch(sessionsUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ employeeId, agentBotId: botId, sessionId }),
+      body: JSON.stringify({ employeeId, agentBotId: botId, sessionId, taskId }),
     })
     if (!response.ok) throw new Error(`register session failed HTTP ${response.status}`)
   }

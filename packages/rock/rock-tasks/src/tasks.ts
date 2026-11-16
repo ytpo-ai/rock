@@ -42,6 +42,7 @@ export function summaryFrom(raw: unknown): TaskSummary | null {
     description: typeof t.description === 'string' ? t.description : '',
     status: typeof t.status === 'string' ? t.status : '',
     owner: typeof t.owner === 'string' ? t.owner : '',
+    ...(typeof t.resolution === 'string' ? { resolution: t.resolution } : {}),
     ...(typeof t.acceptedBy === 'string' ? { acceptedBy: t.acceptedBy } : {}),
     ...(typeof t.projectId === 'string' ? { projectId: t.projectId } : {}),
     ...(typeof t.parentId === 'string' ? { parentId: t.parentId } : {}),

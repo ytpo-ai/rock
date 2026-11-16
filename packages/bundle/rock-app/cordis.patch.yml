@@ -189,6 +189,7 @@
       config:
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+        workRecordsPath: !!js "process.env.ROCK_WORK_RECORDS_PATH || '.rock/task-work-records.jsonl'"
 
 # ── assistant preset: the onboarding guide runs its own loop (D-035) ──
 - insert:

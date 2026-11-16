@@ -5,7 +5,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { Button, Menu, Modal, StateDot, Switch, Tag, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { TaskBot, TaskSummary } from '@rock/rock-tasks/types'
+import type { TaskBot, TaskSummary, TaskWorkRecord } from '@rock/rock-tasks/types'
 import type { RockTasksKey } from './locales.ts'
 import css from './rock-tasks.module.css'
 
@@ -15,6 +15,7 @@ export interface TasksSectionInjected {
     listTasks(): Promise<RemoteResult<TaskSummary[]>>
     listBots(): Promise<RemoteResult<TaskBot[]>>
     runTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
+    listWorkRecords(taskId: string): Promise<RemoteResult<TaskWorkRecord[]>>
   }
 }
 
@@ -22,13 +23,13 @@ export type TasksSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<TasksSectionInjected>
 
 /** Canonical status order for grouping and filtering. */
-const STATUS_ORDER = ['pending', 'planning', 'planned', 'in-progress', 'awaiting-review', 'blocked', 'accepted', 'rejected', 'done'] as const
+const STATUS_ORDER = ['pending', 'planning', 'planned', 'in-progress', 'awaiting-review', 'blocked', 'done'] as const
 
 /** Terminal statuses folded under the history toggle. */
-const TERMINAL = new Set(['accepted', 'rejected', 'done'])
+const TERMINAL = new Set(['done'])
 
 /** Statuses the backend allows `run` from. */
-const RUNNABLE = new Set(['pending', 'in-progress', 'rejected', 'blocked'])
+const RUNNABLE = new Set(['pending', 'in-progress', 'blocked'])
 
 /** One status-group of task cards. */
 interface StatusGroup {
@@ -45,12 +46,10 @@ function statusLabel(t: (key: RockTasksKey) => string, status: string): string {
 /** Tag tone for one work-queue status. */
 function statusTone(status: string): TagTone {
   switch (status) {
-    case 'accepted':
     case 'done': return 'success'
-    case 'rejected': return 'danger'
     case 'awaiting-review':
     case 'blocked': return 'warning'
-    case 'in-progress': return 'info'
+    case 'in-progress':
     case 'planning':
     case 'planned': return 'info'
     default: return 'neutral'
@@ -60,13 +59,24 @@ function statusTone(status: string): TagTone {
 /** State dot for one work-queue status. */
 function statusDot(status: string): StateDotState {
   switch (status) {
-    case 'accepted':
     case 'done': return 'done'
-    case 'rejected': return 'error'
-    case 'blocked': return 'warning'
+    case 'blocked':
+    case 'awaiting-review': return 'warning'
     case 'in-progress': return 'ongoing'
     default: return 'idle'
   }
+}
+
+/** Compact text for one work record row: tool id plus optional error. */
+function recordText(record: TaskWorkRecord): string {
+  const error = record.error === undefined ? '' : ` · ${record.error}`
+  return `${record.toolId}${error}`
+}
+
+/** Tag tone for one work record row. */
+function recordTone(record: TaskWorkRecord): TagTone {
+  if (record.type === 'tool.call') return 'info'
+  return record.ok === false ? 'danger' : 'success'
 }
 
 /** Render the task cards grouped by status, with filter, history, and the run-bot dialog. */
@@ -82,6 +92,9 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [selectedBot, setSelectedBot] = useState('')
   const [botMenu, setBotMenu] = useState(false)
   const [running, setRunning] = useState(false)
+  const [recordTarget, setRecordTarget] = useState<TaskSummary | null>(null)
+  const [records, setRecords] = useState<TaskWorkRecord[]>([])
+  const [recordsLoading, setRecordsLoading] = useState(false)
   const [toast, setToast] = useState<{ text: string; key: number } | null>(null)
 
   useEffect(() => {
@@ -133,6 +146,16 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const openRun = (task: TaskSummary): void => {
     setRunTarget(task)
     setSelectedBot(task.owner.length > 0 ? task.owner : '')
+  }
+
+  const openRecords = (task: TaskSummary): void => {
+    setRecordTarget(task)
+    setRecords([])
+    setRecordsLoading(true)
+    void remote.listWorkRecords(task.id).then((result) => {
+      setRecordsLoading(false)
+      setRecords(result.ok ? result.value : [])
+    })
   }
 
   const submitRun = (): void => {
@@ -203,13 +226,21 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                       <div className={css.cardTitle}>{task.title || task.id}</div>
                       <div className={css.cardMeta}>
                         <Tag tone="outline">{task.type}</Tag>
+                        {task.status === 'done' && task.resolution !== undefined && (
+                          <Tag tone={task.resolution === 'accepted' ? 'success' : 'danger'}>
+                            {task.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
+                          </Tag>
+                        )}
                         <span className={css.cardOwner}>{task.owner.length > 0 ? botName(task.owner) : t('run.none')}</span>
                       </div>
                       {task.description !== '' && <p className={css.cardDesc}>{task.description}</p>}
                     </div>
-                    {RUNNABLE.has(task.status) && (
-                      <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
-                    )}
+                    <div className={css.cardActions}>
+                      <Button size="sm" variant="ghost" onClick={() => { openRecords(task) }}>{t('records.open')}</Button>
+                      {RUNNABLE.has(task.status) && (
+                        <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -259,6 +290,38 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               )}
               {currentBot !== undefined && <Tag tone="info">{currentBot.toolType}</Tag>}
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {recordTarget !== null && (
+        <Modal
+          open
+          onClose={() => { setRecordTarget(null) }}
+          title={t('records.title')}
+          description={recordTarget.title || recordTarget.id}
+          closeLabel={t('run.cancel')}
+          footer={(
+            <Button variant="ghost" onClick={() => { setRecordTarget(null) }}>{t('run.cancel')}</Button>
+          )}
+        >
+          <div className={css.records}>
+            {recordsLoading ? (
+              <p className={css.empty}>{t('load.failed')}</p>
+            ) : records.length === 0 ? (
+              <p className={css.empty}>{t('records.empty')}</p>
+            ) : (
+              <ul className={css.recordList}>
+                {records.map((record, index) => (
+                  <li key={`${record.sessionId}-${index}`} className={css.recordRow}>
+                    <Tag tone={recordTone(record)}>
+                      {record.type === 'tool.call' ? t('records.tool.call') : t('records.tool.result')}
+                    </Tag>
+                    <span className={css.recordText}>{recordText(record)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </Modal>
       )}

@@ -17,6 +17,8 @@ export interface TaskSummary {
   description: string
   /** Work-queue status. */
   status: string
+  /** Done-state sub-result (`accepted` / `rejected`), when the task is done. */
+  resolution?: string
   /** Owning agent bot id. */
   owner: string
   /** Accepting reviewer, when recorded. */
@@ -37,4 +39,26 @@ export interface TaskBot {
   toolType: string
   /** Bot source: `claimed` / `assistant` / `local`. */
   source: string
+}
+
+/** One durable agent-tool work record for a task (`tool.call` / `tool.result`). */
+export interface TaskWorkRecord {
+  /** Owning task id. */
+  taskId: string
+  /** DSH session that produced the record. */
+  sessionId: string
+  /** Record kind. */
+  type: 'tool.call' | 'tool.result'
+  /** ISO-8601 timestamp. */
+  timestamp: string
+  /** Invoked tool id. */
+  toolId: string
+  /** Raw tool-call arguments (tool.call only). */
+  args?: string
+  /** Whether the tool result succeeded (tool.result only). */
+  ok?: boolean
+  /** Tool failure reason (tool.result only). */
+  error?: string
+  /** Owning step index, when recorded. */
+  stepId?: number
 }
