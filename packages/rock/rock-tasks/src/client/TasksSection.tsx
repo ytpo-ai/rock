@@ -145,7 +145,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
 
   const openRun = (task: TaskSummary): void => {
     setRunTarget(task)
-    setSelectedBot(task.owner.length > 0 ? task.owner : '')
+    setSelectedBot(task.executorId.length > 0 ? task.executorId : '')
   }
 
   const openRecords = (task: TaskSummary): void => {
@@ -164,7 +164,8 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     void remote.runTask(runTarget.id, selectedBot).then((result) => {
       setRunning(false)
       if (!result.ok) {
-        setToast({ text: t('toast.run.failed'), key: Date.now() })
+        const launchFailed = String(result.error.code) === 'rockTasks/launchFailed'
+        setToast({ text: t(launchFailed ? 'toast.run.launchFailed' : 'toast.run.failed'), key: Date.now() })
         return
       }
       setToast({ text: t('toast.run.success'), key: Date.now() })
@@ -231,7 +232,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                             {task.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
                           </Tag>
                         )}
-                        <span className={css.cardOwner}>{task.owner.length > 0 ? botName(task.owner) : t('run.none')}</span>
+                        <span className={css.cardOwner}>{task.executorId.length > 0 ? botName(task.executorId) : t('run.none')}</span>
                       </div>
                       {task.description !== '' && <p className={css.cardDesc}>{task.description}</p>}
                     </div>
@@ -265,9 +266,9 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
         >
           <div className={css.runDialog}>
             <div className={css.runTaskTitle}>{runTarget.title || runTarget.id}</div>
-            {runTarget.owner.length > 0 && (
+            {runTarget.executorId.length > 0 && (
               <div className={css.runCurrent}>
-                {t('run.current')}: {botName(runTarget.owner)}
+                {t('run.current')}: {botName(runTarget.executorId)}
               </div>
             )}
             <div className={css.runField}>

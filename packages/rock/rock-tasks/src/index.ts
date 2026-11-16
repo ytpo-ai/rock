@@ -92,9 +92,16 @@ export default class RockTasksController extends TypertRemoteService {
   @Remote
   async runTask(taskId: string, botId: string): Promise<TaskSummary> {
     const task = await this.assignTask(taskId, botId)
-    await this.launchSession(botId, task).catch((error: unknown) => {
-      this.ctx.logger.warn(`rock-tasks: session launch failed for task ${taskId}: ${messageOf(error)}`)
-    })
+    try {
+      await this.launchSession(botId, task)
+    } catch (error) {
+      throw new RemoteError(
+        'rockTasks/launchFailed',
+        `task assigned but session launch failed: ${messageOf(error)}`,
+        {},
+        { cause: error },
+      )
+    }
     return task
   }
 
@@ -241,6 +248,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'rockTasks/unconfigured': Record<string, never>
     'rockTasks/runFailed': Record<string, never>
+    'rockTasks/launchFailed': Record<string, never>
   }
 }
 

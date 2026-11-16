@@ -19,10 +19,10 @@ export interface TaskSummary {
   status: string
   /** Done-state sub-result (`accepted` / `rejected`), when the task is done. */
   resolution?: string
-  /** Owning agent bot id. */
-  owner: string
-  /** Accepting reviewer, when recorded. */
-  acceptedBy?: string
+  /** Owning agent bot / planning seat id. */
+  executorId: string
+  /** Responsible human employee, when recorded. */
+  assignee?: string
   /** Project id, when recorded. */
   projectId?: string
   /** Parent requirement id, when recorded. */

@@ -8,8 +8,8 @@ describe('tasksFrom', () => {
       message: 'success',
       data: {
         tasks: [
-          { id: 't1', type: 'task', title: 'Ship it', description: '', status: 'in-progress', owner: 'bot-a' },
-          { id: 't2', type: 'requirement', title: 'Plan', description: 'd', status: 'pending', owner: 'bot-b', acceptedBy: 'e', projectId: 'p', parentId: 'r' },
+          { id: 't1', type: 'task', title: 'Ship it', description: '', status: 'in-progress', executorId: 'bot-a' },
+          { id: 't2', type: 'requirement', title: 'Plan', description: 'd', status: 'pending', executorId: 'bot-b', assignee: 'e', projectId: 'p', parentId: 'r' },
           { id: '', title: 'nope' },
           null,
           'x',
@@ -17,8 +17,8 @@ describe('tasksFrom', () => {
       },
     }
     expect(tasksFrom(body)).toEqual([
-      { id: 't1', type: 'task', title: 'Ship it', description: '', status: 'in-progress', owner: 'bot-a' },
-      { id: 't2', type: 'requirement', title: 'Plan', description: 'd', status: 'pending', owner: 'bot-b', acceptedBy: 'e', projectId: 'p', parentId: 'r' },
+      { id: 't1', type: 'task', title: 'Ship it', description: '', status: 'in-progress', executorId: 'bot-a' },
+      { id: 't2', type: 'requirement', title: 'Plan', description: 'd', status: 'pending', executorId: 'bot-b', assignee: 'e', projectId: 'p', parentId: 'r' },
     ])
   })
 
@@ -31,8 +31,8 @@ describe('tasksFrom', () => {
 
 describe('taskFrom', () => {
   it('projects one gateway envelope task', () => {
-    expect(taskFrom({ code: 0, message: 'success', data: { id: 'w1', type: 'task', title: 'T', description: '', status: 'in-progress', owner: 'bot-1' } }))
-      .toEqual({ id: 'w1', type: 'task', title: 'T', description: '', status: 'in-progress', owner: 'bot-1' })
+    expect(taskFrom({ code: 0, message: 'success', data: { id: 'w1', type: 'task', title: 'T', description: '', status: 'in-progress', executorId: 'bot-1' } }))
+      .toEqual({ id: 'w1', type: 'task', title: 'T', description: '', status: 'in-progress', executorId: 'bot-1' })
   })
 
   it('returns null for a malformed body', () => {

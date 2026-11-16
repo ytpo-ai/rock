@@ -32,7 +32,7 @@ function isRunning(task: TaskSummary): boolean {
 function groupByBot(tasks: readonly TaskSummary[]): BotOverview[] {
   const map = new Map<string, BotOverview>()
   for (const task of tasks) {
-    const botId = task.owner.length > 0 ? task.owner : '(unassigned)'
+    const botId = task.executorId.length > 0 ? task.executorId : '(unassigned)'
     let entry = map.get(botId)
     if (entry === undefined) {
       entry = { botId, running: false, tasks: [] }

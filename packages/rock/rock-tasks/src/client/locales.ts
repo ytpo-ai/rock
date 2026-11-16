@@ -38,6 +38,7 @@ export const en = {
   'records.tool.result': 'Tool result',
   'toast.run.success': 'Task assigned and in progress',
   'toast.run.failed': 'Run failed',
+  'toast.run.launchFailed': 'Task assigned but execution failed to start',
   'load.failed': 'Failed to load tasks',
   'load.retry': 'Retry',
 } as const
@@ -81,6 +82,7 @@ export const zh: Record<RockTasksKey, string> = {
   'records.tool.result': '工具结果',
   'toast.run.success': '任务已分配并进入执行中',
   'toast.run.failed': '执行失败',
+  'toast.run.launchFailed': '任务已分配但执行启动失败',
   'load.failed': '加载任务失败',
   'load.retry': '重试',
 }
