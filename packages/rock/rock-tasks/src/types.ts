@@ -41,24 +41,37 @@ export interface TaskBot {
   source: string
 }
 
-/** One durable agent-tool work record for a task (`tool.call` / `tool.result`). */
+/** Record kind captured from the DSH session for one task. */
+export type TaskWorkRecordType =
+  | 'tool.call'
+  | 'tool.result'
+  | 'step.start'
+  | 'step.end'
+  | 'turn.start'
+  | 'turn.end'
+
+/** One durable agent work record for a task. */
 export interface TaskWorkRecord {
   /** Owning task id. */
   taskId: string
   /** DSH session that produced the record. */
   sessionId: string
   /** Record kind. */
-  type: 'tool.call' | 'tool.result'
+  type: TaskWorkRecordType
   /** ISO-8601 timestamp. */
   timestamp: string
-  /** Invoked tool id. */
-  toolId: string
+  /** Invoked tool id (tool.call / tool.result only). */
+  toolId?: string
   /** Raw tool-call arguments (tool.call only). */
   args?: string
   /** Whether the tool result succeeded (tool.result only). */
   ok?: boolean
   /** Tool failure reason (tool.result only). */
   error?: string
-  /** Owning step index, when recorded. */
+  /** Owning step index (step.* only). */
   stepId?: number
+  /** Owning turn index (step.* / turn.* only). */
+  turn?: number
+  /** Turn end reason (turn.end only). */
+  reason?: string
 }

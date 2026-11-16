@@ -91,7 +91,7 @@ export default class RockTasksController extends TypertRemoteService {
   /** Assign the task to a bot, launch its thin-relay session, and return the updated task. */
   @Remote
   async runTask(taskId: string, botId: string): Promise<TaskSummary> {
-    const task = await this.assignTask(taskId, botId)
+    const task = await this.postTaskAction(taskId, botId, 'run')
     try {
       await this.launchSession(botId, task)
     } catch (error) {
@@ -105,15 +105,31 @@ export default class RockTasksController extends TypertRemoteService {
     return task
   }
 
-  /** Assign the task to a bot (backend run endpoint); returns the updated task. */
-  private async assignTask(taskId: string, botId: string): Promise<TaskSummary> {
+  /** Submit the task for review (in-progress → awaiting-review). */
+  @Remote
+  submitTask(taskId: string, botId: string): Promise<TaskSummary> {
+    return this.postTaskAction(taskId, botId, 'submit')
+  }
+
+  /** Continue the task (awaiting-review → in-progress). */
+  @Remote
+  continueTask(taskId: string, botId: string): Promise<TaskSummary> {
+    return this.postTaskAction(taskId, botId, 'continue')
+  }
+
+  /** POST one task action to the gateway and return the updated task. */
+  private async postTaskAction(
+    taskId: string,
+    botId: string,
+    action: 'run' | 'submit' | 'continue',
+  ): Promise<TaskSummary> {
     const url = this.config.tasksUrl
     const employeeId = this.resolveEmployeeId()
     if (url.length === 0 || employeeId.length === 0) {
       throw new RemoteError('rockTasks/unconfigured', 'tasksUrl or employeeId unconfigured', {})
     }
-    const requestUrl = `${url}/${encodeURIComponent(taskId)}/run`
-    this.ctx.logger.info(`rock-tasks: runTask task=${taskId} bot=${botId} employee=${employeeId}`)
+    const requestUrl = `${url}/${encodeURIComponent(taskId)}/${action}`
+    this.ctx.logger.info(`rock-tasks: ${action} task=${taskId} bot=${botId} employee=${employeeId}`)
     try {
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -121,10 +137,10 @@ export default class RockTasksController extends TypertRemoteService {
         body: JSON.stringify({ employeeId, agentBotId: botId }),
       })
       if (!response.ok) {
-        throw new RemoteError('rockTasks/runFailed', `run task failed HTTP ${response.status}`, {})
+        throw new RemoteError('rockTasks/runFailed', `${action} task failed HTTP ${response.status}`, {})
       }
       const task = taskFrom(await response.json())
-      if (task === null) throw new RemoteError('rockTasks/runFailed', 'run task returned a malformed task', {})
+      if (task === null) throw new RemoteError('rockTasks/runFailed', `${action} task returned a malformed task`, {})
       return task
     } catch (error) {
       if (error instanceof RemoteError) throw error

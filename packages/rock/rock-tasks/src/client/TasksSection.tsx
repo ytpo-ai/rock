@@ -7,6 +7,7 @@ import { Button, Menu, Modal, StateDot, Switch, Tag, Toast } from '@deepseek-ai/
 import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TaskBot, TaskSummary, TaskWorkRecord } from '@rock/rock-tasks/types'
 import type { RockTasksKey } from './locales.ts'
+import { STATUS_ORDER, statusLabel } from './status.ts'
 import css from './rock-tasks.module.css'
 
 /** Host operations injected into the Cordis-free task table. */
@@ -15,6 +16,8 @@ export interface TasksSectionInjected {
     listTasks(): Promise<RemoteResult<TaskSummary[]>>
     listBots(): Promise<RemoteResult<TaskBot[]>>
     runTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
+    submitTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
+    continueTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
     listWorkRecords(taskId: string): Promise<RemoteResult<TaskWorkRecord[]>>
   }
 }
@@ -23,9 +26,6 @@ export type TasksSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<TasksSectionInjected>
 
 /** Canonical status order for grouping and filtering. */
-const STATUS_ORDER = ['pending', 'planning', 'planned', 'in-progress', 'awaiting-review', 'blocked', 'done'] as const
-
-/** Terminal statuses folded under the history toggle. */
 const TERMINAL = new Set(['done'])
 
 /** Statuses the backend allows `run` from. */
@@ -35,12 +35,6 @@ const RUNNABLE = new Set(['pending', 'in-progress', 'blocked'])
 interface StatusGroup {
   status: string
   tasks: TaskSummary[]
-}
-
-/** Localized status label, falling back to the raw status. */
-function statusLabel(t: (key: RockTasksKey) => string, status: string): string {
-  const key = `status.${status}` as RockTasksKey
-  return (STATUS_ORDER as readonly string[]).includes(status) ? t(key) : status
 }
 
 /** Tag tone for one work-queue status. */
@@ -67,16 +61,49 @@ function statusDot(status: string): StateDotState {
   }
 }
 
-/** Compact text for one work record row: tool id plus optional error. */
+/** Localized label for one work record row. */
+function recordLabel(t: (key: RockTasksKey) => string, record: TaskWorkRecord): string {
+  switch (record.type) {
+    case 'tool.call': return t('records.tool.call')
+    case 'tool.result': return t('records.tool.result')
+    case 'step.start': return t('records.step.start')
+    case 'step.end': return t('records.step.end')
+    case 'turn.start': return t('records.turn.start')
+    case 'turn.end': return t('records.turn.end')
+    default: return record.type
+  }
+}
+
+/** Compact text for one work record row: tool id / step / turn plus optional error. */
 function recordText(record: TaskWorkRecord): string {
-  const error = record.error === undefined ? '' : ` · ${record.error}`
-  return `${record.toolId}${error}`
+  switch (record.type) {
+    case 'tool.call':
+    case 'tool.result': {
+      const error = record.error === undefined ? '' : ` · ${record.error}`
+      return `${record.toolId ?? ''}${error}`
+    }
+    case 'step.start':
+    case 'step.end':
+      return `#${record.stepId ?? ''}`
+    case 'turn.start':
+    case 'turn.end':
+      return `#${record.turn ?? ''}${record.reason === undefined ? '' : ` · ${record.reason}`}`
+    default:
+      return ''
+  }
 }
 
 /** Tag tone for one work record row. */
 function recordTone(record: TaskWorkRecord): TagTone {
-  if (record.type === 'tool.call') return 'info'
-  return record.ok === false ? 'danger' : 'success'
+  switch (record.type) {
+    case 'tool.call': return 'info'
+    case 'tool.result': return record.ok === false ? 'danger' : 'success'
+    case 'step.start':
+    case 'step.end':
+    case 'turn.start':
+    case 'turn.end':
+    default: return 'neutral'
+  }
 }
 
 /** Render the task cards grouped by status, with filter, history, and the run-bot dialog. */
@@ -92,6 +119,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [selectedBot, setSelectedBot] = useState('')
   const [botMenu, setBotMenu] = useState(false)
   const [running, setRunning] = useState(false)
+  const [acting, setActing] = useState(false)
   const [recordTarget, setRecordTarget] = useState<TaskSummary | null>(null)
   const [records, setRecords] = useState<TaskWorkRecord[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
@@ -174,6 +202,32 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
   }
 
+  const submitTask = (task: TaskSummary): void => {
+    setActing(true)
+    void remote.submitTask(task.id, task.executorId).then((result) => {
+      setActing(false)
+      if (!result.ok) {
+        setToast({ text: t('toast.submit.failed'), key: Date.now() })
+        return
+      }
+      setToast({ text: t('toast.submit.success'), key: Date.now() })
+      void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
+    })
+  }
+
+  const continueTask = (task: TaskSummary): void => {
+    setActing(true)
+    void remote.continueTask(task.id, task.executorId).then((result) => {
+      setActing(false)
+      if (!result.ok) {
+        setToast({ text: t('toast.continue.failed'), key: Date.now() })
+        return
+      }
+      setToast({ text: t('toast.continue.success'), key: Date.now() })
+      void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
+    })
+  }
+
   const filterOptions = [
     { id: 'all', label: t('tasks.filter.all') },
     ...STATUS_ORDER.map(status => ({ id: status, label: statusLabel(t, status) })),
@@ -240,6 +294,12 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                       <Button size="sm" variant="ghost" onClick={() => { openRecords(task) }}>{t('records.open')}</Button>
                       {RUNNABLE.has(task.status) && (
                         <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
+                      )}
+                      {task.status === 'in-progress' && task.executorId.length > 0 && (
+                        <Button size="sm" variant="outline" disabled={acting} onClick={() => { submitTask(task) }}>{t('tasks.submit')}</Button>
+                      )}
+                      {task.status === 'awaiting-review' && task.executorId.length > 0 && (
+                        <Button size="sm" variant="outline" disabled={acting} onClick={() => { continueTask(task) }}>{t('tasks.continue')}</Button>
                       )}
                     </div>
                   </li>
@@ -308,7 +368,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
         >
           <div className={css.records}>
             {recordsLoading ? (
-              <p className={css.empty}>{t('load.failed')}</p>
+              <p className={css.empty}>{t('records.loading')}</p>
             ) : records.length === 0 ? (
               <p className={css.empty}>{t('records.empty')}</p>
             ) : (
@@ -316,7 +376,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                 {records.map((record, index) => (
                   <li key={`${record.sessionId}-${index}`} className={css.recordRow}>
                     <Tag tone={recordTone(record)}>
-                      {record.type === 'tool.call' ? t('records.tool.call') : t('records.tool.result')}
+                      {recordLabel(t, record)}
                     </Tag>
                     <span className={css.recordText}>{recordText(record)}</span>
                   </li>

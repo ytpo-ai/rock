@@ -30,6 +30,22 @@ describe('TaskWorkRecordStore', () => {
     expect(store.list('task-1')).toEqual([])
   })
 
+  it('captures step and turn events for the linked task', () => {
+    const store = new TaskWorkRecordStore()
+    store.linkSession('s1', 'task-1')
+    store.record('s1', event('step/start', { turn: 1, step: 1 }))
+    store.record('s1', event('step/end', { turn: 1, step: 1 }))
+    store.record('s1', event('turn/start', { turn: 1 }))
+    store.record('s1', event('turn/end', { turn: 1, reason: 'tool-calls' }))
+
+    const records = store.list('task-1')
+    expect(records).toHaveLength(4)
+    expect(records[0]).toMatchObject({ type: 'step.start', turn: 1, stepId: 1 })
+    expect(records[1]).toMatchObject({ type: 'step.end', turn: 1, stepId: 1 })
+    expect(records[2]).toMatchObject({ type: 'turn.start', turn: 1 })
+    expect(records[3]).toMatchObject({ type: 'turn.end', turn: 1, reason: 'tool-calls' })
+  })
+
   it('persists records to a file and replays them across restarts', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'rock-tasks-'))
     const file = join(dir, 'records.jsonl')

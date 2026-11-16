@@ -11,8 +11,8 @@ import { dirname } from 'node:path'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { TaskWorkRecord } from './types.ts'
 
-/** Map one harness tool event into a work record, or null when not a tool event. */
-function toolRecord(sessionId: string, taskId: string, event: SessionEvent): TaskWorkRecord | null {
+/** Map one harness session event into a work record, or null when not a tracked event. */
+function eventRecord(sessionId: string, taskId: string, event: SessionEvent): TaskWorkRecord | null {
   switch (event.type) {
     case 'tool/call':
       return {
@@ -34,6 +34,41 @@ function toolRecord(sessionId: string, taskId: string, event: SessionEvent): Tas
         ok: event.data.message.isError !== true,
         ...(event.data.error?.reason === undefined ? {} : { error: event.data.error.reason }),
         stepId: event.data.step,
+      }
+    case 'step/start':
+      return {
+        taskId,
+        sessionId,
+        type: 'step.start',
+        timestamp: new Date().toISOString(),
+        turn: event.data.turn,
+        stepId: event.data.step,
+      }
+    case 'step/end':
+      return {
+        taskId,
+        sessionId,
+        type: 'step.end',
+        timestamp: new Date().toISOString(),
+        turn: event.data.turn,
+        stepId: event.data.step,
+      }
+    case 'turn/start':
+      return {
+        taskId,
+        sessionId,
+        type: 'turn.start',
+        timestamp: new Date().toISOString(),
+        turn: event.data.turn,
+      }
+    case 'turn/end':
+      return {
+        taskId,
+        sessionId,
+        type: 'turn.end',
+        timestamp: new Date().toISOString(),
+        turn: event.data.turn,
+        reason: String(event.data.reason),
       }
     default:
       return null
@@ -66,11 +101,11 @@ export class TaskWorkRecordStore {
     this.sessionTask.set(sessionId, taskId)
   }
 
-  /** Record one tool event for the owning session, when it maps to a tracked task. */
+  /** Record one session event for the owning session, when it maps to a tracked task. */
   record(sessionId: string, event: SessionEvent): void {
     const taskId = this.sessionTask.get(sessionId)
     if (taskId === undefined) return
-    const record = toolRecord(sessionId, taskId, event)
+    const record = eventRecord(sessionId, taskId, event)
     if (record === null) return
     this.push(record, true)
   }
