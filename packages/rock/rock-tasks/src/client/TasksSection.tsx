@@ -186,6 +186,17 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
   }
 
+  // Live work-record heartbeat: refresh the records list while the dialog is open.
+  useEffect(() => {
+    if (recordTarget === null) return
+    const timer = setInterval(() => {
+      void remote.listWorkRecords(recordTarget.id).then((result) => {
+        if (result.ok) setRecords(result.value)
+      })
+    }, 1500)
+    return () => { clearInterval(timer) }
+  }, [recordTarget, remote])
+
   const submitRun = (): void => {
     if (runTarget === null || selectedBot.length === 0) return
     setRunning(true)
