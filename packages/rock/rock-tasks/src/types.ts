@@ -1,6 +1,7 @@
 /**
  * Rock task vocabulary: one cloud task assigned to a claimed agent bot,
- * projected for the overview and task-management console panels.
+ * projected for the overview and task-management console panels, plus the
+ * per-task archive record kinds written into each task JSONL file.
  *
  * @module @rock/rock-tasks/types
  */
@@ -41,21 +42,26 @@ export interface TaskBot {
   source: string
 }
 
-/** Record kind captured from the DSH session for one task. */
+/** Record kind captured into one task archive file. */
 export type TaskWorkRecordType =
+  | 'task.definition'
+  | 'run.start'
+  | 'run.end'
   | 'tool.call'
   | 'tool.result'
   | 'step.start'
   | 'step.end'
   | 'turn.start'
   | 'turn.end'
+  | 'assistant.message'
+  | 'task.receipt'
 
 /** One durable agent work record for a task. */
 export interface TaskWorkRecord {
   /** Owning task id. */
   taskId: string
-  /** DSH session that produced the record. */
-  sessionId: string
+  /** DSH session that produced the record (event records only). */
+  sessionId?: string
   /** Record kind. */
   type: TaskWorkRecordType
   /** ISO-8601 timestamp. */
@@ -68,10 +74,52 @@ export interface TaskWorkRecord {
   ok?: boolean
   /** Tool failure reason (tool.result only). */
   error?: string
-  /** Owning step index (step.* only). */
+  /** Owning step index (step.* / tool.* / assistant.message only). */
   stepId?: number
-  /** Owning turn index (step.* / turn.* only). */
+  /** Owning turn index (step.* / turn.* / assistant.message only). */
   turn?: number
   /** Turn end reason (turn.end only). */
   reason?: string
+  /** Owning run id (run.* only). */
+  runId?: string
+  /** Executing bot id (run.start only). */
+  botId?: string
+  /** Assistant message text (assistant.message only). */
+  text?: string
+  /** Token usage (assistant.message / task.receipt only). */
+  usage?: { inputTokens?: number; outputTokens?: number }
+  /** Structured payload (task.definition snapshot / task.receipt). */
+  data?: TaskSummary | TaskReceipt
+}
+
+/** The first line of a task archive file. */
+export interface TaskHeader {
+  type: 'task'
+  version: 1
+  taskId: string
+  projectId: string | null
+  createdAt: number
+  cwd: string
+}
+
+/** The terminal receipt an executing bot writes at task completion. */
+export interface TaskReceipt {
+  outcome: 'success' | 'failed' | 'partial'
+  summary: string
+  deliverables?: string[]
+  artifactPaths?: string[]
+  reportedBy?: string
+  completedAt?: string
+  usage?: { inputTokens?: number; outputTokens?: number }
+}
+
+/** Index entry reconstructed from one archived task file, for the history tab. */
+export interface ArchivedTaskSummary {
+  id: string
+  projectId: string | null
+  title: string
+  status: string
+  resolution?: string
+  executorId?: string
+  receipt?: TaskReceipt
 }

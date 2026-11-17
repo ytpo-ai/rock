@@ -8,6 +8,25 @@
   width: 100%;
 }
 
+.label {
+  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-primary));
+  font-size: 13px;
+}
+
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pathRow :global(span) {
+  flex: 1;
+}
+
+.pathRow :global(button) {
+  flex-shrink: 0;
+}
+
 .error {
   margin: 0;
   color: var(--dsw-alias-label-danger, var(--dsw-alias-label-secondary));

@@ -1,4 +1,4 @@
-/** Rock onboarding client: register the connector-key dialog as a shell overlay. */
+/** Rock onboarding client: register the connector-key + workspace wizard as a shell overlay. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -8,19 +8,19 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import remote from '@rock/rock-onboarding/remote'
 import { NS, en, zh } from './locales.ts'
 import type { RockOnboardingKey } from './locales.ts'
-import { AddKeyDialog, type AddKeyDialogInjected } from './AddKeyDialog.tsx'
+import { OnboardingWizard, type OnboardingWizardInjected } from './OnboardingWizard.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'rock-onboarding': RockOnboardingKey }
 }
 
-/** The assistant preset id the onboarding opens after the key is connected. */
+/** The assistant preset id the onboarding opens after key + workspace are set. */
 const ASSISTANT_PRESET = 'assistant'
 
 /** Services required before the Remote namespace mounts and the overlay registers. */
 export const inject = ['remote', 'slots', 'locale', 'uiWorkspace']
 
-/** Mount the Remote namespace, then register the locale dictionary and the overlay dialog. */
+/** Mount the Remote namespace, then register the locale dictionary and the wizard overlay. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const unmountRemote = await ctx.remote.$mount(remote)
   const ui = ctx.inject(['remote.rockOnboarding', 'slots', 'locale', 'uiWorkspace'], registerOverlay)
@@ -37,31 +37,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   }
 }
 
-/** Register the locale dictionary and the add-key dialog overlay. */
+/** Register the locale dictionary and the onboarding wizard overlay. */
 function registerOverlay(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'rock-onboarding: dictionaries')
 
-  // 已有 key 且 onboarding 未完成（pending / in-progress）时，启动即自动打开专属助理会话。
-  ctx.effect(() => {
-    let cancelled = false
-    void (async () => {
-      const onboarding = ctx.remote.rockOnboarding
-      const hasKey = await onboarding.hasKey()
-      if (cancelled || !hasKey.ok || !hasKey.value) return
-      const status = await onboarding.getOnboardingStatus()
-      if (cancelled || !status.ok) return
-      if (status.value === 'pending' || status.value === 'in-progress') {
-        ctx.uiWorkspace.startSession(undefined, { agentPreset: ASSISTANT_PRESET })
-      }
-    })()
-    return () => { cancelled = true }
-  }, 'rock-onboarding: auto-open assistant')
-
-  const inject = (): AddKeyDialogInjected => ({
+  const inject = (): OnboardingWizardInjected => ({
     remote: ctx.remote.rockOnboarding,
     onConnected: () => { ctx.uiWorkspace.startSession(undefined, { agentPreset: ASSISTANT_PRESET }) },
+    pickDirectory: () => ctx.uiWorkspace.pickDirectory(),
   })
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'rock-onboarding.add-key', locale: NS, inject,
-  }, AddKeyDialog))
+  }, OnboardingWizard))
 }

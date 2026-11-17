@@ -23,8 +23,8 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { taskFrom, tasksFrom } from './tasks.ts'
-import { TaskWorkRecordStore } from './work-records.ts'
-import type { TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
+import { TaskArchiveStore } from './work-records.ts'
+import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
 
 export type * from './types.ts'
 
@@ -34,8 +34,6 @@ export interface Config {
   tasksUrl: string
   /** Employee id the tasks endpoint filters by. */
   employeeId: string
-  /** JSONL file for durable per-task agent-tool work records. */
-  workRecordsPath: string
 }
 
 /** Remote service carrying the projected task queue. */
@@ -44,16 +42,25 @@ export default class RockTasksController extends TypertRemoteService {
   static Config: z<Config> = z.object({
     tasksUrl: z.string().min(1).default(''),
     employeeId: z.string().min(1).default(''),
-    workRecordsPath: z.string().min(1).default(''),
   })
 
   private readonly config: Config
-  private readonly records: TaskWorkRecordStore
+  private readonly records: TaskArchiveStore
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockTasks')
     this.config = config
-    this.records = new TaskWorkRecordStore(config.workRecordsPath.length > 0 ? config.workRecordsPath : undefined)
+    const workspace = ctx.get('rockWorkspace') as {
+      resolveTaskPath(taskId: string, projectId?: string | null): string
+      rootPath(): string | null
+    } | undefined
+    this.records = new TaskArchiveStore({
+      resolvePath: (taskId, projectId) => {
+        if (workspace === undefined) throw new Error('rockWorkspace service unavailable')
+        return workspace.resolveTaskPath(taskId, projectId)
+      },
+      rootPath: () => workspace?.rootPath() ?? null,
+    })
     this.records.replay()
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.records.record(String(session.id), event)
@@ -88,6 +95,18 @@ export default class RockTasksController extends TypertRemoteService {
     return this.records.list(taskId)
   }
 
+  /** Archived task index for the history tab (read from the local workspace). */
+  @Remote
+  listArchivedTasks(): ArchivedTaskSummary[] {
+    return this.records.listArchived()
+  }
+
+  /** Full archive for one task: summary plus all recorded lines. */
+  @Remote
+  getArchivedTask(taskId: string): { summary: ArchivedTaskSummary | null; records: TaskWorkRecord[] } {
+    return this.records.getArchived(taskId)
+  }
+
   /** Assign the task to a bot, launch its thin-relay session, and return the updated task. */
   @Remote
   async runTask(taskId: string, botId: string): Promise<TaskSummary> {
@@ -107,8 +126,19 @@ export default class RockTasksController extends TypertRemoteService {
 
   /** Submit the task for review (in-progress → awaiting-review). */
   @Remote
-  submitTask(taskId: string, botId: string): Promise<TaskSummary> {
-    return this.postTaskAction(taskId, botId, 'submit')
+  async submitTask(taskId: string, botId: string): Promise<TaskSummary> {
+    const task = await this.postTaskAction(taskId, botId, 'submit')
+    try {
+      this.records.ensureReceipt(taskId, {
+        outcome: 'partial',
+        summary: `任务已提交验收（bot: ${botId}）`,
+        reportedBy: botId,
+        completedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: fallback receipt failed for ${taskId}: ${messageOf(error)}`)
+    }
+    return task
   }
 
   /** Continue the task (awaiting-review → in-progress). */
@@ -151,7 +181,6 @@ export default class RockTasksController extends TypertRemoteService {
   /** Launch the bot's thin-relay session and submit the task as its first message. */
   private async launchSession(botId: string, task: TaskSummary): Promise<void> {
     const presetId = 'rock'
-    const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
 
     // Services the thin-relay session depends on; read through ctx.get so the
     // lookup is not topology-sensitive (the property proxy is reserved for
@@ -181,10 +210,12 @@ export default class RockTasksController extends TypertRemoteService {
 
     const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
     const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay', agentId: botId }
+    const workspace = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
+    const cwd = workspace?.rootPath() ?? null
     this.ctx.logger.info(`rock-tasks: launchSession creating agent ${sessionId}`)
     const handle = await agents.create({
       sessionId,
-      meta: { agentPreset: preset.id },
+      meta: { agentPreset: preset.id, ...(cwd === null ? {} : { cwd }) },
       agentOptions,
       setup: async (agentCtx) => {
         await agentPresets.mount(agentCtx, preset.id)
@@ -192,11 +223,11 @@ export default class RockTasksController extends TypertRemoteService {
     })
     this.ctx.logger.info(`rock-tasks: launchSession agent ${sessionId} created`)
 
-    // Bind the launched session to the task so tool work records can be attributed.
-    this.records.linkSession(String(sessionId), task.id)
+    // Create the per-task archive and bind the session so work records are attributed.
+    this.records.openTask(task, botId, String(sessionId))
 
     handle.agent.followup(createUserMessage({
-      content: [{ type: 'text', text: prompt }],
+      content: [{ type: 'text', text: this.taskPrompt(task, botId) }],
       source: { kind: 'user' },
     }))
     this.ctx.logger.info(`rock-tasks: launchSession followup submitted for ${sessionId}`)
@@ -204,6 +235,16 @@ export default class RockTasksController extends TypertRemoteService {
     await this.registerSession(botId, String(sessionId), task.id).catch((error: unknown) => {
       this.ctx.logger.warn(`rock-tasks: session registration failed for ${sessionId}: ${messageOf(error)}`)
     })
+  }
+
+  /** Build the task prompt with the task context + receipt contract. */
+  private taskPrompt(task: TaskSummary, botId: string): string {
+    const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
+    const workspace = this.ctx.get('rockWorkspace') as {
+      resolveTaskPath(taskId: string, projectId?: string | null): string
+    } | undefined
+    const receiptPath = workspace?.resolveTaskPath(task.id, task.projectId || null) ?? ''
+    return `${prompt}\n\n---\n任务上下文：\n- taskId: ${task.id}\n- projectId: ${task.projectId ?? '(无)'}\n- botId: ${botId}\n- 任务归档文件（追加回执到此文件）: ${receiptPath}`
   }
 
   /** Register the launched DSH session (sessionId → bot + taskId) so the gateway can validate reported events and link them to the task. */

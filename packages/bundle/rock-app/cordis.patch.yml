@@ -183,13 +183,19 @@
     - id: rock-tool-inventory
       name: '@rock/rock-tool-inventory'
 
+    # ── rock-workspace: local employee workspace root for the task archive ──
+    - id: rock-workspace
+      name: '@rock/rock-workspace'
+      config:
+        workspacePath: !!js "process.env.ROCK_WORKSPACE_PATH || '.rock/workspace.json'"
+        defaultRoot: !!js "process.env.ROCK_WORKSPACE_ROOT || '~/Documents/SeagullWorkspace'"
+
     # ── rock-tasks: overview + task-management panels over the task queue ──
     - id: rock-tasks
       name: '@rock/rock-tasks'
       config:
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
-        workRecordsPath: !!js "process.env.ROCK_WORK_RECORDS_PATH || '.rock/task-work-records.jsonl'"
 
 # ── assistant preset: the onboarding guide runs its own loop (D-035) ──
 - insert:

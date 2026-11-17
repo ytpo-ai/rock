@@ -11,6 +11,12 @@
   gap: 12px;
 }
 
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .empty {
   color: var(--dsw-alias-label-secondary);
   margin: 0;

@@ -510,6 +510,7 @@
     { "path": "./packages/rock/rock-console" },
     { "path": "./packages/rock/rock-tool-inventory" },
     { "path": "./packages/rock/rock-tasks" },
+    { "path": "./packages/rock/rock-workspace" },
     { "path": "./packages/rock/seagull-identity" },
     { "path": "./packages/shell/bash-local" },
     { "path": "./packages/shell/shell-env" },

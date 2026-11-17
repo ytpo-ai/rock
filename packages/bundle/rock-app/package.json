@@ -45,6 +45,7 @@
     "@rock/rock-onboarding": "workspace:*",
     "@rock/rock-tasks": "workspace:*",
     "@rock/rock-tool-inventory": "workspace:*",
+    "@rock/rock-workspace": "workspace:*",
     "@rock/seagull-identity": "workspace:*"
   },
   "peerDependencies": {

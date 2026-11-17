@@ -81,6 +81,34 @@ export default class RockOnboardingController extends TypertRemoteService {
     }
   }
 
+  /** Current workspace root, or null when not yet initialized. */
+  @Remote
+  getWorkspaceRoot(): string | null {
+    const workspace = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
+    return workspace?.rootPath() ?? null
+  }
+
+  /** The default workspace root (expanded absolute path) to prefill onboarding step 2. */
+  @Remote
+  getDefaultWorkspaceRoot(): string {
+    const workspace = this.ctx.get('rockWorkspace') as { defaultRoot(): string } | undefined
+    return workspace?.defaultRoot() ?? '~/Documents/SeagullWorkspace'
+  }
+
+  /** Initialize (or re-point) the workspace root; returns the absolute root. */
+  @Remote
+  initializeWorkspace(rootPath: string): string {
+    const workspace = this.ctx.get('rockWorkspace') as { initialize(rootPath: string): { rootPath: string } } | undefined
+    if (workspace === undefined) {
+      throw new RemoteError('rockOnboarding/workspace', 'workspace service unavailable', {})
+    }
+    try {
+      return workspace.initialize(rootPath).rootPath
+    } catch (error) {
+      throw new RemoteError('rockOnboarding/workspace', error instanceof Error ? error.message : 'workspace init failed', {})
+    }
+  }
+
   /** Notify seagull-identity to re-sync claims with the freshly resolved identity. */
   private notifyIdentity(): void {
     const record = this.service.getRecord()
@@ -115,6 +143,7 @@ async function resolveKey(baseUrl: string, key: string): Promise<ConnectorIdenti
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'rockOnboarding/invalid': Record<string, never>
+    'rockOnboarding/workspace': Record<string, never>
   }
 }
 
