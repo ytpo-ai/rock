@@ -159,7 +159,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [recordTarget, setRecordTarget] = useState<RecordTarget | null>(null)
   const [records, setRecords] = useState<TaskWorkRecord[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
-  const [toast, setToast] = useState<{ text: string; key: number } | null>(null)
+  const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -256,10 +256,10 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
       setRunning(false)
       if (!result.ok) {
         const launchFailed = String(result.error.code) === 'rockTasks/launchFailed'
-        setToast({ text: t(launchFailed ? 'toast.run.launchFailed' : 'toast.run.failed'), key: Date.now() })
+        setToast({ text: t(launchFailed ? 'toast.run.launchFailed' : 'toast.run.failed'), key: Date.now(), success: false })
         return
       }
-      setToast({ text: t('toast.run.success'), key: Date.now() })
+      setToast({ text: t('toast.run.success'), key: Date.now(), success: true })
       setRunTarget(null)
       void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
     })
@@ -270,10 +270,10 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     void remote.submitTask(task.id, task.executorId).then((result) => {
       setActing(false)
       if (!result.ok) {
-        setToast({ text: t('toast.submit.failed'), key: Date.now() })
+        setToast({ text: t('toast.submit.failed'), key: Date.now(), success: false })
         return
       }
-      setToast({ text: t('toast.submit.success'), key: Date.now() })
+      setToast({ text: t('toast.submit.success'), key: Date.now(), success: true })
       void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
     })
   }
@@ -283,10 +283,10 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     void remote.continueTask(task.id, task.executorId).then((result) => {
       setActing(false)
       if (!result.ok) {
-        setToast({ text: t('toast.continue.failed'), key: Date.now() })
+        setToast({ text: t('toast.continue.failed'), key: Date.now(), success: false })
         return
       }
-      setToast({ text: t('toast.continue.success'), key: Date.now() })
+      setToast({ text: t('toast.continue.success'), key: Date.now(), success: true })
       void remote.listTasks().then((r) => { if (r.ok) setTasks(r.value) })
     })
   }
@@ -493,7 +493,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
         </Modal>
       )}
 
-      {toast !== null && <Toast key={toast.key} text={toast.text} tone="success" onDone={() => { setToast(null) }} />}
+      {toast !== null && <Toast key={toast.key} text={toast.text} {...toast.success ? { tone: 'success' as const } : {}} onDone={() => { setToast(null) }} />}
     </div>
   )
 }
