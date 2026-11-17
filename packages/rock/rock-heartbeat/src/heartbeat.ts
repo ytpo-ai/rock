@@ -27,12 +27,16 @@ export class Heartbeat {
 
   constructor(private readonly options: HeartbeatOptions) {}
 
-  /** POST one heartbeat to the gateway; best-effort (throws are caught by the interval). */
+  /** POST one heartbeat to the gateway; best-effort (a failed beat retries next interval). */
   async beat(): Promise<void> {
     const target = this.options.resolve()
     if (target === null) return
-    const post = this.options.post ?? defaultPost
-    await post(heartbeatUrl(target.baseUrl), target.key)
+    try {
+      const post = this.options.post ?? defaultPost
+      await post(heartbeatUrl(target.baseUrl), target.key)
+    } catch {
+      // Best-effort: leave the client offline until the next beat succeeds.
+    }
   }
 
   /** Begin periodic beating; sends one beat immediately. */

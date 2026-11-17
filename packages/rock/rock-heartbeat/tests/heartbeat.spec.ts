@@ -40,4 +40,19 @@ describe('Heartbeat', () => {
     expect(post).not.toHaveBeenCalled()
     heartbeat.stop()
   })
+
+  it('swallows a failed beat and keeps beating on the next interval', async () => {
+    const post = vi.fn<(url: string, key: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(undefined)
+    const heartbeat = new Heartbeat({ intervalMs: 1000, resolve: () => ({ baseUrl: 'http://gw.test', key: 'sk-x' }), post })
+
+    heartbeat.start()
+    expect(post).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(post).toHaveBeenCalledTimes(2)
+
+    heartbeat.stop()
+  })
 })
