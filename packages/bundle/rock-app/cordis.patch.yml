@@ -145,7 +145,7 @@
       config:
         gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/claims'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
-        claimFile: !!js "process.env.ROCK_CLAIM_FILE || '.rock/claims.json'"
+        claimFile: !!js "process.env.ROCK_CLAIM_FILE || '../.rock/claims.json'"
         bindings:
           agent-bot-C: codex
 
@@ -158,7 +158,15 @@
         gatewayUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/report'"
         connectorClientId: !!js "process.env.ROCK_CONNECTOR_CLIENT_ID || 'rock-employee-a'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
-        bufferPath: !!js "process.env.ROCK_BUFFER_PATH || '.rock/events.jsonl'"
+        bufferPath: !!js "process.env.ROCK_BUFFER_PATH || '../.rock/events.jsonl'"
+
+    # ── plugin④ rock-heartbeat: periodic liveness to the gateway (REQ-0078) ──
+    # Always mounted; resolves the connector key from rock-onboarding, so it
+    # stays silent until the employee pastes a key.
+    - id: rock-heartbeat
+      name: '@rock/rock-heartbeat'
+      config:
+        heartbeatIntervalMs: !!js "Number(process.env.ROCK_HEARTBEAT_INTERVAL_MS || 30000)"
 
     # ── plugin⑤ rock-bot-manager: local bot registry (custom bots) ──
     # Always mounted: the local workbench owns its custom bots independent of
@@ -166,7 +174,7 @@
     - id: rock-bot-manager
       name: '@rock/rock-bot-manager'
       config:
-        storePath: !!js "process.env.ROCK_BOT_STORE || '.rock/bots.json'"
+        storePath: !!js "process.env.ROCK_BOT_STORE || '../.rock/bots.json'"
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
@@ -187,7 +195,7 @@
     - id: rock-workspace
       name: '@rock/rock-workspace'
       config:
-        workspacePath: !!js "process.env.ROCK_WORKSPACE_PATH || '.rock/workspace.json'"
+        workspacePath: !!js "process.env.ROCK_WORKSPACE_PATH || '../.rock/workspace.json'"
         defaultRoot: !!js "process.env.ROCK_WORKSPACE_ROOT || '~/Documents/SeagullWorkspace'"
 
     # ── rock-tasks: overview + task-management panels over the task queue ──
@@ -196,6 +204,7 @@
       config:
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+        indexPath: !!js "process.env.ROCK_ARCHIVE_INDEX_PATH || '../.rock/archive-index.json'"
 
 # ── assistant preset: the onboarding guide runs its own loop (D-035) ──
 - insert:

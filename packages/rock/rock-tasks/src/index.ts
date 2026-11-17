@@ -34,6 +34,8 @@ export interface Config {
   tasksUrl: string
   /** Employee id the tasks endpoint filters by. */
   employeeId: string
+  /** Durable archive index file path. */
+  indexPath: string
 }
 
 /** Remote service carrying the projected task queue. */
@@ -42,6 +44,7 @@ export default class RockTasksController extends TypertRemoteService {
   static Config: z<Config> = z.object({
     tasksUrl: z.string().min(1).default(''),
     employeeId: z.string().min(1).default(''),
+    indexPath: z.string().min(1).default('../.rock/archive-index.json'),
   })
 
   private readonly config: Config
@@ -60,6 +63,7 @@ export default class RockTasksController extends TypertRemoteService {
         return workspace.resolveTaskPath(taskId, projectId)
       },
       rootPath: () => workspace?.rootPath() ?? null,
+      indexPath: config.indexPath,
     })
     this.records.replay()
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
@@ -253,9 +257,14 @@ export default class RockTasksController extends TypertRemoteService {
     const employeeId = this.resolveEmployeeId()
     if (url.length === 0 || employeeId.length === 0) return
     const sessionsUrl = `${url.replace(/\/tasks$/, '')}/sessions`
+    const onboarding = this.ctx.get('rockOnboarding') as { getRecord(): { key: string } | null } | undefined
+    const key = onboarding?.getRecord()?.key ?? ''
     const response = await fetch(sessionsUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
       body: JSON.stringify({ employeeId, agentBotId: botId, sessionId, taskId }),
     })
     if (!response.ok) throw new Error(`register session failed HTTP ${response.status}`)
