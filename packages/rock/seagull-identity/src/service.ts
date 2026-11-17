@@ -144,8 +144,13 @@ export class SeagullIdentityService {
       }
     }
     if (this.options.claimFile !== undefined) {
-      const raw = await readFile(this.options.claimFile, 'utf8')
-      return { claims: JSON.parse(raw) as SeatClaim[], assistants: [], onboarding: undefined }
+      try {
+        const raw = await readFile(this.options.claimFile, 'utf8')
+        return { claims: JSON.parse(raw) as SeatClaim[], assistants: [], onboarding: undefined }
+      } catch {
+        // 本地降级文件缺失/损坏时按空认领处理，避免阻断启动（首次运行无缓存属正常）。
+        return { claims: [], assistants: [], onboarding: undefined }
+      }
     }
     return { claims: [], assistants: [], onboarding: undefined }
   }
