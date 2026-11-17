@@ -20,7 +20,7 @@ export interface TaskSummary {
   status: string
   /** Done-state sub-result (`accepted` / `rejected`), when the task is done. */
   resolution?: string
-  /** Owning agent bot / planning seat id. */
+  /** Owning agent bot id; empty when unassigned. */
   executorId: string
   /** Responsible human employee, when recorded. */
   assignee?: string
@@ -66,6 +66,8 @@ export interface TaskWorkRecord {
   type: TaskWorkRecordType
   /** ISO-8601 timestamp. */
   timestamp: string
+  /** Monotonic session sequence number (session-event records only). */
+  seq?: number
   /** Invoked tool id (tool.call / tool.result only). */
   toolId?: string
   /** Raw tool-call arguments (tool.call only). */
@@ -121,5 +123,13 @@ export interface ArchivedTaskSummary {
   status: string
   resolution?: string
   executorId?: string
+  /** Archive creation epoch milliseconds (from the file header). */
+  createdAt?: number
   receipt?: TaskReceipt
+}
+
+/** The durable task archive index file (the flat thumbnail of all tasks). */
+export interface ArchiveIndex {
+  version: 1
+  tasks: ArchivedTaskSummary[]
 }

@@ -55,9 +55,7 @@ function statusTone(status: string): TagTone {
     case 'done': return 'success'
     case 'awaiting-review':
     case 'blocked': return 'warning'
-    case 'in-progress':
-    case 'planning':
-    case 'planned': return 'info'
+    case 'in-progress': return 'info'
     default: return 'neutral'
   }
 }
