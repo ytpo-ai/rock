@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Install `@deepseek-ai/dsh-subagent-codex` into a Profile when delegated work should run in a genuine, unattended Codex session in the parent Session's workspace. Each delegation uses a fresh isolated Codex thread for one self-contained text task and returns only the selected answer or a safe failure diagnostic. Native Codex configuration and authentication remain authoritative, while `permissionMode` selects the non-interactive approval and sandbox behavior. The Bundle supplies a compatible native Codex payload and adds its delegation tool as a global tool.
+Install `@deepseek-ai/dsh-subagent-codex` into a Profile when delegated work should run in a genuine, unattended Codex session in the parent Session's workspace. Each delegation uses a fresh isolated Codex thread for one self-contained text task and returns only the selected answer or a safe failure diagnostic. Native Codex configuration and authentication remain authoritative, while `permissionMode` selects the non-interactive approval and sandbox behavior. The Bundle supplies a compatible native Codex payload and adds its delegation tool as a global tool. The default `stdio` transport spawns a fresh `codex app-server --stdio` per run; the optional `socket` transport connects the local Codex app-server daemon and materializes the thread on disk so the Codex UI can list and resume it.
 
 ## Table of Contents
 
@@ -43,7 +43,10 @@ The layer inserts Host rows only, so any profile can select it, including the sh
 | `model` | native Codex settings | Optional non-empty model name fixed for every thread from this provider instance; omission sends no app-server override |
 | `env` | `{}` | Explicit child environment layered over the credential-scrubbed parent environment |
 | `permissionMode` | `never` | Native non-interactive approval and sandbox mode fixed for every thread from this provider instance |
-| `disposeGraceMs` | `3000` | Grace between the shared managed-range owner's termination tiers |
+| `disposeGraceMs` | `3000` | Grace between the shared managed-range owner's termination tiers (`stdio` transport only) |
+| `transport` | `stdio` | `stdio` spawns `codex app-server --stdio` per run; `socket` connects the local app-server daemon control socket and persists the thread |
+| `socketPath` | daemon control socket | Absolute socket path for `transport: socket`; defaults to `$CODEX_HOME` or `~/.codex` under `app-server-control/app-server-control.sock` |
+| `ensureDaemon` | `false` | Spawn the managed daemon first when the socket transport is selected and the socket is not yet reachable |
 
 | `permissionMode` value | `thread/start` fields | Native behavior |
 |---|---|---|
@@ -52,6 +55,13 @@ The layer inserts Host rows only, so any profile can select it, including the sh
 | `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`, `sandbox: danger-full-access` | Skip approval and sandbox enforcement; this value must be selected explicitly |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-codex) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged on each ephemeral `thread/start`; omission leaves native model selection in force. The provider does not discover models, rewrite aliases, select `modelProvider` or `serviceTier`, or set a fallback. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there.
+
+<a id="daemon-transport"></a>
+### Daemon transport
+
+Set `transport: socket` to drive Codex through the local `codex app-server daemon` instead of spawning `codex app-server --stdio`. The provider connects the daemon's control socket (default `$CODEX_HOME`/`~/.codex` under `app-server-control/app-server-control.sock`) and creates the thread with `ephemeral: false`, so the session is materialized on the daemon and listed by `codex agents` / the Codex TUI and Desktop app. Each run still owns one independent socket connection and one turn; closing the connection leaves the daemon and the persisted session alive.
+
+When the socket is unreachable the run fails loudly at `initialize` with the safe `unknown` category; the underlying connect reason stays in the Host log. `ensureDaemon: true` first spawns `codex app-server daemon start` before connecting. `env` and `disposeGraceMs` apply only to the `stdio` transport (and to the optional daemon-start child), not to the socket connection itself.
 
 <a id="exposing-the-tool"></a>
 ### Exposing the tool
@@ -164,7 +174,7 @@ Start acknowledgements and completion notices append after the reusable parent r
 
 These limits define when this provider is a poor fit or needs special operational care. They are current package constraints, not a general Codex comparison or a task backlog.
 
-- **One fresh process, thread, and turn per run** — there is no continuation, resume, pooling, progress stream, or product-session persistence.
+- **One fresh thread and turn per run** — the `stdio` transport spawns a fresh process per run with no continuation, resume, pooling, progress stream, or product-session persistence; the `socket` transport persists the thread on the daemon (visible and resumable in the Codex UI) but the harness still performs no continuation or resume.
 - **Static instance selection** — Profile rows fix provider names, optional models, and tool bindings; calls cannot choose or change either a provider or model dynamically, and every exposed tool needs a unique `toolName`.
 - **Authentication and account state remain native** — the Bundle supplies the CLI but does not create an account, log in, trust a project, or rewrite Codex settings; configuration and authentication failures surface with their lifecycle stage and the safe `unknown` fallback rather than a separate public taxonomy.
 - **The native platform payload is required at delegation time** — installs that omit optional dependencies, unsupported platforms, and missing or damaged payloads fail at the first run; there is no host-CLI fallback.

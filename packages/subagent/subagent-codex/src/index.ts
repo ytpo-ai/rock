@@ -1,7 +1,11 @@
 /**
- * Profile-named Codex one-shot subagent provider. Every accepted run starts a
- * fresh official package-local Codex wrapper with `app-server --stdio` in the
- * delegating Session's workspace and publishes only after an ephemeral thread exists.
+ * Profile-named Codex one-shot subagent provider. Each accepted run starts a
+ * fresh official package-local Codex wrapper in the delegating Session's
+ * workspace and publishes only after a thread exists. The `stdio` transport
+ * (default) spawns `codex app-server --stdio` with an ephemeral thread; the
+ * `socket` transport connects the local `codex app-server daemon` control
+ * socket and materializes the thread on disk so the Codex UI can list and
+ * resume it.
  *
  * @module @deepseek-ai/dsh-subagent-codex
  */
@@ -16,7 +20,13 @@ import {
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
+  type SubagentStopReason,
 } from '@deepseek-ai/dsh-subagent'
+import {
+  defaultDaemonSocketPath,
+  startCodexDaemonRun,
+  type CodexDaemonRunSpec,
+} from './daemon.ts'
 import {
   CODEX_PERMISSION_MODES,
   DEFAULT_CODEX_PERMISSION_MODE,
@@ -31,6 +41,14 @@ export const name = 'subagent-codex'
 export const inject = ['subagents', 'subprocess']
 
 const DEFAULT_PROVIDER_NAME = 'codex'
+
+/** How the provider reaches the Codex app-server. */
+export type CodexTransport = 'stdio' | 'socket'
+
+const DEFAULT_TRANSPORT: CodexTransport = 'stdio'
+
+/** Accepted transport values. */
+export const CODEX_TRANSPORTS = ['stdio', 'socket'] as const satisfies readonly CodexTransport[]
 
 /** Deployment-owned model, permission, environment, and process-release settings. */
 export interface Config {
@@ -47,6 +65,16 @@ export interface Config {
   permissionMode?: CodexPermissionMode
   /** Grace in milliseconds between app-server managed-range termination tiers. */
   disposeGraceMs?: number
+  /**
+   * Transport used to reach the app-server: `stdio` spawns `codex app-server
+   * --stdio` per run (default); `socket` connects the local app-server daemon
+   * control socket and persists the thread.
+   */
+  transport?: CodexTransport
+  /** Absolute daemon control socket path (default `$CODEX_HOME` or `~/.codex`). */
+  socketPath?: string
+  /** Spawn the managed daemon first when the socket transport is selected. */
+  ensureDaemon?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -56,9 +84,12 @@ export const Config: z<Config> = z.object({
   permissionMode: z.union([...CODEX_PERMISSION_MODES])
     .default(DEFAULT_CODEX_PERMISSION_MODE),
   disposeGraceMs: z.number().default(DEFAULT_DISPOSE_GRACE_MS),
+  transport: z.union([...CODEX_TRANSPORTS]).default(DEFAULT_TRANSPORT),
+  socketPath: z.string().min(1),
+  ensureDaemon: z.boolean().default(false),
 })
 
-type ResolvedConfig = Omit<Required<Config>, 'model'> & Pick<Config, 'model'>
+type ResolvedConfig = Omit<Required<Config>, 'model' | 'socketPath'> & Pick<Config, 'model' | 'socketPath'>
 
 class CodexProvider implements SubagentProvider {
   readonly capabilities: SubagentCapabilities = NO_START_CAPABILITIES
@@ -82,18 +113,39 @@ class CodexProvider implements SubagentProvider {
       }
       throw codexStartupFailure(error)
     }
+    const onError = (error: Error, stopReason: SubagentStopReason): void => {
+      this.ctx.logger.warn(
+        `subagent-codex "${this.name}": child run failed (${stopReason}): ${error.message}`,
+      )
+    }
+    if (this.config.transport === 'socket') {
+      const socketPath = this.config.socketPath ?? defaultDaemonSocketPath()
+      if (socketPath === undefined) {
+        throw codexStartupFailure(new Error(
+          'subagent-codex: socket transport requires socketPath when neither CODEX_HOME nor HOME is set',
+        ))
+      }
+      const spec: CodexDaemonRunSpec = {
+        cwd,
+        ...this.config.model === undefined ? {} : { model: this.config.model },
+        permissionMode: this.config.permissionMode,
+        socketPath,
+        ensureDaemon: this.config.ensureDaemon,
+        env: this.config.env,
+        spawn: spawnSpec => this.ctx.subprocess.spawn(spawnSpec),
+        onError,
+      }
+      return startCodexDaemonRun(request, spec)
+    }
     const spec: CodexRunSpec = {
       cwd,
       ...this.config.model === undefined ? {} : { model: this.config.model },
+      ephemeral: true,
       permissionMode: this.config.permissionMode,
       env: this.config.env,
       disposeGraceMs: this.config.disposeGraceMs,
       spawn: spawnSpec => this.ctx.subprocess.spawn(spawnSpec),
-      onError: (error, stopReason) => {
-        this.ctx.logger.warn(
-          `subagent-codex "${this.name}": child run failed (${stopReason}): ${error.message}`,
-        )
-      },
+      onError,
     }
     return startCodexRun(request, spec)
   }
@@ -102,7 +154,7 @@ class CodexProvider implements SubagentProvider {
 /**
  * Register one Profile-named Codex provider.
  * @param ctx - context carrying shared subagent and subprocess services.
- * @param config - registry name, optional model, permission mode, child environment, and disposal grace.
+ * @param config - registry name, optional model, permission mode, transport, environment, and disposal grace.
  */
 export function apply(ctx: Context, config: Config): void {
   const resolved: ResolvedConfig = {
@@ -111,6 +163,9 @@ export function apply(ctx: Context, config: Config): void {
     env: config.env as Record<string, string>,
     permissionMode: config.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE,
     disposeGraceMs: config.disposeGraceMs as number,
+    transport: config.transport ?? DEFAULT_TRANSPORT,
+    ensureDaemon: config.ensureDaemon ?? false,
+    ...config.socketPath === undefined ? {} : { socketPath: config.socketPath },
   }
   assertPositiveFinite(
     'subagent-codex',

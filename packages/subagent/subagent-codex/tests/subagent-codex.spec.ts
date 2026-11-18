@@ -251,6 +251,7 @@ function runSpec(
   return {
     cwd: process.cwd(),
     permissionMode: DEFAULT_CODEX_PERMISSION_MODE,
+    ephemeral: true,
     env: {},
     disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
     spawn: () => child.handle,
@@ -273,7 +274,7 @@ async function initializeWire(): Promise<{
     jsonrpc: '2.0',
     method: 'initialized',
   })
-  const starting = wire.startThread(process.cwd(), new AbortController().signal)
+  const starting = wire.startThread(process.cwd(), true, new AbortController().signal)
   const threadStart = await child.peer.nextMethod('thread/start')
   child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
   await starting
@@ -655,7 +656,7 @@ describe('task admission and package contracts', () => {
     child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await initializing
     await child.peer.nextMethod('initialized')
-    const starting = wire.startThread('/workspace', new AbortController().signal)
+    const starting = wire.startThread('/workspace', true, new AbortController().signal)
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
       cwd: '/workspace',
@@ -682,7 +683,7 @@ describe('task admission and package contracts', () => {
     child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await initializing
     await child.peer.nextMethod('initialized')
-    const starting = wire.startThread('/workspace', new AbortController().signal)
+    const starting = wire.startThread('/workspace', true, new AbortController().signal)
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
       cwd: '/workspace',
@@ -751,7 +752,7 @@ describe('CodexAppServerWire', () => {
     await initializing
     await child.peer.nextMethod('initialized')
 
-    const starting = wire.startThread('/workspace', new AbortController().signal)
+    const starting = wire.startThread('/workspace', true, new AbortController().signal)
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
       cwd: '/workspace',
@@ -980,10 +981,10 @@ describe('CodexAppServerWire', () => {
       const child = fakeChild()
       const wire = defaultWire(child)
       wire.start()
-      const pending = wire.startThread('/workspace', new AbortController().signal)
+      const pending = wire.startThread('/workspace', true, new AbortController().signal)
       const frame = await child.peer.nextMethod('thread/start')
       child.peer.respond(frame, { thread: { id: 'thread-1', ephemeral: false } })
-      await expect(pending).rejects.toThrow('did not create an ephemeral thread')
+      await expect(pending).rejects.toThrow('did not create a thread with the requested persistence')
       wire.close()
     }
     {
@@ -1914,6 +1915,7 @@ describe('run lifecycle and quiescence', () => {
       {
         cwd: process.cwd(),
         permissionMode: DEFAULT_CODEX_PERMISSION_MODE,
+        ephemeral: true,
         env: {},
         disposeGraceMs: 10,
         spawn,
@@ -1924,6 +1926,7 @@ describe('run lifecycle and quiescence', () => {
     const spawnFailure = startCodexRun(request(), {
       cwd: process.cwd(),
       permissionMode: DEFAULT_CODEX_PERMISSION_MODE,
+      ephemeral: true,
       env: {},
       disposeGraceMs: 10,
       spawn: () => { throw new Error('SECRET_TOKEN spawn failure') },

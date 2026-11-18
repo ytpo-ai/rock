@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-当委派工作需要在父会话工作区中的真实无人值守 Codex 会话内运行时，把 `@deepseek-ai/dsh-subagent-codex` 安装进 Profile。每次委派都会为一个自包含文本任务使用全新且隔离的 Codex 线程，并且只返回所选答案或安全失败诊断。原生 Codex 配置和身份验证继续作为权威来源，而 `permissionMode` 选择非交互式审批和沙箱行为。Bundle 提供兼容的原生 Codex 载荷，并以全局工具形式添加委派工具。
+当委派工作需要在父会话工作区中的真实无人值守 Codex 会话内运行时，把 `@deepseek-ai/dsh-subagent-codex` 安装进 Profile。每次委派都会为一个自包含文本任务使用全新且隔离的 Codex 线程，并且只返回所选答案或安全失败诊断。原生 Codex 配置和身份验证继续作为权威来源，而 `permissionMode` 选择非交互式审批和沙箱行为。Bundle 提供兼容的原生 Codex 载荷，并以全局工具形式添加委派工具。默认的 `stdio` 传输每次运行都会 spawn 一个新的 `codex app-server --stdio`；可选的 `socket` 传输则连接本地 Codex app-server daemon 并把线程落盘，使 Codex UI 可以列出并恢复会话。
 
 ## 目录
 
@@ -43,7 +43,10 @@ kind: "package-bundle"
 | `model` | Codex 原生设置 | 为本提供方实例的每个线程固定的可选非空模型名称；省略时不发送 app-server 覆盖 |
 | `env` | `{}` | 叠加在已清理凭据的父环境之上的显式子进程环境 |
 | `permissionMode` | `never` | 为本提供方实例的每个线程固定的原生非交互审批与沙箱模式 |
-| `disposeGraceMs` | `3000` | 共享 managed-range owner 各终止层级之间的宽限 |
+| `disposeGraceMs` | `3000` | 共享 managed-range owner 各终止层级之间的宽限（仅 `stdio` 传输） |
+| `transport` | `stdio` | `stdio` 每次运行 spawn `codex app-server --stdio`；`socket` 连接本地 app-server daemon 控制 socket 并持久化线程 |
+| `socketPath` | daemon 控制 socket | `transport: socket` 的绝对 socket 路径；默认取 `$CODEX_HOME` 或 `~/.codex` 下的 `app-server-control/app-server-control.sock` |
+| `ensureDaemon` | `false` | 选择 socket 传输且 socket 尚不可达时，先 spawn 受管 daemon |
 
 | `permissionMode` 值 | `thread/start` 字段 | 原生行为 |
 |---|---|---|
@@ -52,6 +55,13 @@ kind: "package-bundle"
 | `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`、`sandbox: danger-full-access` | 跳过审批与 sandbox；必须显式选择该值 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-codex)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给每个临时 `thread/start`；省略时保留原生模型选择。提供方不会发现模型、改写别名、选择 `modelProvider` 或 `serviceTier`，也不会设置 fallback。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。
+
+<a id="daemon-transport"></a>
+### Daemon 传输
+
+设置 `transport: socket` 时，通过本地 `codex app-server daemon` 驱动 Codex，而不是 spawn `codex app-server --stdio`。提供方连接 daemon 的控制 socket（默认 `$CODEX_HOME`/`~/.codex` 下的 `app-server-control/app-server-control.sock`），并以 `ephemeral: false` 创建线程，使会话落到 daemon 上、被 `codex agents` / Codex TUI 与 Desktop 列出。每次运行仍独占一个 socket 连接和一个轮次；关闭连接不会影响 daemon 或已持久化的会话。
+
+socket 不可达时，运行会在 `initialize` 阶段以安全的 `unknown` 类别响亮失败；具体连接原因保留在 Host 日志中。`ensureDaemon: true` 会先 spawn `codex app-server daemon start` 再连接。`env` 与 `disposeGraceMs` 仅作用于 `stdio` 传输（以及可选的 daemon 启动子进程），不作用于 socket 连接本身。
 
 <a id="exposing-the-tool"></a>
 ### 暴露工具
@@ -164,7 +174,7 @@ Codex 子级会在一个全新的临时线程中，以单个轮次接收这些�
 
 这些限制说明本提供方何时不合适，或何时需要特别的运维注意。它们是当前包约束，不是通用 Codex 对比或任务积压。
 
-- **每次运行均新建一个进程、一个线程和一个轮次**——不支持续接、恢复、池化、进度流或产品会话持久化。
+- **每次运行均新建一个线程和一个轮次**——`stdio` 传输每次运行 spawn 一个新进程，不支持续接、恢复、池化、进度流或产品会话持久化；`socket` 传输会把线程持久化到 daemon（Codex UI 可见且可恢复），但 harness 侧仍不执行续接或恢复。
 - **静态选择实例**——Profile 配置项固定提供方名称、可选模型与工具绑定；调用无法动态选择或修改提供方与模型，而且每个公开工具都需要唯一的 `toolName`。
 - **身份验证与账户状态仍由原生机制管理**——Bundle 会提供 CLI，但不会创建账户、登录、信任项目或改写 Codex 设置；配置与身份验证失败会公开其生命周期阶段与安全的 `unknown` 回退，而不会增加单独的公开分类体系。
 - **委派时必须存在原生平台载荷**——省略 optional dependencies 的安装、不受支持的平台以及缺失或损坏的载荷都会在第一次运行时失败；不会回退到宿主 CLI。

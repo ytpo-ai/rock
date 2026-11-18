@@ -282,21 +282,23 @@ export class CodexAppServerWire {
   }
 
   /**
-   * Create the run's private ephemeral thread and retain its identity.
+   * Create the run's private thread and retain its identity.
    * @param cwd - selected child working directory.
+   * @param ephemeral - whether the thread must stay transient (`true`) or be
+   * materialized on disk so the Codex UI can list and resume it (`false`).
    * @param signal - unpublished-start cancellation.
    */
-  async startThread(cwd: string, signal: AbortSignal): Promise<void> {
+  async startThread(cwd: string, ephemeral: boolean, signal: AbortSignal): Promise<void> {
     const response = object(await this.guarded(this.transport.request('thread/start', {
       cwd,
-      ephemeral: true,
+      ephemeral,
       ...this.model === undefined ? {} : { model: this.model },
       ...THREAD_PERMISSION_PARAMS[this.permissionMode],
     }, signal), signal), 'thread/start response')
     const thread = object(response.thread, 'thread/start thread')
     const id = string(thread.id, 'thread/start thread id')
-    if (thread.ephemeral !== true) {
-      throw new Error('subagent-codex: app-server did not create an ephemeral thread')
+    if (thread.ephemeral !== ephemeral) {
+      throw new Error('subagent-codex: app-server did not create a thread with the requested persistence')
     }
     this.threadId = id
   }

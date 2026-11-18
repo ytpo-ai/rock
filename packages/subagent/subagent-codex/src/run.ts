@@ -68,23 +68,23 @@ export const CODEX_PERMISSION_MODES = [
 /** Safe default for unattended Codex runs. */
 export const DEFAULT_CODEX_PERMISSION_MODE: CodexPermissionMode = 'never'
 
-type CodexFailureStage =
+export type CodexFailureStage =
   | 'initialize'
   | 'thread-start'
   | CodexWireFailureFacts['stage']
   | 'process'
   | 'teardown'
 
-type CodexFailureCategory = CodexWireFailureFacts['category'] | 'process'
+export type CodexFailureCategory = CodexWireFailureFacts['category'] | 'process'
 
-interface CodexFailureFacts {
+export interface CodexFailureFacts {
   readonly stage: CodexFailureStage
   readonly category: CodexFailureCategory
   readonly httpStatus?: number | undefined
   readonly outcome?: SubprocessOutcome | undefined
 }
 
-function failureDiagnostic(facts: CodexFailureFacts): string {
+export function failureDiagnostic(facts: CodexFailureFacts): string {
   const fields = [
     'product: Codex',
     `stage: ${facts.stage}`,
@@ -103,7 +103,7 @@ function failureDiagnostic(facts: CodexFailureFacts): string {
   return `Product subagent failure (${fields.join('; ')})`
 }
 
-class CodexRunFailure extends Error {
+export class CodexRunFailure extends Error {
   constructor(
     readonly facts: CodexFailureFacts,
     cause?: unknown,
@@ -136,12 +136,22 @@ export function codexAppServerArgv(): string[] {
   return [process.execPath, CODEX_PACKAGE_BIN, 'app-server', '--stdio']
 }
 
+/**
+ * Fixed package-local daemon-start command, independent of the host `PATH`.
+ * @returns Node, the official wrapper, and the daemon-start arguments.
+ */
+export function codexDaemonStartArgv(): string[] {
+  return [process.execPath, CODEX_PACKAGE_BIN, 'app-server', 'daemon', 'start']
+}
+
 /** Fully resolved inputs for one Codex app-server run. */
 export interface CodexRunSpec {
   /** Selected child working directory, also supplied to `thread/start`. */
   readonly cwd: string
   /** Profile-selected native model; omitted to preserve Codex settings. */
   readonly model?: string
+  /** Whether the thread stays transient (`true`) or materializes on disk (`false`). */
+  readonly ephemeral: boolean
   /** Profile-selected native non-interactive permission mode. */
   readonly permissionMode: CodexPermissionMode
   /** Explicit deployment/test environment layered after the shared scrub. */
@@ -317,7 +327,7 @@ export async function startCodexRun(
     wire.start()
     await Promise.race([wire.initialize(request.signal), processFailure])
     startupStage = 'thread-start'
-    await Promise.race([wire.startThread(spec.cwd, request.signal), processFailure])
+    await Promise.race([wire.startThread(spec.cwd, spec.ephemeral, request.signal), processFailure])
   } catch (error: unknown) {
     request.signal.removeEventListener('abort', onAbort)
     const cancelledBeforeCleanup = runAbort.signal.aborted
