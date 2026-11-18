@@ -48,3 +48,21 @@ export function summaryFrom(raw: unknown): TaskSummary | null {
     ...(typeof t.parentId === 'string' ? { parentId: t.parentId } : {}),
   }
 }
+
+/** Project a parsed gateway body (`{ data: { projects: [...] } }`) into project rows. */
+export function projectsFrom(body: unknown): Array<{ id: string; name: string; slug?: string }> {
+  if (typeof body !== 'object' || body === null) return []
+  const envelope = (body as { data?: { projects?: unknown } }).data
+  const projects = envelope?.projects
+  if (!Array.isArray(projects)) return []
+  const rows: Array<{ id: string; name: string; slug?: string }> = []
+  for (const raw of projects) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const p = raw as Record<string, unknown>
+    const id = typeof p.id === 'string' ? p.id : ''
+    const name = typeof p.name === 'string' ? p.name : ''
+    if (id.length === 0 || name.length === 0) continue
+    rows.push({ id, name, ...(typeof p.slug === 'string' ? { slug: p.slug } : {}) })
+  }
+  return rows
+}

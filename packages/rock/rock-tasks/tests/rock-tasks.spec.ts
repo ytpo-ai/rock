@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { taskFrom, tasksFrom } from '../src/tasks.ts'
+import { projectsFrom, taskFrom, tasksFrom } from '../src/tasks.ts'
 import { presetForToolType } from '../src/tool-preset.ts'
 
 describe('tasksFrom', () => {
@@ -39,6 +39,34 @@ describe('taskFrom', () => {
   it('returns null for a malformed body', () => {
     expect(taskFrom(null)).toBeNull()
     expect(taskFrom({ data: { status: 'pending' } })).toBeNull()
+  })
+})
+
+describe('projectsFrom', () => {
+  it('projects the gateway envelope body and drops malformed rows', () => {
+    const body = {
+      code: 0,
+      message: 'success',
+      data: {
+        projects: [
+          { id: 'p1', name: 'Project A', slug: 'project-a' },
+          { id: 'p2', name: 'Project B' },
+          { id: '', name: 'nope' },
+          null,
+          'x',
+        ],
+      },
+    }
+    expect(projectsFrom(body)).toEqual([
+      { id: 'p1', name: 'Project A', slug: 'project-a' },
+      { id: 'p2', name: 'Project B' },
+    ])
+  })
+
+  it('returns an empty list for a non-object or non-array body', () => {
+    expect(projectsFrom(null)).toEqual([])
+    expect(projectsFrom({ data: { projects: 'nope' } })).toEqual([])
+    expect(projectsFrom({ projects: [] })).toEqual([])
   })
 })
 

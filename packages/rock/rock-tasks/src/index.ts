@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { taskFrom, tasksFrom } from './tasks.ts'
+import { projectsFrom, taskFrom, tasksFrom } from './tasks.ts'
 import { presetForToolType } from './tool-preset.ts'
 import { TaskArchiveStore } from './work-records.ts'
 import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
@@ -236,6 +236,11 @@ export default class RockTasksController extends TypertRemoteService {
       rootPath(): string | null
       resolveProjectDir(projectId: string): string
     } | undefined
+    // Refresh the project slug map so a project task resolves its directory name
+    // (slug) rather than falling back to the raw projectId.
+    if (task.projectId) {
+      await this.syncProjects()
+    }
     // Project tasks run inside their project directory; global tasks run at the workspace root.
     const cwd = task.projectId
       ? workspace?.resolveProjectDir(task.projectId) ?? null
@@ -349,8 +354,7 @@ export default class RockTasksController extends TypertRemoteService {
         this.ctx.logger.warn(`rock-tasks: projects sync failed HTTP ${response.status} for ${url}`)
         return
       }
-      const body = await response.json() as { projects?: Array<{ id: string; name: string; slug?: string }> }
-      const projects = Array.isArray(body?.projects) ? body.projects : []
+      const projects = projectsFrom(await response.json())
       const workspace = this.ctx.get('rockWorkspace') as {
         syncProjects(projects: Array<{ id: string; name: string; slug?: string }>): void
       } | undefined
