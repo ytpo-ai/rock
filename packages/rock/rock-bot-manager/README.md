@@ -48,6 +48,7 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 - `listBotsUnified(): BotRow[]` — 本地/认领/专属助理三源合并的卡片行（含 `llm` 模型、`projectId`/`projectName` 所属项目、`canRebind`/`canDelete` 权限）
 - `createBot` / `updateBot` / `removeBot` / `rebindBot` — bot CRUD 与工具绑定
 - `toolTypes()` / `installedTools()` — 可选工具类型与已安装状态
+- `providers()` — 已注册的 LLM provider 路由（供新增/编辑表单的 provider 下拉）
 - `testBot(id): BotTestResult` — 用固定 prompt「查询当前北京天气」对绑定工具做一次非交互 smoke test，返回 `{ ok, toolType, answer?, error? }`
 
 权限矩阵：本地 bot 全权（编辑/删除/重绑）；认领 bot 只读但可重绑（`canRebind=true`）；专属助理只读且不可重绑（`canRebind=false`）。

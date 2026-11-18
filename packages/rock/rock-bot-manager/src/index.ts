@@ -163,6 +163,12 @@ export default class RockBotController extends TypertRemoteService {
     return [...(this.config.toolTypes ?? DEFAULT_TOOL_TYPES)]
   }
 
+  /** Registered LLM provider routes for the add/edit form's provider selector. */
+  @Remote
+  providers(): Array<{ id: string; name: string }> {
+    return this.optionalLlm()?.listProviders() ?? []
+  }
+
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */
   @Remote
   async listBotsUnified(): Promise<BotRow[]> {
@@ -286,6 +292,11 @@ export default class RockBotController extends TypertRemoteService {
   /** The optional workspace service, structurally typed to avoid a package cycle. */
   private optionalWorkspace(): { listProjects(): Array<{ id: string; name: string }> } | undefined {
     return this.ctx.get('rockWorkspace') as { listProjects(): Array<{ id: string; name: string }> } | undefined
+  }
+
+  /** The optional LLM runtime, structurally typed to avoid a package cycle. */
+  private optionalLlm(): { listProviders(): Array<{ id: string; name: string }> } | undefined {
+    return this.ctx.get('llm') as { listProviders(): Array<{ id: string; name: string }> } | undefined
   }
 }
 

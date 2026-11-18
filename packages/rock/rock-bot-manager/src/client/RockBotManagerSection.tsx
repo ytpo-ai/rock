@@ -32,6 +32,7 @@ export interface RockBotManagerSectionInjected {
     rebindBot(id: string, toolType: string): Promise<RemoteResult<void>>
     toolTypes(): Promise<RemoteResult<string[]>>
     installedTools(): Promise<RemoteResult<string[]>>
+    providers(): Promise<RemoteResult<Array<{ id: string; name: string }>>>
     testBot(id: string): Promise<RemoteResult<BotTestResult>>
   }
 }
@@ -53,6 +54,7 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
   const [bots, setBots] = useState<BotRow[]>([])
   const [toolTypes, setToolTypes] = useState<string[]>([])
   const [installed, setInstalled] = useState<ReadonlySet<string>>(new Set())
+  const [providers, setProviders] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [modal, setModal] = useState<{ mode: 'add' } | { mode: 'edit'; bot: BotRow } | null>(null)
@@ -61,6 +63,7 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
   const [deleteTarget, setDeleteTarget] = useState<BotRow | null>(null)
   const [bindingMenu, setBindingMenu] = useState<string | null>(null)
   const [toolMenu, setToolMenu] = useState(false)
+  const [providerMenu, setProviderMenu] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, BotTestResult>>({})
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
@@ -77,6 +80,7 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
     void remote.toolTypes().then((result) => { if (!cancelled && result.ok) setToolTypes(result.value) })
     void remote.installedTools().then((result) => { if (!cancelled && result.ok) setInstalled(new Set(result.value)) })
+    void remote.providers().then((result) => { if (!cancelled && result.ok) setProviders(result.value) })
     return () => { cancelled = true }
   }, [remote])
 
@@ -242,7 +246,20 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
       </div>
       <div className={css.formField}>
         <span className={css.formLabel}>{t('form.provider')}</span>
-        <Input value={form.llm.provider} onChange={(event) => { setForm({ ...form, llm: { ...form.llm, provider: event.target.value } }) }} aria-label={t('form.provider')} />
+        <div className={css.formTool}>
+          <Menu
+            open={providerMenu}
+            anchor={(
+              <Button size="sm" variant="outline" onClick={() => { setProviderMenu(!providerMenu) }}>
+                {form.llm.provider || t('form.providerPlaceholder')}
+              </Button>
+            )}
+            items={providers.map(provider => ({ id: provider.id, label: provider.name || provider.id }))}
+            selectedId={form.llm.provider}
+            onSelect={(id) => { setForm({ ...form, llm: { ...form.llm, provider: id } }); setProviderMenu(false) }}
+            onClose={() => { setProviderMenu(false) }}
+          />
+        </div>
       </div>
       <div className={css.formField}>
         <span className={css.formLabel}>{t('form.baseUrl')}</span>
