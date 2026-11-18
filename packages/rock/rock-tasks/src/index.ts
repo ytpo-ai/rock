@@ -23,6 +23,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { taskFrom, tasksFrom } from './tasks.ts'
+import { presetForToolType } from './tool-preset.ts'
 import { TaskArchiveStore } from './work-records.ts'
 import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
 
@@ -193,9 +194,15 @@ export default class RockTasksController extends TypertRemoteService {
     }
   }
 
+  /** Resolve the bot's bound toolType from the identity service (default codex). */
+  private resolveToolType(botId: string): string {
+    const identity = this.ctx.get('seagullIdentity') as { toolBindingOf(id: string): string } | undefined
+    return identity?.toolBindingOf(botId) ?? 'codex'
+  }
+
   /** Launch the bot's thin-relay session and submit the task as its first message. */
   private async launchSession(botId: string, task: TaskSummary): Promise<void> {
-    const presetId = 'rock'
+    const presetId = presetForToolType(this.resolveToolType(botId))
 
     // Services the thin-relay session depends on; read through ctx.get so the
     // lookup is not topology-sensitive (the property proxy is reserved for

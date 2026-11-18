@@ -2852,6 +2852,9 @@ importers:
       '@deepseek-ai/dsh-subagent-codex':
         specifier: workspace:*
         version: link:../../subagent/subagent-codex
+      '@deepseek-ai/dsh-subagent-dsh-sdk':
+        specifier: workspace:*
+        version: link:../../subagent/subagent-dsh-sdk
       '@deepseek-ai/dsh-tool-ask-user':
         specifier: workspace:*
         version: link:../../interaction/tool-ask-user
@@ -2873,6 +2876,9 @@ importers:
       '@rock/rock-console':
         specifier: workspace:*
         version: link:../../rock/rock-console
+      '@rock/rock-heartbeat':
+        specifier: workspace:*
+        version: link:../../rock/rock-heartbeat
       '@rock/rock-llm-relay':
         specifier: workspace:*
         version: link:../../rock/rock-llm-relay
@@ -2894,6 +2900,10 @@ importers:
       '@rock/seagull-identity':
         specifier: workspace:*
         version: link:../../rock/seagull-identity
+    devDependencies:
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:~
+        version: link:../../../vendor/include
 
   packages/bundle/sdk-app:
     dependencies:
@@ -15411,6 +15421,16 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+
+  packages/rock/rock-heartbeat:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
 
   packages/rock/rock-llm-relay:
     dependencies:

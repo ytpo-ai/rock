@@ -95,19 +95,25 @@
     showNewSession: false
 
 - insert:
-    # ── codex subagent provider + global delegation tool ──
-    # Each delegation spawns one unattended Codex thread in the parent workspace.
+    # ── codex + DSH subagent providers ──
+    # Each delegation spawns one unattended backend in the parent workspace. The
+    # delegation tool itself lives in each per-tool thin-relay preset (isolated),
+    # so a bot only sees its bound backend.
     - id: subagent-codex
       name: '@deepseek-ai/dsh-subagent-codex'
       config:
         providerName: codex
         permissionMode: approve-for-me
-    - id: tool-subagent-codex
-      name: '@deepseek-ai/dsh-tool-subagent'
+    - id: subagent-dsh-sdk
+      name: '@deepseek-ai/dsh-subagent-dsh-sdk'
       config:
-        provider: codex
-        toolName: subagent_codex
-        maxDepth: provider-managed
+        providerName: dsh
+        dshHome: !!js "process.env.ROCK_DSH_HOME || (process.env.HOME ? process.env.HOME + '/.rock-dsh-home' : '')"
+        profile: sdk
+        provider: !!js "process.env.ROCK_DSH_PROVIDER || 'deepseek-official'"
+        model: !!js "process.env.ROCK_DSH_MODEL || 'deepseek-v4-flash'"
+        env:
+          DEEPSEEK_API_KEY: !!js "process.env.DEEPSEEK_API_KEY || ''"
 
     # ── plugin① cloud-llm-adapter: LLM route per provider ──
     # Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` URL; the
@@ -231,12 +237,15 @@
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
 
-# ── thin-relay preset: the Rock agent delegates, it does not think ──
+# ── thin-relay presets: the Rock agent delegates, it does not think ──
+# One preset per execution backend; the delegation tool is scoped to the preset
+# so a bot only sees its bound backend. `rock-tasks` selects the preset by the
+# bot's `toolType` binding.
 - insert:
-    - id: preset-rock
+    - id: preset-rock-codex
       name: '@deepseek-ai/dsh-agent-preset'
       config:
-        id: rock
+        id: rock-codex
         order: 1
         plugins:
           - id: persona
@@ -244,7 +253,34 @@
             config:
               prefix: |-
                 You are the thin-relay delegator for an agent bot seat. Do not solve the
-                task yourself. Delegate it to the subagent_codex tool and return its result
-                verbatim. Your only tool is subagent_codex.
+                task yourself. Delegate it to the subagent tool and return its result
+                verbatim. Your only tool is subagent.
               complete: true
               includeRuntimeContext: false
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: codex
+              toolName: subagent
+              maxDepth: provider-managed
+    - id: preset-rock-dsh
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rock-dsh
+        order: 2
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the thin-relay delegator for an agent bot seat. Do not solve the
+                task yourself. Delegate it to the subagent tool and return its result
+                verbatim. Your only tool is subagent.
+              complete: true
+              includeRuntimeContext: false
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: dsh
+              toolName: subagent
+              maxDepth: provider-managed

@@ -1,17 +1,20 @@
 # @deepseek-ai/dsh-rock-app
 
-Rock（ConnectorClient）的 profile bundle：在 dsh web 面之上挂载 codex 委派层、三个 Rock 插件，以及 thin-relay 的 `rock` agent preset。
+Rock（ConnectorClient）的 profile bundle：在 dsh web 面之上挂载 codex + DSH 委派层、三个 Rock 插件，以及 per-tool thin-relay 的 `rock-codex` / `rock-dsh` agent preset。
 
 ## 组成
 
 | 层 | 插件 | 作用 |
 |---|---|---|
 | Host | `@deepseek-ai/dsh-subagent-codex` | 注册 `codex` subagent provider |
-| Host | `@deepseek-ai/dsh-tool-subagent`（`tool-subagent-codex`） | 全局 `subagent_codex` 委派工具 |
+| Host | `@deepseek-ai/dsh-subagent-dsh-sdk` | 注册 `dsh` subagent provider（spawn 嵌套 DSH 子进程） |
 | Host | `@rock/cloud-llm-adapter` | LLM 路由到 Seagull 云端 LLM Proxy（需 `SEAGULL_AGENT_API_KEY`） |
 | Host | `@rock/seagull-identity` | 认领关系同步 + 工具绑定（需 `SEAGULL_EMPLOYEE_ID`） |
 | Host | `@rock/gateway-reporter` | session 事件出站上报 + 本地 JSONL 缓冲 |
-| Preset | `@deepseek-ai/dsh-persona`（thin relay） | 只委派、不思考 |
+| Preset | `rock-codex`（persona + tool-subagent codex） | 绑定 codex 的 bot 委派 |
+| Preset | `rock-dsh`（persona + tool-subagent dsh） | 绑定 dsh 的 bot 委派 |
+
+委派工具下沉到 per-tool preset（isolated scope），toolName 统一 `subagent`；`rock-tasks` 按 bot 的 `toolType` 绑定选择 `rock-codex` / `rock-dsh`（未知绑定回退 codex）。
 
 ## 启动
 
@@ -34,6 +37,10 @@ standalone 下可直接启动：`cloud-llm-adapter` 与 `seagull-identity` 在�
 | `ROCK_CLAIM_FILE` | seagull-identity 的本地认领 JSON 降级文件 | `.rock/claims.json` |
 | `ROCK_CONNECTOR_CLIENT_ID` | Rock 实例身份 | `rock-employee-a` |
 | `ROCK_BUFFER_PATH` | gateway-reporter 的离线缓冲 JSONL | `.rock/events.jsonl` |
+| `ROCK_DSH_HOME` | 嵌套 DSH 子进程的隔离 Harness home（绝对路径） | `$HOME/.rock-dsh-home` |
+| `ROCK_DSH_PROVIDER` | 嵌套 DSH 子进程的 LLM provider | `deepseek-official` |
+| `ROCK_DSH_MODEL` | 嵌套 DSH 子进程的 LLM model | `deepseek-v4-flash` |
+| `DEEPSEEK_API_KEY` | 嵌套 DSH 子进程的 LLM 凭据 | 未设则为空 |
 
 ## Known Limitations and Deferred Work
 
