@@ -115,6 +115,10 @@
         model: !!js "process.env.ROCK_DSH_MODEL || 'deepseek-v4-flash'"
         env:
           DEEPSEEK_API_KEY: !!js "process.env.DEEPSEEK_API_KEY || ''"
+    - id: subagent-opencode
+      name: '@deepseek-ai/dsh-subagent-opencode'
+      config:
+        providerName: opencode
 
     # ── plugin① cloud-llm-adapter: LLM route per provider ──
     # Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` URL; the
@@ -283,5 +287,26 @@
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: dsh
+              toolName: subagent
+              maxDepth: provider-managed
+    - id: preset-rock-opencode
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rock-opencode
+        order: 3
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the thin-relay delegator for an agent bot seat. Do not solve the
+                task yourself. Delegate it to the subagent tool and return its result
+                verbatim. Your only tool is subagent.
+              complete: true
+              includeRuntimeContext: false
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: opencode
               toolName: subagent
               maxDepth: provider-managed

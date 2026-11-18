@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OpenCode 子代理后端",
+    "description": "通过 HTTP REST 将任务委派给本机 OpenCode v2 服务器。"
+  }
+}

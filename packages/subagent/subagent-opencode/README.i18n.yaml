@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/subagent/subagent-opencode/README.md
+/:
+  en: c81bdf8136623f38
+  zh: 2b380e4bb4ae76be
+/deepseek-ai-dsh-subagent-opencode:
+  en: bc940f996383374e
+  zh: ea0b8a7783719efc
+/deepseek-ai-dsh-subagent-opencode/summary:
+  en: c18a4e6df6b89ab2
+  zh: 81eefaad0299e384
+/deepseek-ai-dsh-subagent-opencode/table-of-contents:
+  en: 3460b3e585e0c020
+  zh: 7ffafe068a00bc07
+/deepseek-ai-dsh-subagent-opencode/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-subagent-opencode/use-this-package/when-to-choose-it:
+  en: 78228666480d57a7
+  zh: 5b831c54ce98166b
+/deepseek-ai-dsh-subagent-opencode/use-this-package/configuration:
+  en: 2332c89020bf0772
+  zh: c60b4b43b3b27dd4
+/deepseek-ai-dsh-subagent-opencode/use-this-package/what-you-get:
+  en: 46392b11aca8706e
+  zh: 47f39b055d0b0272
+/deepseek-ai-dsh-subagent-opencode/use-this-package/failure-and-recovery:
+  en: 8318d4aa6d526b7d
+  zh: 779d19b88b2334d9
+/deepseek-ai-dsh-subagent-opencode/understand-the-implementation:
+  en: ee4615a04fa6503d
+  zh: ee2c5fb2204a43cf
+/deepseek-ai-dsh-subagent-opencode/understand-the-implementation/source-map:
+  en: bfb3a9b2e7a67972
+  zh: ee098fa8a5cd01ba
+/deepseek-ai-dsh-subagent-opencode/understand-the-implementation/run-flow:
+  en: 2d3b3dd71c85bf5f
+  zh: b26eddb091ad6f02
+/deepseek-ai-dsh-subagent-opencode/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-subagent-opencode/model-experience/child-agent-request:
+  en: 05e6180f1498fdf9
+  zh: 2b05d2b97bfa67da
+/deepseek-ai-dsh-subagent-opencode/model-experience/child-agent-request/what-the-model-sees:
+  en: 28c5025a71fe2e2f
+  zh: 1127392f5ec14de0
+/deepseek-ai-dsh-subagent-opencode/model-experience/child-agent-request/token-effect:
+  en: c0b78d334d5d0a9c
+  zh: 8fb38abc5e140e05
+/deepseek-ai-dsh-subagent-opencode/model-experience/child-agent-request/kv-cache-effect:
+  en: 13749d99f4f4ccff
+  zh: 1dfa674c58eae5f6
+/deepseek-ai-dsh-subagent-opencode/model-experience/parent-tool-result-indirectly:
+  en: 75d061c2151624a7
+  zh: 4277fa3ae7b0ca1f
+/deepseek-ai-dsh-subagent-opencode/model-experience/parent-tool-result-indirectly/what-the-model-sees:
+  en: bfffda4b3f081a54
+  zh: c3903a5df3221d3c
+/deepseek-ai-dsh-subagent-opencode/model-experience/parent-tool-result-indirectly/token-effect:
+  en: fa7ce264ed632c69
+  zh: 7de63d45f136b664
+/deepseek-ai-dsh-subagent-opencode/model-experience/parent-tool-result-indirectly/kv-cache-effect:
+  en: 19f4d26f590d11ac
+  zh: 25be596faedd78c4
+/deepseek-ai-dsh-subagent-opencode/known-limitations-and-deferred-work:
+  en: 5b63d89403558fe5
+  zh: c1bc7b519823810b

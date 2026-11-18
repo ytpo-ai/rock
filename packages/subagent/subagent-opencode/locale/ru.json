@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Суб-агентный бэкенд OpenCode",
+    "description": "Делегирует задачи локальному серверу OpenCode v2 по HTTP REST."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OpenCode サブエージェントバックエンド",
+    "description": "HTTP REST でタスクをローカルの OpenCode v2 サーバーに委任します。"
+  }
+}

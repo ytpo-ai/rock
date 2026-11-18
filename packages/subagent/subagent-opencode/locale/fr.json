@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Backend de sous-agent OpenCode",
+    "description": "Délègue les tâches à un serveur OpenCode v2 local via HTTP REST."
+  }
+}
