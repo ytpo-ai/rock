@@ -104,6 +104,7 @@
       config:
         providerName: codex
         permissionMode: approve-for-me
+        transport: socket
     - id: subagent-dsh-sdk
       name: '@deepseek-ai/dsh-subagent-dsh-sdk'
       config:

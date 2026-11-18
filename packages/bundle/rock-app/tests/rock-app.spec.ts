@@ -48,7 +48,9 @@ describe('dsh-rock-app bundle', () => {
   })
 
   it('registers codex and DSH subagent providers without a host-level delegation tool', () => {
-    expect(rows.find(row => row.id === 'subagent-codex')?.name).toBe('@deepseek-ai/dsh-subagent-codex')
+    const codex = rows.find(row => row.id === 'subagent-codex')
+    expect(codex?.name).toBe('@deepseek-ai/dsh-subagent-codex')
+    expect(codex?.config).toMatchObject({ providerName: 'codex', transport: 'socket' })
     const dsh = rows.find(row => row.id === 'subagent-dsh-sdk')
     expect(dsh?.name).toBe('@deepseek-ai/dsh-subagent-dsh-sdk')
     expect(dsh?.config).toMatchObject({ providerName: 'dsh' })
