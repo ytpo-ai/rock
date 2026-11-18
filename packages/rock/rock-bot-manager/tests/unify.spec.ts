@@ -18,6 +18,7 @@ describe('buildUnifiedBots', () => {
       assistants: [],
       activeIds: new Set(),
       bindingOf: () => 'codex',
+      projectNameOf: () => undefined,
     })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 'local-1', role: 'Frontend', source: 'local', canRebind: true, canDelete: true, active: false })
@@ -31,11 +32,37 @@ describe('buildUnifiedBots', () => {
       assistants: [],
       activeIds: new Set(['bot-C']),
       bindingOf: () => 'pi',
+      projectNameOf: () => undefined,
     })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 'bot-C', name: 'Bot C', role: 'QA', source: 'claimed', canRebind: true, canDelete: false, active: true })
     expect(rows[0]?.tool).toEqual({ toolType: 'pi' })
     expect(rows[0]?.llm).toBeUndefined()
+  })
+
+  it('projects a cloud bot model and project into the row', () => {
+    const rows = buildUnifiedBots({
+      localBots: [],
+      claimed: [{
+        agentBotId: 'bot-C',
+        name: 'Bot C',
+        model: { provider: 'deepseek', model: 'deepseek-chat', name: 'DeepSeek-V3' },
+        projectId: 'proj-a',
+        canRebind: true,
+      }],
+      assistants: [],
+      activeIds: new Set(),
+      bindingOf: () => 'codex',
+      projectNameOf: id => (id === 'proj-a' ? 'Project A' : undefined),
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      id: 'bot-C',
+      source: 'claimed',
+      llm: { provider: 'deepseek', model: 'DeepSeek-V3' },
+      projectId: 'proj-a',
+      projectName: 'Project A',
+    })
   })
 
   it('defaults a cloud bot name to its id and locks assistants by default', () => {
@@ -45,6 +72,7 @@ describe('buildUnifiedBots', () => {
       assistants: [{ agentBotId: 'assistant-1' }],
       activeIds: new Set(),
       bindingOf: () => 'dsh',
+      projectNameOf: () => undefined,
     })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 'assistant-1', name: 'assistant-1', source: 'assistant', canRebind: false, canDelete: false })

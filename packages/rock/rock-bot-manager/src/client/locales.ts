@@ -41,6 +41,16 @@ export const en = {
   'toast.rebound': 'Binding updated',
   'toast.deleted': 'Bot deleted',
   'toast.tested': 'Tool answered',
+  'toast.updated': 'Bot updated',
+  'form.editTitle': 'Edit bot',
+  'form.save': 'Save',
+  edit: 'Edit',
+  'search.placeholder': 'Search bots',
+  'filter.all': 'All',
+  'project.label': 'Project',
+  'project.global': 'Global',
+  'rebind.locked': 'Assistant cannot rebind',
+  'empty.filtered': 'No bots match the current filters.',
 } as const
 
 /** Locale keys. */
@@ -85,4 +95,14 @@ export const zh: Record<RockBotManagerKey, string> = {
   'toast.rebound': '已更新绑定',
   'toast.deleted': '已删除 bot',
   'toast.tested': '工具已响应',
+  'toast.updated': '已更新 bot',
+  'form.editTitle': '编辑 Bot',
+  'form.save': '保存',
+  edit: '编辑',
+  'search.placeholder': '搜索 bot',
+  'filter.all': '全部',
+  'project.label': '项目',
+  'project.global': '全局',
+  'rebind.locked': '专属助理不可重绑',
+  'empty.filtered': '当前筛选条件下暂无 bot',
 }

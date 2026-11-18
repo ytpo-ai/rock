@@ -50,7 +50,7 @@ describe('RockBotService', () => {
 
   it('omits an absent role instead of persisting an empty field', async () => {
     const service = new RockBotService({ store })
-    await service.create({ ...BOT, role: undefined })
+    await service.create({ id: BOT.id, name: BOT.name, llm: BOT.llm, tool: BOT.tool })
     expect(service.get('agent-bot-E')).not.toHaveProperty('role')
   })
 

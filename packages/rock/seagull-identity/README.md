@@ -33,6 +33,7 @@ Rock ConnectorClient 的身份插件：同步 Seagull 云端认领关系（`Seat
 ## 实现
 
 - 挂载后 `ctx.provide('seagullIdentity', service)`，暴露 `getClaims()` / `toolBindingOf()` / `renderAgents()` / `renderAgentLoopPatch()` / `setBotDefinitions()`。
+- `SeatClaim` / `AssistantRef` 现额外透传 `model`（provider/model/name）与 `projectId`，供 `rock-bot-manager` 卡片展示真实模型与所属项目（Seagull `seat-claim` 端点下发，兼容旧契约）。
 - `sync()` 先走网关，失败降级读 `claimFile`；两者都没有则空认领。
 - `renderAgents()` 输出「认领 bot（默认 provider/model）∪ 本地自定义 bot（各自 provider/model）」的并集，本地 bot 同 id 时覆盖认领条目。
 - `renderAgentLoopPatch()` 生成完整的 `@deepseek-ai/dsh-agent-loop` cordis patch 行（含 `agents`），供 launcher 在认领同步时写回 Rock profile 并 reload（配置生成式注入）。

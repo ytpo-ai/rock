@@ -5,7 +5,7 @@
  *
  * @module @rock/rock-bot-manager/unify
  */
-import type { BotDefinition, BotRow, BotSource } from './types.ts'
+import type { BotDefinition, BotModelInfo, BotRow, BotSource } from './types.ts'
 
 /** A cloud-assigned bot reference without a local `BotDefinition`. */
 export interface CloudBotRef {
@@ -17,6 +17,10 @@ export interface CloudBotRef {
   role?: string
   /** Whether the binding may be edited; false locks it (assistant pre-onboarding). */
   canRebind?: boolean
+  /** Upstream LLM route for display, projected from the Seagull agent model. */
+  model?: BotModelInfo
+  /** Owning project id; absent means a global (project-less) bot. */
+  projectId?: string
 }
 
 /** Inputs for the unified projection. */
@@ -31,6 +35,8 @@ export interface UnifiedBotsInput {
   activeIds: ReadonlySet<string>
   /** Resolves the tool type a claimed/assistant bot binds to. */
   bindingOf: (agentBotId: string) => string
+  /** Resolves a project's display name; falls back to the raw id when unsynced. */
+  projectNameOf: (projectId: string) => string | undefined
 }
 
 /** Merge local + claimed + assistant bots into one permission-carrying list. */
@@ -70,9 +76,19 @@ function cloudRow(ref: CloudBotRef, source: BotSource, input: UnifiedBotsInput):
     name: ref.name ?? ref.agentBotId,
     ...ref.role === undefined ? {} : { role: ref.role },
     source,
+    ...ref.model === undefined ? {} : { llm: toBotLlm(ref.model) },
     tool: { toolType: input.bindingOf(ref.agentBotId) },
     canRebind: ref.canRebind ?? false,
     canDelete: false,
     active: input.activeIds.has(ref.agentBotId),
+    ...ref.projectId === undefined ? {} : { projectId: ref.projectId, projectName: input.projectNameOf(ref.projectId) ?? ref.projectId },
+  }
+}
+
+/** Build a display LLM route from a cloud bot's model summary (readable name first). */
+function toBotLlm(model: BotModelInfo): { provider: string; model: string } {
+  return {
+    provider: model.provider ?? '',
+    model: model.name ?? model.model ?? '',
   }
 }

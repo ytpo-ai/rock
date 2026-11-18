@@ -9,7 +9,28 @@
 
 .toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbarControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.search {
+  width: 220px;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .cards {

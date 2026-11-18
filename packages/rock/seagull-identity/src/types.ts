@@ -2,6 +2,7 @@
  * Rock identity vocabulary: the Seagull seat claim (D-033) and the local tool
  * binding that maps a claimed agent bot to an execution backend.
  */
+import type { BotModelInfo } from '@rock/rock-bot-manager'
 
 /** One Seagull seat claim: an agent bot claimed by one employee (D-033). */
 export interface SeatClaim {
@@ -15,6 +16,10 @@ export interface SeatClaim {
   name?: string
   /** Role/persona label set on Seagull for this bot. */
   role?: string
+  /** Upstream LLM route for display; absent when the agent has no model. */
+  model?: BotModelInfo
+  /** Owning project id; absent/empty means a global (project-less) bot. */
+  projectId?: string
 }
 
 /** One employee's dedicated assistant bot (D-035), resolved from the Seagull employee binding. */
@@ -25,6 +30,10 @@ export interface AssistantRef {
   name?: string
   /** Role/persona label set on Seagull for the assistant. */
   role?: string
+  /** Upstream LLM route for display; absent when the agent has no model. */
+  model?: BotModelInfo
+  /** Owning project id; absent/empty means a global (project-less) bot. */
+  projectId?: string
 }
 
 /** Local tool type an agent bot binds to on the employee workbench (e.g. codex / pi / dsh / acp / claude-code). */

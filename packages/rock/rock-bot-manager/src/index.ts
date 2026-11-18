@@ -9,7 +9,7 @@
  * - id: rock-bot-manager
  *   name: '@rock/rock-bot-manager'
  *   config:
- *     storePath: .rock/bots.json
+ *     storePath: ../.rock/bots.json
  * ```
  *
  * @module @rock/rock-bot-manager
@@ -23,12 +23,12 @@ import { activeBotIdsFrom } from './tasks.ts'
 import { buildUnifiedBots } from './unify.ts'
 import { DEFAULT_TOOL_RUN_TIMEOUT_MS, runTool, TEST_PROMPT } from './run.ts'
 import type { ToolRunSpec } from './run.ts'
-import type { BotDefinition, BotInput, BotRow, BotTestResult } from './types.ts'
+import type { BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult } from './types.ts'
 
 export type * from './types.ts'
 
-const DEFAULT_STORE_PATH = '.rock/bots.json'
-const DEFAULT_BINDINGS_PATH = '.rock/bindings.json'
+const DEFAULT_STORE_PATH = '../.rock/bots.json'
+const DEFAULT_BINDINGS_PATH = '../.rock/bindings.json'
 
 /** Tool types the binding selector offers before deployment overrides them. */
 const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-code']
@@ -60,8 +60,8 @@ export interface Config {
 
 /** The seagull-identity service surface the unified list reads, structurally typed to avoid a package cycle. */
 interface IdentityLike {
-  getClaims(): readonly { agentBotId: string; name?: string; role?: string }[]
-  getAssistants(): readonly { agentBotId: string; name?: string; role?: string }[]
+  getClaims(): readonly { agentBotId: string; name?: string; role?: string; model?: BotModelInfo; projectId?: string }[]
+  getAssistants(): readonly { agentBotId: string; name?: string; role?: string; model?: BotModelInfo; projectId?: string }[]
   toolBindingOf(id: string): string
   sync(): Promise<void>
 }
@@ -176,20 +176,28 @@ export default class RockBotController extends TypertRemoteService {
       }
     }
     const activeIds = new Set(activeBotIdsFrom(await this.fetchTasks()))
+    const projectNameById = new Map((this.optionalWorkspace()?.listProjects() ?? []).map(project => [project.id, project.name]))
     return buildUnifiedBots({
       localBots: this.service.list(),
       claimed: identity === undefined ? [] : identity.getClaims().map(claim => ({
         agentBotId: claim.agentBotId,
         ...claim.name === undefined ? {} : { name: claim.name },
         ...claim.role === undefined ? {} : { role: claim.role },
+        ...claim.model === undefined ? {} : { model: claim.model },
+        ...claim.projectId === undefined ? {} : { projectId: claim.projectId },
+        canRebind: true,
       })),
       assistants: identity === undefined ? [] : identity.getAssistants().map(assistant => ({
         agentBotId: assistant.agentBotId,
         ...assistant.name === undefined ? {} : { name: assistant.name },
         ...assistant.role === undefined ? {} : { role: assistant.role },
+        ...assistant.model === undefined ? {} : { model: assistant.model },
+        ...assistant.projectId === undefined ? {} : { projectId: assistant.projectId },
+        canRebind: false,
       })),
       activeIds,
       bindingOf: id => this.service.getBinding(id) ?? identity?.toolBindingOf(id) ?? 'codex',
+      projectNameOf: projectId => projectNameById.get(projectId),
     })
   }
 
@@ -273,6 +281,11 @@ export default class RockBotController extends TypertRemoteService {
   /** The optional tool-inventory service, structurally typed to avoid a package cycle. */
   private optionalInventory(): { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined {
     return this.ctx.get('rockToolInventory') as { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined
+  }
+
+  /** The optional workspace service, structurally typed to avoid a package cycle. */
+  private optionalWorkspace(): { listProjects(): Array<{ id: string; name: string }> } | undefined {
+    return this.ctx.get('rockWorkspace') as { listProjects(): Array<{ id: string; name: string }> } | undefined
   }
 }
 

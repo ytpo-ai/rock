@@ -60,7 +60,7 @@ export interface BotRow {
   role?: string
   /** Bot source driving the edit/delete permissions (D-036). */
   source: BotSource
-  /** Upstream LLM route for local bots; absent for cloud-managed sources. */
+  /** Upstream LLM route; cloud bots carry it once the claim/assistant projects the model. */
   llm?: BotLlm
   /** Current execution-backend binding. */
   tool: BotTool
@@ -70,6 +70,20 @@ export interface BotRow {
   canDelete: boolean
   /** Whether the bot has an active (non-terminal) cloud task. */
   active: boolean
+  /** Owning project id; absent means a global (project-less) bot. */
+  projectId?: string
+  /** Resolved project display name; absent for global bots or when the list is unsynced. */
+  projectName?: string
+}
+
+/** Display summary of a cloud-sourced bot's upstream LLM route. */
+export interface BotModelInfo {
+  /** Provider route id. */
+  provider?: string
+  /** Model id passed to the provider. */
+  model?: string
+  /** Human-readable model name. */
+  name?: string
 }
 
 /** Structured outcome of a card's "test" action against a bot's bound tool. */

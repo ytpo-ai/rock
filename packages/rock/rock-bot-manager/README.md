@@ -4,7 +4,7 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 
 ## 用途
 
-让本地闭环不再依赖 Seagull：用户在工作台新增自定义 bot，指定它自己的上游 LLM（官方 OpenAI-compatible provider + apiKey）和执行后端，即可形成「agent bot → 执行」闭环。管理面板以卡片列表展示每个 bot 的名称/角色/状态，并提供「自定义 bot」弹窗与逐 bot 的「测试」按钮。
+让本地闭环不再依赖 Seagull：用户在工作台新增自定义 bot，指定它自己的上游 LLM（官方 OpenAI-compatible provider + apiKey）和执行后端，即可形成「agent bot → 执行」闭环。管理面板以卡片列表展示每个 bot 的名称/角色/状态/模型/所属项目，支持关键词搜索与来源筛选；本地 bot 可编辑/删除，认领 bot 可重绑执行器（专属助理不可重绑）。
 
 ```yaml
 - id: rock-bot-manager
@@ -45,10 +45,12 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 
 ## Remote（管理面板）
 
-- `listBotsUnified(): BotRow[]` — 本地/认领/专属助理三源合并的卡片行
+- `listBotsUnified(): BotRow[]` — 本地/认领/专属助理三源合并的卡片行（含 `llm` 模型、`projectId`/`projectName` 所属项目、`canRebind`/`canDelete` 权限）
 - `createBot` / `updateBot` / `removeBot` / `rebindBot` — bot CRUD 与工具绑定
 - `toolTypes()` / `installedTools()` — 可选工具类型与已安装状态
 - `testBot(id): BotTestResult` — 用固定 prompt「查询当前北京天气」对绑定工具做一次非交互 smoke test，返回 `{ ok, toolType, answer?, error? }`
+
+权限矩阵：本地 bot 全权（编辑/删除/重绑）；认领 bot 只读但可重绑（`canRebind=true`）；专属助理只读且不可重绑（`canRebind=false`）。
 
 ## Known Limitations and Deferred Work
 
