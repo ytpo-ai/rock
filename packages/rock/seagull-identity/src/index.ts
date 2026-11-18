@@ -9,7 +9,7 @@
  *   config:
  *     gatewayUrl: http://127.0.0.1:3000/v1/connectors/clients/claims
  *     employeeId: employee-a
- *     claimFile: .rock/claims.json
+ *     claimFile: ../.rock/claims.json
  *     bindings:
  *       agent-bot-C: codex
  *       agent-bot-D: pi

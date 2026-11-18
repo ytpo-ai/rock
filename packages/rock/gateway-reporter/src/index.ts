@@ -10,7 +10,7 @@
  *     gatewayUrl: http://127.0.0.1:3000/v1/connectors/report
  *     connectorClientId: rock-employee-a
  *     employeeId: employee-a
- *     bufferPath: .rock/events.jsonl
+ *     bufferPath: ../.rock/events.jsonl
  * ```
  *
  * @module @rock/gateway-reporter

@@ -7,7 +7,7 @@
  * - id: rock-onboarding
  *   name: '@rock/rock-onboarding'
  *   config:
- *     keyPath: .rock/connector-key.json
+ *     keyPath: ../.rock/connector-key.json
  * ```
  *
  * @module @rock/rock-onboarding
@@ -20,7 +20,7 @@ import type { ConnectorIdentity, ConnectorKeyRecord } from './types.ts'
 
 export type * from './types.ts'
 
-const DEFAULT_KEY_PATH = '.rock/connector-key.json'
+const DEFAULT_KEY_PATH = '../.rock/connector-key.json'
 
 /** Deployment-owned identity facts; every field is patchable from cordis.yml. */
 export interface Config {

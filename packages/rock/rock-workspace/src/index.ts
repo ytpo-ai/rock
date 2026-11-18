@@ -7,7 +7,7 @@
  * - id: rock-workspace
  *   name: '@rock/rock-workspace'
  *   config:
- *     workspacePath: .rock/workspace.json
+ *     workspacePath: ../.rock/workspace.json
  *     defaultRoot: ~/Documents/SeagullWorkspace
  * ```
  *
@@ -22,7 +22,7 @@ export type * from './types.ts'
 export const name = 'rock-workspace'
 export const inject = []
 
-const DEFAULT_WORKSPACE_PATH = '.rock/workspace.json'
+const DEFAULT_WORKSPACE_PATH = '../.rock/workspace.json'
 const DEFAULT_ROOT = '~/Documents/SeagullWorkspace'
 
 /** Deployment-owned workspace facts; every field is patchable from cordis.yml. */
