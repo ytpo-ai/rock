@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH Remote サブエージェントバックエンド",
+    "description": "Typert HTTP プロトコルで実行中の dsh web Host にタスクを委任します。"
+  }
+}

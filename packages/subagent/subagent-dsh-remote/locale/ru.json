@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Суб-агентный бэкенд DSH Remote",
+    "description": "Делегирует задачи работающему хосту dsh web по протоколу Typert HTTP."
+  }
+}

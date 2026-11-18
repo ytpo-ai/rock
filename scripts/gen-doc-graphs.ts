@@ -866,7 +866,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'subagent',
     title: 'Subagent provider and continuation service',
     mode: 'seam',
-    implementations: ['subagent-spawn-in-process', 'subagent-fork-in-process', 'subagent-acp', 'subagent-codex', 'subagent-claude-code', 'subagent-dsh-sdk', 'subagent-opencode'],
+    implementations: ['subagent-spawn-in-process', 'subagent-fork-in-process', 'subagent-acp', 'subagent-codex', 'subagent-claude-code', 'subagent-dsh-sdk', 'subagent-dsh-remote', 'subagent-opencode'],
     consumers: ['tool-subagent', 'tool-subagent-control', 'tool-ralph'],
     note: 'Providers prepare local children or execute external tasks; one activation manager owns both lifecycles. The delegation tool selects a backend, control tools deliver local follow-ups, and workflows await activation results.',
   },

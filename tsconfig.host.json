@@ -582,6 +582,7 @@
     { "path": "./packages/experimental/subagent-oar" },
     { "path": "./packages/experimental/tool-subagent-oar" },
     { "path": "./packages/subagent/subagent-dsh-sdk" },
+    { "path": "./packages/subagent/subagent-dsh-remote" },
     { "path": "./packages/subagent/subagent-opencode" },
     { "path": "./packages/jobs/jobs" },
     { "path": "./packages/jobs/jobs-local" },

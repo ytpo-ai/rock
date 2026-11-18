@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Backend de subagente DSH Remote",
+    "description": "Delega tarefas a um Host dsh web em execução via protocolo Typert HTTP."
+  }
+}

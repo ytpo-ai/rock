@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH Remote 子代理后端",
+    "description": "通过 Typert HTTP 协议将任务委派给运行中的 dsh web Host。"
+  }
+}
