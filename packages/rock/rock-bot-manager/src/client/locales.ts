@@ -4,7 +4,7 @@ export const NS = 'rock-bot-manager'
 
 /** English dictionary. */
 export const en = {
-  nav: 'Agent bots',
+  nav: 'Agent Bot',
   empty: 'No bots yet. Add a custom bot to get started.',
   add: 'Custom bot',
   'form.title': 'Custom bot',
@@ -48,7 +48,7 @@ export type RockBotManagerKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockBotManagerKey, string> = {
-  nav: 'Agent Bot 管理',
+  nav: 'Agent Bot',
   empty: '暂无 bot，点击「自定义 bot」开始添加',
   add: '自定义 bot',
   'form.title': '自定义 bot',

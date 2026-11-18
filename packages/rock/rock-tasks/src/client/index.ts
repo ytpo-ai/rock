@@ -53,13 +53,13 @@ function registerPanels(ctx: Context): void {
     name: 'main', key: OVERVIEW_PANEL_ID, locale: NS, inject,
   }, OverviewSection))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-    name: 'sidebar.panellist', id: OVERVIEW_PANEL_ID, order: 0, label: () => t('overview.nav'), locale: NS,
+    name: 'sidebar.panellist', id: OVERVIEW_PANEL_ID, order: -50, label: () => t('overview.nav'), locale: NS,
   }, OverviewPanelIcon))
 
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: TASKS_PANEL_ID, locale: NS, inject: (): TasksSectionInjected => ({ remote: ctx.remote.rockTasks }),
   }, TasksSection))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-    name: 'sidebar.panellist', id: TASKS_PANEL_ID, order: 40, label: () => t('tasks.nav'), locale: NS,
+    name: 'sidebar.panellist', id: TASKS_PANEL_ID, order: -40, label: () => t('tasks.nav'), locale: NS,
   }, TasksPanelIcon))
 }

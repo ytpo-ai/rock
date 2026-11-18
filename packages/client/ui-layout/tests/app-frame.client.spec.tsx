@@ -17,6 +17,7 @@ const useResource = (() => ({ status: 'none' as const, value: undefined, failure
 let selectedSession: SessionId | undefined
 let selectedSessionTitle: string | undefined
 let workspacesReady = true
+let productTitleOverride: string | undefined
 type AttentionSnapshot = Parameters<Parameters<AppFrameProps['useSessionStatus']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
 const useSessionStatus: AppFrameProps['useSessionStatus'] = selector => selector(noAttention)
@@ -98,6 +99,10 @@ function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlo
       renderSlot={renderSlot}
       useSessions={useSessions}
       usePanelInfo={usePanelInfo}
+      useProductTitle={bindSnapshotSelector({
+        getSnapshot: () => productTitleOverride,
+        subscribe: () => () => {},
+      })}
       useFoldedLandscape={bindSnapshotSelector(foldedLandscape)}
       useSessionStatus={useSessionStatus}
       useSessionRetainInfo={() => undefined}
@@ -151,6 +156,7 @@ beforeEach(() => {
   selectedSession = 's-test' as SessionId
   selectedSessionTitle = undefined
   workspacesReady = true
+  productTitleOverride = undefined
   observers = []
   animationFrames = new Map()
   nextFrame = 1
@@ -193,6 +199,12 @@ describe('AppFrame', () => {
   it('localizes the product title without a configured build title', () => {
     mountFrame()
     expect(document.title).toBe('DSH Local Build')
+  })
+
+  it('uses the slot-provided product title when an occupant registers one', () => {
+    productTitleOverride = 'Rock'
+    mountFrame()
+    expect(document.title).toBe('Rock')
   })
 
   it('follows the selected durable Session title', () => {

@@ -52,7 +52,7 @@ function registerPanel(ctx: Context): void {
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',
     id: PANEL_ID,
-    order: 10,
+    order: -30,
     label: () => t('nav'),
     locale: NS,
   }, BotsPanelIcon))

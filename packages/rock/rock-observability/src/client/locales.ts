@@ -4,7 +4,7 @@ export const NS = 'rock-observability'
 
 /** English dictionary. */
 export const en = {
-  nav: 'Data status',
+  nav: 'Logs',
   'column.session': 'Session',
   'column.turns': 'Turns',
   'column.steps': 'Steps',
@@ -17,7 +17,7 @@ export type RockObservabilityKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockObservabilityKey, string> = {
-  nav: '数据状态查询',
+  nav: 'Logs',
   'column.session': '会话',
   'column.turns': '轮数',
   'column.steps': '步数',

@@ -4,7 +4,7 @@ export const NS = 'rock-tool-inventory'
 
 /** English dictionary. */
 export const en = {
-  nav: 'Tools',
+  nav: 'Runners',
   'column.tool': 'Tool',
   'column.status': 'Status',
   'column.version': 'Version',
@@ -20,7 +20,7 @@ export type RockToolInventoryKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockToolInventoryKey, string> = {
-  nav: '工具识别',
+  nav: '执行器管理',
   'column.tool': '工具',
   'column.status': '状态',
   'column.version': '版本',

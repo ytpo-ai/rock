@@ -1,11 +1,11 @@
 # @rock/rock-tool-inventory
 
-Rock tool inventory for the `rock` profile's web surface. Probes the machine for installed agent tools (Codex, Pi, OpenCode, DSH, Claude Code) and exposes a read-only Remote list consumed by the console's "Tools" panel.
+Rock tool inventory for the `rock` profile's web surface. Probes the machine for installed agent tools (Codex, Pi, OpenCode, DSH, Claude Code) and exposes a read-only Remote list consumed by the console's "Runners" panel.
 
 ## What it does
 
 - Host half: probes each configured `{ id, command }` with a bounded `--version` run; `ENOENT` means "not installed", any other error means "installed but no version".
-- Browser half: registers the "Tools" sidebar entry and a read-only table of tool id / status / version.
+- Browser half: registers the "Runners" sidebar entry and a read-only table of tool id / status / version.
 
 ## Model Experience
 

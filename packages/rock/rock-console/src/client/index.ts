@@ -21,6 +21,12 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({
     name: 'sidebar.brand.name',
   }, RockBrandName))
+  // Browser/window product title; "Rock" is a product proper noun.
+  ctx.slots.inject('shell.productTitle', () => ctx.slots.register({
+    name: 'shell.productTitle',
+    id: 'rock',
+    label: 'Rock',
+  }, () => null))
   ctx.effect(() => {
     let landed = false
     const selectDefault = (): void => {

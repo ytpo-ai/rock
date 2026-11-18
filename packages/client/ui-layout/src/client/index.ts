@@ -12,11 +12,13 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PanelInfo } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
 import type { AppFrameInjected } from './AppFrame.tsx'
 import { createLayoutStore } from './stores.ts'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { LayoutController } from './service.ts'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { en, ja, es, fr, de, ru, pt, zh } from './shortcut-locales.ts'
@@ -119,6 +121,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the lights or the controls.
      */
     'shell.leading': { kind: 'single'; scope: 'root' }
+    /**
+     * Product title the browser tab/window shows. OCCUPIED by rock-console
+     * with "Rock"; without an occupant the frame falls back to the build
+     * title (`DSH_CLIENT_TITLE`) or the localized local-build label.
+     */
+    'shell.productTitle': { kind: 'list'; scope: 'root' }
   }
 }
 
@@ -188,6 +196,15 @@ export function apply(ctx: ClientContext): void {
     const layout = new LayoutController(instance.actions, id =>
       ctx.slots.entries('main').some(entry => entry.options.key === id), panelInfo)
     const disposePanelInfo = ctx.slots.provideRoot({ hooks: { panelInfo: layout.panelInfo } })
+    const productTitle = createSnapshotStore<string | undefined>(undefined)
+    const syncProductTitle = (): void => {
+      const entry = ctx.slots.entriesOfSlot('shell.productTitle')[0]
+      const next = entry === undefined ? undefined : resolveSlotLabel(entry.options.label)
+      if (productTitle.getSnapshot() !== next) productTitle.set(next)
+    }
+    const disposeProductTitleEntries = ctx.slots.subscribe('shell.productTitle', syncProductTitle)
+    const disposeProductTitleLocale = ctx.locale.subscribe(syncProductTitle)
+    syncProductTitle()
     const disposeService = ctx.reflect.provide('layout', layout)
     const disposeRegistration = ctx.slots.register({
       name: 'root',
@@ -199,9 +216,10 @@ export function apply(ctx: ClientContext): void {
         'shell.bottom': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
         'shell.leading': { kind: 'single', scope: 'root' },
+        'shell.productTitle': { kind: 'list', scope: 'root' },
       },
       store,
-      inject: (): AppFrameInjected => ({ hooks: { foldedLandscape } }),
+      inject: (): AppFrameInjected => ({ hooks: { foldedLandscape, productTitle } }),
     }, AppFrame)
     const disposeShortcut = ctx.shortcuts.register({
       id: 'sidebar.left.toggle' as ShortcutCommandId, label: () => t('toggle'), aliases: ['sidebar', 'toggle left sidebar'],
@@ -225,6 +243,8 @@ export function apply(ctx: ClientContext): void {
       disposePanels()
       disposeRegistration()
       disposePanelInfo()
+      disposeProductTitleEntries()
+      disposeProductTitleLocale()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.
       void disposeService()
     }
