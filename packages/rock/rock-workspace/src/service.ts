@@ -67,18 +67,26 @@ export class WorkspaceService {
     const root = this.requireRoot()
     assertSegment(taskId, 'taskId')
     if (projectId) {
-      assertSegment(projectId, 'projectId')
-      return join(root, 'projects', projectId, 'tasks', `${taskId}.jsonl`)
+      return join(root, 'projects', this.projectDirName(projectId), 'tasks', `${taskId}.jsonl`)
     }
     return join(root, 'tasks', `${taskId}.jsonl`)
   }
 
-  /** Mirror the cloud project list as `projects/<id>/tasks/` directories. */
+  /** Absolute project workspace directory for a task's owning project (created when absent). */
+  resolveProjectDir(projectId: string): string {
+    const root = this.requireRoot()
+    const dir = join(root, 'projects', this.projectDirName(projectId))
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  /** Mirror the cloud project list as `projects/<dir>/tasks/` directories. */
   syncProjects(projects: WorkspaceProject[]): WorkspaceProject[] {
     const root = this.requireRoot()
     for (const project of projects) {
-      assertSegment(project.id, 'projectId')
-      mkdirSync(join(root, 'projects', project.id, 'tasks'), { recursive: true })
+      const dir = project.slug?.trim() || project.id
+      assertSegment(dir, 'projectDir')
+      mkdirSync(join(root, 'projects', dir, 'tasks'), { recursive: true })
     }
     this.projects = projects
     persistProjects(this.options.workspacePath, projects)
@@ -88,6 +96,14 @@ export class WorkspaceService {
   /** The mirrored project list (id → name), for UI display. */
   listProjects(): WorkspaceProject[] {
     return this.projects
+  }
+
+  /** Directory name for a project: its slug when known, else the raw projectId. */
+  private projectDirName(projectId: string): string {
+    const project = this.projects.find(entry => entry.id === projectId)
+    const dir = project?.slug?.trim() || projectId
+    assertSegment(dir, 'projectDir')
+    return dir
   }
 
   private requireRoot(): string {
@@ -177,5 +193,6 @@ function isProjects(value: unknown): value is WorkspaceProject[] {
     const record = entry as Record<string, unknown>
     return typeof record.id === 'string' && record.id.length > 0
       && typeof record.name === 'string'
+      && (record.slug === undefined || typeof record.slug === 'string')
   })
 }

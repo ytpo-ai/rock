@@ -13,10 +13,12 @@ export interface WorkspaceState {
   initializedAt: string
 }
 
-/** One Seagull project mirrored under `<root>/projects/<id>`. */
+/** One Seagull project mirrored under `<root>/projects/<dir>`. */
 export interface WorkspaceProject {
-  /** Project id (Mongo ObjectId hex), used as the directory name. */
+  /** Project id (Mongo ObjectId hex). */
   id: string
   /** Display name for UI. */
   name: string
+  /** URL-safe directory name; falls back to `id` when absent. */
+  slug?: string
 }

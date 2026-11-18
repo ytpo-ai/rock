@@ -13,7 +13,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { ArchivedTaskSummary, TaskHeader, TaskReceipt, TaskSummary, TaskWorkRecord } from './types.ts'
+import type { ArchivedTaskSummary, ArchiveIndex, TaskHeader, TaskReceipt, TaskSummary, TaskWorkRecord } from './types.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface TaskArchiveOptions {
@@ -21,6 +21,8 @@ export interface TaskArchiveOptions {
   resolvePath: (taskId: string, projectId?: string | null) => string
   /** The absolute workspace root, or null when not yet initialized. */
   rootPath: () => string | null
+  /** Durable archive index file path (the flat thumbnail of all tasks). */
+  indexPath: string
 }
 
 /** Parsed content of one task archive file. */
@@ -88,7 +90,7 @@ function eventRecord(sessionId: string, taskId: string, event: SessionEvent): Ta
         type: 'turn.end',
         timestamp: new Date().toISOString(),
         turn: event.data.turn,
-        reason: String(event.data.reason),
+        reason: event.data.reason.kind,
       }
     case 'assistant/message':
       return {
@@ -126,12 +128,12 @@ function messageText(message: unknown): string {
 export class TaskArchiveStore {
   private readonly sessionTask = new Map<string, string>()
   private readonly taskPath = new Map<string, string>()
-  private readonly index = new Map<string, ArchivedTaskSummary & { createdAt: number }>()
+  private readonly index = new Map<string, ArchivedTaskSummary>()
 
   constructor(private readonly options: TaskArchiveOptions) {}
 
   /** Create the archive file for a task and record its definition + first run. */
-  openTask(task: TaskSummary, botId: string, sessionId: string): void {
+  openTask(task: TaskSummary, botId: string, sessionId: string, cwd?: string | null): void {
     const path = this.options.resolvePath(task.id, task.projectId || null)
     mkdirSync(dirname(path), { recursive: true })
     const header: TaskHeader = {
@@ -140,7 +142,7 @@ export class TaskArchiveStore {
       taskId: task.id,
       projectId: task.projectId || null,
       createdAt: Date.now(),
-      cwd: this.options.rootPath() ?? '',
+      cwd: cwd ?? this.options.rootPath() ?? '',
     }
     writeFileSync(path, `${JSON.stringify(header)}\n`, 'utf8')
     this.taskPath.set(task.id, path)
@@ -159,6 +161,8 @@ export class TaskArchiveStore {
       runId: sessionId,
       botId,
     })
+    this.index.set(task.id, toIndexEntry(task, header.createdAt))
+    this.persistIndex()
   }
 
   /** Bind a launched session id to its task id. */
@@ -174,7 +178,7 @@ export class TaskArchiveStore {
     if (path === undefined) return
     const record = eventRecord(sessionId, taskId, event)
     if (record === null) return
-    this.appendLine(path, record)
+    this.appendLine(path, { ...record, seq: event.seq })
   }
 
   /** Close the current run for a session (appended when a run settles). */
@@ -203,6 +207,11 @@ export class TaskArchiveStore {
       ...(receipt.usage === undefined ? {} : { usage: receipt.usage }),
       data: receipt,
     })
+    const existing = this.index.get(taskId)
+    if (existing !== undefined) {
+      this.index.set(taskId, { ...existing, receipt })
+      this.persistIndex()
+    }
   }
 
   /** Append a receipt only when the archive has none yet (harness fallback). */
@@ -219,35 +228,32 @@ export class TaskArchiveStore {
     return readTaskFile(path).records
   }
 
-  /** Replay persisted archives into the history index (across restarts). */
+  /** Rebuild the index from the workspace tree once (startup reconcile). */
   replay(): void {
-    this.refresh()
+    const root = this.options.rootPath()
+    if (root === null) return
+    const next = new Map<string, ArchivedTaskSummary>()
+    for (const path of scanTaskFiles(root)) {
+      const entry = readIndexEntry(path)
+      if (entry === null) continue
+      this.taskPath.set(entry.id, path)
+      next.set(entry.id, entry)
+    }
+    this.index.clear()
+    for (const [id, entry] of next) this.index.set(id, entry)
+    this.persistIndex()
   }
 
-  /** Index entries for the history tab, newest first (re-scanning the workspace). */
+  /** Index entries for the history tab, newest first (no file scan). */
   listArchived(): ArchivedTaskSummary[] {
-    this.refresh()
-    return [...this.index.values()]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .map(({ createdAt: _createdAt, ...entry }) => entry)
+    return [...this.index.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   }
 
   /** Full archive for one task: its summary plus all recorded lines. */
   getArchived(taskId: string): { summary: ArchivedTaskSummary | null; records: TaskWorkRecord[] } {
     const summary = this.index.get(taskId) ?? null
-    const entry = summary === null
-      ? null
-      : {
-        id: summary.id,
-        projectId: summary.projectId,
-        title: summary.title,
-        status: summary.status,
-        ...(summary.resolution === undefined ? {} : { resolution: summary.resolution }),
-        ...(summary.executorId === undefined ? {} : { executorId: summary.executorId }),
-        ...(summary.receipt === undefined ? {} : { receipt: summary.receipt }),
-      }
     const path = this.taskPath.get(taskId) ?? this.options.resolvePath(taskId, this.projectOf(taskId))
-    return { summary: entry, records: readTaskFile(path).records }
+    return { summary, records: readTaskFile(path).records }
   }
 
   /** Project id remembered for a task (used when its file path must be re-resolved). */
@@ -260,26 +266,11 @@ export class TaskArchiveStore {
     appendFileSync(path, `${JSON.stringify(record)}\n`, 'utf8')
   }
 
-  /** Re-scan the workspace tree and rebuild the history index. */
-  private refresh(): void {
-    const root = this.options.rootPath()
-    if (root === null) return
-    for (const path of scanTaskFiles(root)) {
-      const parsed = readTaskFile(path)
-      const summary = parsed.summary
-      if (summary === null) continue
-      this.taskPath.set(summary.id, path)
-      this.index.set(summary.id, {
-        id: summary.id,
-        projectId: parsed.header?.projectId ?? summary.projectId ?? null,
-        title: summary.title || summary.id,
-        status: summary.status,
-        createdAt: parsed.header?.createdAt ?? 0,
-        ...(summary.resolution === undefined ? {} : { resolution: summary.resolution }),
-        ...(summary.executorId === undefined ? {} : { executorId: summary.executorId }),
-        ...(parsed.receipt === null ? {} : { receipt: parsed.receipt }),
-      })
-    }
+  /** Persist the current index to its file. */
+  private persistIndex(): void {
+    const index: ArchiveIndex = { version: 1, tasks: [...this.index.values()] }
+    mkdirSync(dirname(this.options.indexPath), { recursive: true })
+    writeFileSync(this.options.indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8')
   }
 }
 
@@ -314,6 +305,36 @@ function readTaskFile(path: string): TaskFile {
     }
   }
   return result
+}
+
+/** Build one history index entry from an archive file (header + definition + receipt). */
+function readIndexEntry(path: string): ArchivedTaskSummary | null {
+  const parsed = readTaskFile(path)
+  const summary = parsed.summary
+  if (summary === null) return null
+  return {
+    id: summary.id,
+    projectId: parsed.header?.projectId ?? summary.projectId ?? null,
+    title: summary.title || summary.id,
+    status: summary.status,
+    createdAt: parsed.header?.createdAt ?? 0,
+    ...(summary.resolution === undefined ? {} : { resolution: summary.resolution }),
+    ...(summary.executorId === undefined ? {} : { executorId: summary.executorId }),
+    ...(parsed.receipt === null ? {} : { receipt: parsed.receipt }),
+  }
+}
+
+/** Build a history index entry from a freshly opened task. */
+function toIndexEntry(task: TaskSummary, createdAt: number): ArchivedTaskSummary {
+  return {
+    id: task.id,
+    projectId: task.projectId || null,
+    title: task.title || task.id,
+    status: task.status,
+    createdAt,
+    ...(task.resolution === undefined ? {} : { resolution: task.resolution }),
+    ...(task.executorId === undefined ? {} : { executorId: task.executorId }),
+  }
 }
 
 /** Walk the workspace tree and return every task archive file path. */

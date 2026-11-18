@@ -28,6 +28,9 @@ import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from '
 
 export type * from './types.ts'
 
+/** Interval between project-list syncs (mirrors gateway projects into the workspace). */
+const PROJECT_SYNC_INTERVAL_MS = 60_000
+
 /** Deployment-owned gateway facts; patchable from cordis.yml. */
 export interface Config {
   /** Full tasks endpoint URL (no query). */
@@ -66,6 +69,14 @@ export default class RockTasksController extends TypertRemoteService {
       indexPath: config.indexPath,
     })
     this.records.replay()
+    // Mirror the employee-visible projects into the workspace (slug → directory)
+    // so project tasks resolve their directory name before any session launches.
+    void this.syncProjects()
+    ctx.effect(() => {
+      const timer = setInterval(() => { void this.syncProjects() }, PROJECT_SYNC_INTERVAL_MS)
+      timer.unref?.()
+      return () => { clearInterval(timer) }
+    }, 'rock-tasks: syncProjects interval')
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.records.record(String(session.id), event)
     })
@@ -214,9 +225,15 @@ export default class RockTasksController extends TypertRemoteService {
 
     const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
     const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay', agentId: botId }
-    const workspace = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
-    const cwd = workspace?.rootPath() ?? null
-    this.ctx.logger.info(`rock-tasks: launchSession creating agent ${sessionId}`)
+    const workspace = this.ctx.get('rockWorkspace') as {
+      rootPath(): string | null
+      resolveProjectDir(projectId: string): string
+    } | undefined
+    // Project tasks run inside their project directory; global tasks run at the workspace root.
+    const cwd = task.projectId
+      ? workspace?.resolveProjectDir(task.projectId) ?? null
+      : workspace?.rootPath() ?? null
+    this.ctx.logger.info(`rock-tasks: launchSession creating agent ${sessionId} (cwd=${cwd ?? '(default)'})`)
     const handle = await agents.create({
       sessionId,
       meta: { agentPreset: preset.id, ...(cwd === null ? {} : { cwd }) },
@@ -227,8 +244,13 @@ export default class RockTasksController extends TypertRemoteService {
     })
     this.ctx.logger.info(`rock-tasks: launchSession agent ${sessionId} created`)
 
+    // Attach the launched session to the DSH workspace owning its cwd so it groups correctly.
+    if (cwd !== null) {
+      await this.attachToWorkspace(String(sessionId), cwd)
+    }
+
     // Create the per-task archive and bind the session so work records are attributed.
-    this.records.openTask(task, botId, String(sessionId))
+    this.records.openTask(task, botId, String(sessionId), cwd)
 
     handle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: this.taskPrompt(task, botId) }],
@@ -291,6 +313,44 @@ export default class RockTasksController extends TypertRemoteService {
     } catch (error) {
       this.ctx.logger.warn(`rock-tasks: tasks fetch failed for ${requestUrl}: ${messageOf(error)}`)
       return []
+    }
+  }
+
+  /** Attach the launched session to the DSH workspace owning its cwd (best-effort). */
+  private async attachToWorkspace(sessionId: string, cwd: string): Promise<void> {
+    const registry = this.ctx.get('workspaceRegistry') as {
+      create(path: string): Promise<{ attachSession(id: string): Promise<void> }>
+    } | undefined
+    if (registry === undefined) return
+    try {
+      const workspace = await registry.create(cwd)
+      await workspace.attachSession(sessionId)
+      this.ctx.logger.info(`rock-tasks: attached session ${sessionId} to workspace ${cwd}`)
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: attach session ${sessionId} to workspace failed: ${messageOf(error)}`)
+    }
+  }
+
+  /** Fetch employee-visible projects and mirror them into the workspace (slug → directory). */
+  private async syncProjects(): Promise<void> {
+    const url = this.config.tasksUrl.replace(/\/tasks$/, '/projects')
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) return
+    try {
+      const response = await fetch(`${url}?employeeId=${encodeURIComponent(employeeId)}`)
+      if (!response.ok) {
+        this.ctx.logger.warn(`rock-tasks: projects sync failed HTTP ${response.status} for ${url}`)
+        return
+      }
+      const body = await response.json() as { projects?: Array<{ id: string; name: string; slug?: string }> }
+      const projects = Array.isArray(body?.projects) ? body.projects : []
+      const workspace = this.ctx.get('rockWorkspace') as {
+        syncProjects(projects: Array<{ id: string; name: string; slug?: string }>): void
+      } | undefined
+      workspace?.syncProjects(projects)
+      this.ctx.logger.info(`rock-tasks: synced ${projects.length} project(s)`)
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: projects sync failed for ${url}: ${messageOf(error)}`)
     }
   }
 

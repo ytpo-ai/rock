@@ -58,6 +58,23 @@ describe('WorkspaceService', () => {
     }
   })
 
+  it('uses the synced slug as the project directory name and resolves the project dir', async () => {
+    const { dir, service } = await makeService()
+    try {
+      const root = service.ensureInitialized().rootPath
+      service.syncProjects([{ id: 'proj-a', name: 'Project A', slug: 'project-a' }])
+
+      expect(service.resolveTaskPath('task-2', 'proj-a')).toBe(
+        join(root, 'projects', 'project-a', 'tasks', 'task-2.jsonl'),
+      )
+      expect(service.resolveProjectDir('proj-a')).toBe(join(root, 'projects', 'project-a'))
+      expect(existsSync(join(root, 'projects', 'project-a'))).toBe(true)
+      expect(existsSync(join(root, 'projects', 'project-a', 'tasks'))).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects path-traversal segments in task and project ids', async () => {
     const { dir, service } = await makeService()
     try {
