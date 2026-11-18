@@ -46,6 +46,9 @@ export function summaryFrom(raw: unknown): TaskSummary | null {
     ...(typeof t.assignee === 'string' ? { assignee: t.assignee } : {}),
     ...(typeof t.projectId === 'string' ? { projectId: t.projectId } : {}),
     ...(typeof t.parentId === 'string' ? { parentId: t.parentId } : {}),
+    ...(typeof t.priority === 'string' ? { priority: t.priority } : {}),
+    ...(typeof t.dueAt === 'string' ? { dueAt: t.dueAt } : {}),
+    ...(typeof t.createdAt === 'string' ? { createdAt: t.createdAt } : {}),
   }
 }
 

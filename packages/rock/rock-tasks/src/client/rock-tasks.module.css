@@ -17,9 +17,33 @@
   gap: 8px;
 }
 
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  width: 220px;
+}
+
+.search :global(span) {
+  flex: 1;
+}
+
 .empty {
   color: var(--dsw-alias-label-secondary);
   margin: 0;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0;
 }
 
 .loadError {
@@ -120,6 +144,24 @@
   overflow: hidden;
 }
 
+.cardFacts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 0.85em;
+}
+
+.cardFact {
+  white-space: nowrap;
+}
+
+.overdue {
+  white-space: nowrap;
+  color: var(--dsw-alias-state-error-primary);
+}
+
 .runDialog {
   display: flex;
   flex-direction: column;
@@ -178,6 +220,19 @@
   color: var(--dsw-alias-label-secondary);
   font-size: 0.85em;
   overflow-wrap: anywhere;
+  line-clamp: 3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.recordTime {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Overview panel ── */

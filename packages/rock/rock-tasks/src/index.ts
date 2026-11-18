@@ -53,6 +53,7 @@ export default class RockTasksController extends TypertRemoteService {
 
   private readonly config: Config
   private readonly records: TaskArchiveStore
+  private projects: Array<{ id: string; name: string; slug?: string }> = []
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockTasks')
@@ -87,6 +88,12 @@ export default class RockTasksController extends TypertRemoteService {
   @Remote
   async listTasks(): Promise<TaskSummary[]> {
     return this.fetchTasks()
+  }
+
+  /** Employee-visible projects (mirrored by `syncProjects`) for resolving project names. */
+  @Remote
+  listProjects(): Array<{ id: string; name: string; slug?: string }> {
+    return this.projects
   }
 
   /** All employee-visible bots (claimed ∪ assistant ∪ local) for the execute dialog. */
@@ -355,6 +362,7 @@ export default class RockTasksController extends TypertRemoteService {
         return
       }
       const projects = projectsFrom(await response.json())
+      this.projects = projects
       const workspace = this.ctx.get('rockWorkspace') as {
         syncProjects(projects: Array<{ id: string; name: string; slug?: string }>): void
       } | undefined
@@ -379,14 +387,6 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
-}
-
-declare module '@deepseek-ai/dsh-typert-protocol' {
-  interface RemoteErrorDetailsMap {
-    'rockTasks/unconfigured': Record<string, never>
-    'rockTasks/runFailed': Record<string, never>
-    'rockTasks/launchFailed': Record<string, never>
-  }
 }
 
 declare module '@deepseek-ai/cordis' {

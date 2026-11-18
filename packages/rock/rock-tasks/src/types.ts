@@ -28,6 +28,12 @@ export interface TaskSummary {
   projectId?: string
   /** Parent requirement id, when recorded. */
   parentId?: string
+  /** Priority (`low` / `medium` / `high`), when recorded. */
+  priority?: string
+  /** Due date as ISO-8601, when recorded. */
+  dueAt?: string
+  /** Creation time as ISO-8601. */
+  createdAt?: string
 }
 
 /** One employee-visible bot the execute dialog can select. */
@@ -132,4 +138,12 @@ export interface ArchivedTaskSummary {
 export interface ArchiveIndex {
   version: 1
   tasks: ArchivedTaskSummary[]
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    'rockTasks/unconfigured': Record<string, never>
+    'rockTasks/runFailed': Record<string, never>
+    'rockTasks/launchFailed': Record<string, never>
+  }
 }
