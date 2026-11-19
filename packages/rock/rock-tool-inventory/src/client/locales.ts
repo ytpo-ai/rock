@@ -14,10 +14,9 @@ export const en = {
   'detect.running': 'Detecting…',
   'load.failed': 'Could not load runners.',
   'load.retry': 'Retry',
-  'progress.running': 'Detecting',
+  'progress.label': 'Progress',
+  'progress.current': 'Running: {command}',
   'progress.done': 'Done',
-  'progress.current': 'Current: {command}',
-  'progress.steps': '{n} commands run',
   'progress.viewSession': 'View session',
 } as const
 
@@ -36,9 +35,8 @@ export const zh: Record<RockToolInventoryKey, string> = {
   'detect.running': '检测中…',
   'load.failed': '加载执行器失败',
   'load.retry': '重试',
-  'progress.running': '检测中',
+  'progress.label': '进度',
+  'progress.current': '正在执行：{command}',
   'progress.done': '已完成',
-  'progress.current': '当前：{command}',
-  'progress.steps': '已运行 {n} 个命令',
   'progress.viewSession': '查看会话详情',
 }

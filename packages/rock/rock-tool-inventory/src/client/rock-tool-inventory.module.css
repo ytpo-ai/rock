@@ -1,10 +1,10 @@
-/* Rock tool inventory: runner list plus a compact detection progress card.
+/* Rock tool inventory: runner list plus a single-line detection progress row.
    Surfaces reuse the shared --dsw-* tokens and the 13px detail scale. */
 
 .root {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .toolbar {
@@ -79,38 +79,29 @@
   color: var(--dsw-alias-label-error);
 }
 
-.progressCard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
-  border-radius: var(--dsw-radius-xl);
-  background: var(--dsw-alias-settings-card-fill);
-}
-
-.progressHeader {
+.progressRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.progressTitle {
+  gap: 12px;
+  min-height: 24px;
   font-size: 13px;
   line-height: 18px;
-  font-weight: 500;
+}
+
+.progressFraction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.progressLabel {
   color: var(--dsw-alias-label-secondary);
 }
 
-.progressCount {
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.progressTrack {
-  height: 6px;
+.progressBar {
+  width: 56px;
+  height: 4px;
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-l1);
   overflow: hidden;
@@ -123,11 +114,9 @@
   transition: width 160ms ease;
 }
 
-.progressMeta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+.progressCount {
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .progressCurrent {
@@ -136,22 +125,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  line-height: 18px;
   color: var(--dsw-alias-label-secondary);
-}
-
-.progressSteps {
-  flex-shrink: 0;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.progressActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .skeletonRow {

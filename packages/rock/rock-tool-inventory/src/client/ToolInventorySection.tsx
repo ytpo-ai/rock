@@ -1,4 +1,4 @@
-/** Rock tool inventory panel: detected runner states plus a compact detection progress bar. */
+/** Rock tool inventory panel: detected runner states plus a single-line detection progress row. */
 import { useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -36,7 +36,7 @@ function runnerDot(state: RunnerState): 'done' | 'idle' {
   return state === 'running' ? 'done' : 'idle'
 }
 
-/** Render the detected runner rows plus the assistant-LLM detection progress. */
+/** Render the detected runner rows plus the single-line assistant-LLM detection progress. */
 export function ToolInventorySection({ t, remote, openSession }: ToolInventorySectionProps): ReactElement {
   const [tools, setTools] = useState<ToolStatus[]>([])
   const [detect, setDetect] = useState<DetectState | null>(null)
@@ -87,6 +87,18 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         </Button>
       </div>
 
+      {detect !== null && progress !== undefined && (running || sessionId !== undefined) ? (
+        <ProgressRow
+          running={running}
+          detected={progress.detected}
+          total={progress.total}
+          current={progress.current}
+          sessionId={sessionId}
+          t={t}
+          openSession={openSession}
+        />
+      ) : null}
+
       {loading ? (
         <div className={css.list} aria-hidden>
           <div className={css.skeletonRow} />
@@ -118,63 +130,47 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
           })}
         </ul>
       )}
-
-      {detect !== null && progress !== undefined && (running || sessionId !== undefined) ? (
-        <ProgressCard
-          running={running}
-          detected={progress.detected}
-          total={progress.total}
-          current={progress.current}
-          steps={progress.steps}
-          sessionId={sessionId}
-          t={t}
-          openSession={openSession}
-        />
-      ) : null}
     </div>
   )
 }
 
-/** Compact detection progress: bar + current work + view-session link. */
-function ProgressCard(props: {
+/** Single-line detection progress: fraction + current work + view-session link. */
+function ProgressRow(props: {
   running: boolean
   detected: number
   total: number
   current: string | undefined
-  steps: number
   sessionId: string | undefined
   t: ToolInventorySectionProps['t']
   openSession: (sessionId: string) => void
 }): ReactElement {
-  const { running, detected, total, current, steps, sessionId, t, openSession } = props
+  const { running, detected, total, current, sessionId, t, openSession } = props
   const percent = total > 0 ? Math.round((detected / total) * 100) : 0
   const fillStyle: CSSProperties = { width: `${percent}%` }
+  const statusText = running
+    ? (current !== undefined ? t('progress.current', { command: current }) : t('detect.running'))
+    : t('progress.done')
   return (
-    <div className={css.progressCard}>
-      <div className={css.progressHeader}>
-        <span className={css.progressTitle}>{running ? t('progress.running') : t('progress.done')}</span>
+    <div className={css.progressRow}>
+      <div className={css.progressFraction}>
+        <span className={css.progressLabel}>{t('progress.label')}</span>
+        <div
+          className={css.progressBar}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={detected}
+        >
+          <div className={css.progressFill} style={fillStyle} />
+        </div>
         <span className={css.progressCount}>{`${detected}/${total}`}</span>
       </div>
-      <div
-        className={css.progressTrack}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={detected}
-      >
-        <div className={css.progressFill} style={fillStyle} />
-      </div>
-      <div className={css.progressMeta}>
-        {current !== undefined
-          ? <span className={css.progressCurrent}>{t('progress.current', { command: current })}</span>
-          : null}
-        <span className={css.progressSteps}>{t('progress.steps', { n: steps })}</span>
-      </div>
+      <span className={css.progressCurrent}>{statusText}</span>
       {sessionId !== undefined
         ? (
-          <div className={css.progressActions}>
-            <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>{t('progress.viewSession')}</Button>
-          </div>
+          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+            {t('progress.viewSession')}
+          </Button>
         )
         : null}
     </div>
