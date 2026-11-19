@@ -24,10 +24,9 @@ export function detectPrompt(tools: readonly ToolDescriptor[]): string {
     '- installed：运行 `which <command>` 或 `<command> --version` 判断是否已安装；',
     '- running：判断是否有长驻服务/daemon 或监听端口在运行（如 `pgrep -f`、`lsof -i`、端口健康检查等）。',
     '',
-    '完成后只输出一个 JSON 数组，不要输出任何其他文字、不要用代码块包裹，每个元素结构如下：',
-    '{"id":"<执行器id>","installed":true,"running":false,"version":"<版本或省略>"}',
-    '',
-    '直接输出 JSON 数组。',
+    '完成后输出两部分：',
+    '1. 一个 Markdown 表格，列：执行器 | 是否安装 | 是否运行 | 版本；',
+    '2. 一个 ```json 代码块，内含 JSON 数组，每个元素为 {"id":"<执行器id>","installed":true/false,"running":true/false,"version":"<版本或省略>"}。',
   ].join('\n')
 }
 
@@ -119,9 +118,17 @@ export function assistantMessageText(message: unknown): string {
   return JSON.stringify(message)
 }
 
-/** Best-effort command string from a shell tool-call argument. */
+/** Best-effort command string from a shell tool-call argument (JSON string or object). */
 export function commandOf(args: unknown): string | undefined {
-  if (typeof args !== 'object' || args === null) return undefined
-  const command = (args as { command?: unknown }).command
+  let parsed: unknown = args
+  if (typeof args === 'string') {
+    try {
+      parsed = JSON.parse(args)
+    } catch {
+      return undefined
+    }
+  }
+  if (typeof parsed !== 'object' || parsed === null) return undefined
+  const command = (parsed as { command?: unknown }).command
   return typeof command === 'string' ? command : undefined
 }

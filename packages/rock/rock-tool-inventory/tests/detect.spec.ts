@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectPrompt, extractJsonArray, mergeStatuses, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
+import { commandOf, detectPrompt, extractJsonArray, mergeStatuses, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
 const TOOLS: readonly ToolDescriptor[] = [
@@ -94,5 +94,19 @@ describe('touchedToolIds', () => {
 
   it('matches several tools in one combined command', () => {
     expect([...touchedToolIds('for t in codex pi; do echo $t; done', TOOLS)].sort()).toEqual(['codex', 'pi'])
+  })
+})
+
+describe('commandOf', () => {
+  it('extracts command from a JSON string argument', () => {
+    expect(commandOf('{"command":"which codex","description":"detect codex"}')).toBe('which codex')
+  })
+
+  it('extracts command from an object argument', () => {
+    expect(commandOf({ command: 'pgrep -f opencode' })).toBe('pgrep -f opencode')
+  })
+
+  it('returns undefined for malformed JSON', () => {
+    expect(commandOf('not json')).toBeUndefined()
   })
 })

@@ -20,6 +20,8 @@
  */
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -51,10 +53,15 @@ const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
   { id: 'claude-code', command: 'claude' },
 ]
 
+/** JSON file persisting the last detection result across restarts. */
+const DEFAULT_STATE_PATH = '../.rock/tool-inventory.json'
+
 /** Deployment-owned probe targets; patchable from cordis.yml. */
 export interface Config {
   /** Tool descriptors to probe; defaults to the shipped targets. */
   tools?: ToolDescriptor[]
+  /** JSON file persisting the last detection result; defaults to the Rock home. */
+  statePath?: string
 }
 
 /** Remote service carrying the tool inventory and the assistant detection run. */
@@ -66,9 +73,11 @@ export default class RockToolInventoryController extends TypertRemoteService {
       command: z.string().min(1),
       installDocUrl: z.string().default(''),
     })).default([...DEFAULT_TOOLS]),
+    statePath: z.string().min(1).default(DEFAULT_STATE_PATH),
   })
 
   private readonly tools: readonly ToolDescriptor[]
+  private readonly statePath: string
   private state: DetectState
   private detectSessionId: SessionId | undefined
   private assistantText = ''
@@ -77,7 +86,12 @@ export default class RockToolInventoryController extends TypertRemoteService {
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockToolInventory')
     this.tools = config.tools ?? DEFAULT_TOOLS
-    this.state = { running: false, statuses: [], progress: { total: this.tools.length, detected: 0, steps: 0 } }
+    this.statePath = config.statePath ?? DEFAULT_STATE_PATH
+    this.state = {
+      running: false,
+      statuses: this.loadStatuses(),
+      progress: { total: this.tools.length, detected: 0, steps: 0 },
+    }
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.recordDetectEvent(session, event)
     })
@@ -226,16 +240,45 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
   }
 
-  /** Parse the assistant's JSON answer, merge over the fast probe, and settle the run. */
+  /** Parse the assistant's JSON answer, merge over the fast probe, settle the run, and persist. */
   private finalizeDetect(): void {
     const assistant = parseDetectStatuses(this.assistantText, this.tools)
+    const statuses = mergeStatuses(this.state.statuses, assistant)
     this.state = {
       running: false,
       ...(this.state.sessionId === undefined ? {} : { sessionId: this.state.sessionId }),
-      statuses: mergeStatuses(this.state.statuses, assistant),
+      statuses,
       progress: this.state.progress,
     }
     this.detectSessionId = undefined
+    this.persistStatuses(statuses)
+  }
+
+  /** Read the last persisted detection result, or an empty list on absence/failure. */
+  private loadStatuses(): ToolStatus[] {
+    let raw: string
+    try {
+      raw = readFileSync(this.statePath, 'utf8')
+    } catch {
+      return []
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter(isToolStatus)
+    } catch {
+      return []
+    }
+  }
+
+  /** Persist the latest detection result so a restart keeps it. */
+  private persistStatuses(statuses: readonly ToolStatus[]): void {
+    try {
+      mkdirSync(dirname(this.statePath), { recursive: true })
+      writeFileSync(this.statePath, `${JSON.stringify(statuses, null, 2)}\n`, 'utf8')
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tool-inventory: persist detection result failed: ${messageOf(error)}`)
+    }
   }
 
   /** The employee's dedicated assistant agent id, or undefined before sync. */
@@ -271,6 +314,14 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+/** Whether an unknown value is a well-formed ToolStatus. */
+function isToolStatus(value: unknown): value is ToolStatus {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.id === 'string' && record.id.length > 0
+    && typeof record.installed === 'boolean'
 }
 
 declare module '@deepseek-ai/cordis' {
