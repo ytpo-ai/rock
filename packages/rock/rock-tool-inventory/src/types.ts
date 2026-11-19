@@ -55,6 +55,8 @@ export interface DetectState {
   running: boolean
   /** The assistant session id for the current (or last) run. */
   sessionId?: string
+  /** ISO timestamp of the last completed detection. */
+  lastDetectedAt?: string
   /** Latest statuses: fast-probe prefill merged with assistant results. */
   statuses: ToolStatus[]
   /** Live progress; the process itself renders in the assistant session. */

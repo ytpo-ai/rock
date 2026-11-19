@@ -87,9 +87,11 @@ export default class RockToolInventoryController extends TypertRemoteService {
     super(ctx, 'rockToolInventory')
     this.tools = config.tools ?? DEFAULT_TOOLS
     this.statePath = config.statePath ?? DEFAULT_STATE_PATH
+    const persisted = this.loadPersisted()
     this.state = {
       running: false,
-      statuses: this.loadStatuses(),
+      ...(persisted.lastDetectedAt === undefined ? {} : { lastDetectedAt: persisted.lastDetectedAt }),
+      statuses: persisted.statuses,
       progress: { total: this.tools.length, detected: 0, steps: 0 },
     }
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
@@ -244,38 +246,44 @@ export default class RockToolInventoryController extends TypertRemoteService {
   private finalizeDetect(): void {
     const assistant = parseDetectStatuses(this.assistantText, this.tools)
     const statuses = mergeStatuses(this.state.statuses, assistant)
+    const lastDetectedAt = new Date().toISOString()
     this.state = {
       running: false,
       ...(this.state.sessionId === undefined ? {} : { sessionId: this.state.sessionId }),
+      lastDetectedAt,
       statuses,
       progress: this.state.progress,
     }
     this.detectSessionId = undefined
-    this.persistStatuses(statuses)
+    this.persistState(statuses, lastDetectedAt)
   }
 
-  /** Read the last persisted detection result, or an empty list on absence/failure. */
-  private loadStatuses(): ToolStatus[] {
+  /** Read the last persisted detection result, or an empty state on absence/failure. */
+  private loadPersisted(): { lastDetectedAt?: string; statuses: ToolStatus[] } {
     let raw: string
     try {
       raw = readFileSync(this.statePath, 'utf8')
     } catch {
-      return []
+      return { statuses: [] }
     }
     try {
       const parsed: unknown = JSON.parse(raw)
-      if (!Array.isArray(parsed)) return []
-      return parsed.filter(isToolStatus)
+      if (typeof parsed !== 'object' || parsed === null) return { statuses: [] }
+      const record = parsed as { lastDetectedAt?: unknown; statuses?: unknown }
+      const statuses = Array.isArray(record.statuses) ? record.statuses.filter(isToolStatus) : []
+      const lastDetectedAt = typeof record.lastDetectedAt === 'string' ? record.lastDetectedAt : undefined
+      return { ...(lastDetectedAt === undefined ? {} : { lastDetectedAt }), statuses }
     } catch {
-      return []
+      return { statuses: [] }
     }
   }
 
-  /** Persist the latest detection result so a restart keeps it. */
-  private persistStatuses(statuses: readonly ToolStatus[]): void {
+  /** Persist the latest detection result and timestamp so a restart keeps them. */
+  private persistState(statuses: readonly ToolStatus[], lastDetectedAt: string): void {
     try {
       mkdirSync(dirname(this.statePath), { recursive: true })
-      writeFileSync(this.statePath, `${JSON.stringify(statuses, null, 2)}\n`, 'utf8')
+      const payload = { lastDetectedAt, statuses }
+      writeFileSync(this.statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
     } catch (error) {
       this.ctx.logger.warn(`rock-tool-inventory: persist detection result failed: ${messageOf(error)}`)
     }

@@ -1,5 +1,5 @@
 /** Rock tool inventory panel: detected runner states plus a single-line detection progress row. */
-import { useEffect, useState, type CSSProperties, type ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -34,6 +34,11 @@ function runnerState(tool: ToolStatus): RunnerState {
 /** Dot state for a runner row. */
 function runnerDot(state: RunnerState): 'done' | 'idle' {
   return state === 'running' ? 'done' : 'idle'
+}
+
+/** Format one ISO timestamp for the toolbar. */
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString()
 }
 
 /** Render the detected runner rows plus the single-line assistant-LLM detection progress. */
@@ -78,10 +83,14 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
   const running = detect?.running === true
   const progress = detect?.progress
   const sessionId = detect?.sessionId
+  const lastDetectedAt = detect?.lastDetectedAt
 
   return (
     <div className={css.root}>
       <div className={css.toolbar}>
+        {lastDetectedAt !== undefined
+          ? <span className={css.lastRun}>{t('detect.lastRun', { time: formatTime(lastDetectedAt) })}</span>
+          : null}
         <Button variant="primary" size="sm" disabled={running} onClick={runDetect}>
           {running ? t('detect.running') : t('detect.action')}
         </Button>
@@ -90,8 +99,6 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
       {detect !== null && progress !== undefined && (running || sessionId !== undefined) ? (
         <ProgressRow
           running={running}
-          detected={progress.detected}
-          total={progress.total}
           current={progress.current}
           sessionId={sessionId}
           t={t}
@@ -134,37 +141,20 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
   )
 }
 
-/** Single-line detection progress: fraction + current work + view-session link. */
+/** Single-line detection progress: current work + view-session link. */
 function ProgressRow(props: {
   running: boolean
-  detected: number
-  total: number
   current: string | undefined
   sessionId: string | undefined
   t: ToolInventorySectionProps['t']
   openSession: (sessionId: string) => void
 }): ReactElement {
-  const { running, detected, total, current, sessionId, t, openSession } = props
-  const percent = total > 0 ? Math.round((detected / total) * 100) : 0
-  const fillStyle: CSSProperties = { width: `${percent}%` }
+  const { running, current, sessionId, t, openSession } = props
   const statusText = running
     ? (current !== undefined ? t('progress.current', { command: current }) : t('detect.running'))
     : t('progress.done')
   return (
     <div className={css.progressRow}>
-      <div className={css.progressFraction}>
-        <span className={css.progressLabel}>{t('progress.label')}</span>
-        <div
-          className={css.progressBar}
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={total}
-          aria-valuenow={detected}
-        >
-          <div className={css.progressFill} style={fillStyle} />
-        </div>
-        <span className={css.progressCount}>{`${detected}/${total}`}</span>
-      </div>
       <span className={css.progressCurrent}>{statusText}</span>
       {sessionId !== undefined
         ? (
