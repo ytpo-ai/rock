@@ -1,11 +1,10 @@
-/** Rock tool inventory panel: detected runner states plus the assistant-LLM detection transcript. */
-import { useEffect, useState, type ReactElement } from 'react'
+/** Rock tool inventory panel: detected runner states plus a compact detection progress bar. */
+import { useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DetectRecord, DetectState, ToolStatus } from '@rock/rock-tool-inventory/types'
-import type { RockToolInventoryKey } from './locales.ts'
+import type { DetectState, ToolStatus } from '@rock/rock-tool-inventory/types'
 import css from './rock-tool-inventory.module.css'
 
 /** Poll interval while a detection run is in flight. */
@@ -37,7 +36,7 @@ function runnerDot(state: RunnerState): 'done' | 'idle' {
   return state === 'running' ? 'done' : 'idle'
 }
 
-/** Render the detected runner rows and the assistant-LLM detection transcript. */
+/** Render the detected runner rows plus the assistant-LLM detection progress. */
 export function ToolInventorySection({ t, remote, openSession }: ToolInventorySectionProps): ReactElement {
   const [tools, setTools] = useState<ToolStatus[]>([])
   const [detect, setDetect] = useState<DetectState | null>(null)
@@ -77,8 +76,8 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
 
   const statuses = detect !== null && detect.statuses.length > 0 ? detect.statuses : tools
   const running = detect?.running === true
+  const progress = detect?.progress
   const sessionId = detect?.sessionId
-  const records = detect?.records ?? []
 
   return (
     <div className={css.root}>
@@ -120,45 +119,64 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         </ul>
       )}
 
-      {running || records.length > 0 ? (
-        <div className={css.transcript}>
-          <div className={css.transcriptHeader}>
-            <span className={css.transcriptTitle}>{t('transcript.title')}</span>
-            {sessionId !== undefined
-              ? <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>{t('transcript.openSession')}</Button>
-              : null}
-          </div>
-          <ul className={css.records}>
-            {records.map((record, index) => (
-              <li key={`${record.type}-${index}`} className={css.record}>
-                {recordRow(record, t)}
-              </li>
-            ))}
-          </ul>
-          {running ? <div className={css.ongoing}>{t('transcript.ongoing')}</div> : null}
-        </div>
+      {detect !== null && progress !== undefined && (running || sessionId !== undefined) ? (
+        <ProgressCard
+          running={running}
+          detected={progress.detected}
+          total={progress.total}
+          current={progress.current}
+          steps={progress.steps}
+          sessionId={sessionId}
+          t={t}
+          openSession={openSession}
+        />
       ) : null}
     </div>
   )
 }
 
-/** Render one transcript record. */
-function recordRow(record: DetectRecord, t: (key: RockToolInventoryKey) => string): ReactElement {
-  if (record.type === 'assistant.message') {
-    return <span className={css.recordMessage}>{record.text ?? ''}</span>
-  }
-  if (record.type === 'tool.call') {
-    return (
-      <span className={css.recordTool}>
-        <span className={css.recordToolLabel}>{t('transcript.toolCall')}</span>
-        {record.command ?? record.toolId ?? ''}
-      </span>
-    )
-  }
+/** Compact detection progress: bar + current work + view-session link. */
+function ProgressCard(props: {
+  running: boolean
+  detected: number
+  total: number
+  current: string | undefined
+  steps: number
+  sessionId: string | undefined
+  t: ToolInventorySectionProps['t']
+  openSession: (sessionId: string) => void
+}): ReactElement {
+  const { running, detected, total, current, steps, sessionId, t, openSession } = props
+  const percent = total > 0 ? Math.round((detected / total) * 100) : 0
+  const fillStyle: CSSProperties = { width: `${percent}%` }
   return (
-    <span className={css.recordTool}>
-      <span className={css.recordToolLabel}>{record.ok === false ? t('transcript.failed') : t('transcript.toolResult')}</span>
-      {record.toolId ?? ''}
-    </span>
+    <div className={css.progressCard}>
+      <div className={css.progressHeader}>
+        <span className={css.progressTitle}>{running ? t('progress.running') : t('progress.done')}</span>
+        <span className={css.progressCount}>{`${detected}/${total}`}</span>
+      </div>
+      <div
+        className={css.progressTrack}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={detected}
+      >
+        <div className={css.progressFill} style={fillStyle} />
+      </div>
+      <div className={css.progressMeta}>
+        {current !== undefined
+          ? <span className={css.progressCurrent}>{t('progress.current', { command: current })}</span>
+          : null}
+        <span className={css.progressSteps}>{t('progress.steps', { n: steps })}</span>
+      </div>
+      {sessionId !== undefined
+        ? (
+          <div className={css.progressActions}>
+            <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>{t('progress.viewSession')}</Button>
+          </div>
+        )
+        : null}
+    </div>
   )
 }

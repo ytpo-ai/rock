@@ -1,13 +1,13 @@
 /**
  * Assistant-LLM detection vocabulary: build the dedicated-assistant probe
- * prompt, parse its JSON answer into tool statuses, and merge assistant results
- * over the fast `--version` probe. Pure functions so the controller stays thin
- * and the parsing/merging is unit-testable without a live LLM.
+ * prompt, parse its JSON answer into tool statuses, merge assistant results
+ * over the fast `--version` probe, and track which targets a shell command
+ * touches. Pure functions so the controller stays thin and the logic is
+ * unit-testable without a live LLM.
  *
  * @module @rock/rock-tool-inventory/detect
  */
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { DetectRecord, ToolDescriptor, ToolStatus } from './types.ts'
+import type { ToolDescriptor, ToolStatus } from './types.ts'
 
 /**
  * Build the dedicated-assistant probe prompt for the given tools.
@@ -87,38 +87,24 @@ export function mergeStatuses(fast: readonly ToolStatus[], assistant: readonly T
   return fast.map(status => assistantById.get(status.id) ?? status)
 }
 
-/** Map one harness session event into a detection record, or null when not tracked. */
-export function detectRecordFrom(event: SessionEvent): DetectRecord | null {
-  switch (event.type) {
-    case 'tool/call': {
-      const command = commandOf(event.data.arguments)
-      return {
-        type: 'tool.call',
-        timestamp: new Date().toISOString(),
-        toolId: event.data.name,
-        ...(command === undefined ? {} : { command }),
-      }
-    }
-    case 'tool/result':
-      return {
-        type: 'tool.result',
-        timestamp: new Date().toISOString(),
-        toolId: String(event.data.message.toolCallId),
-        ok: event.data.message.isError !== true,
-      }
-    case 'assistant/message':
-      return {
-        type: 'assistant.message',
-        timestamp: new Date().toISOString(),
-        text: assistantMessageText(event.data.message),
-      }
-    default:
-      return null
+/** The tool ids whose CLI command appears as a token in one executed shell command. */
+export function touchedToolIds(command: string, tools: readonly ToolDescriptor[]): ReadonlySet<string> {
+  const touched = new Set<string>()
+  for (const tool of tools) {
+    if (hasToken(command, tool.command)) touched.add(tool.id)
   }
+  return touched
+}
+
+/** Whether `token` appears in `text` as a whole alphanumeric token. */
+function hasToken(text: string, token: string): boolean {
+  if (token.length === 0) return false
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^A-Za-z0-9])${escaped}(?:$|[^A-Za-z0-9])`).test(text)
 }
 
 /** Best-effort plain-text projection of an assistant message. */
-function assistantMessageText(message: unknown): string {
+export function assistantMessageText(message: unknown): string {
   if (message === null || message === undefined) return ''
   const content = (message as { content?: unknown }).content
   if (Array.isArray(content)) {
@@ -134,7 +120,7 @@ function assistantMessageText(message: unknown): string {
 }
 
 /** Best-effort command string from a shell tool-call argument. */
-function commandOf(args: unknown): string | undefined {
+export function commandOf(args: unknown): string | undefined {
   if (typeof args !== 'object' || args === null) return undefined
   const command = (args as { command?: unknown }).command
   return typeof command === 'string' ? command : undefined

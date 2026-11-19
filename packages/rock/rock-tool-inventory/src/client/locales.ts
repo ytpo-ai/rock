@@ -14,12 +14,11 @@ export const en = {
   'detect.running': 'Detecting…',
   'load.failed': 'Could not load runners.',
   'load.retry': 'Retry',
-  'transcript.title': 'Detection',
-  'transcript.openSession': 'Open in session',
-  'transcript.toolCall': 'Run:',
-  'transcript.toolResult': 'Done:',
-  'transcript.failed': 'Failed:',
-  'transcript.ongoing': 'Detecting…',
+  'progress.running': 'Detecting',
+  'progress.done': 'Done',
+  'progress.current': 'Current: {command}',
+  'progress.steps': '{n} commands run',
+  'progress.viewSession': 'View session',
 } as const
 
 /** Locale keys. */
@@ -37,10 +36,9 @@ export const zh: Record<RockToolInventoryKey, string> = {
   'detect.running': '检测中…',
   'load.failed': '加载执行器失败',
   'load.retry': '重试',
-  'transcript.title': '探测过程',
-  'transcript.openSession': '在会话中查看',
-  'transcript.toolCall': '运行：',
-  'transcript.toolResult': '完成：',
-  'transcript.failed': '失败：',
-  'transcript.ongoing': '正在检测…',
+  'progress.running': '检测中',
+  'progress.done': '已完成',
+  'progress.current': '当前：{command}',
+  'progress.steps': '已运行 {n} 个命令',
+  'progress.viewSession': '查看会话详情',
 }

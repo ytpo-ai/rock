@@ -3,8 +3,9 @@
  * exposes the result as a read-only Remote service (`ctx.rockToolInventory`).
  * The fast `--version` probe fills the first-paint snapshot; a manual
  * `detect()` runs the dedicated assistant LLM (`assistant` preset) to detect
- * install AND running state, streaming its transcript back through
- * `detectState()`.
+ * install AND running state. The full process renders in the assistant session
+ * (DSH conversation); this Remote exposes only the statuses and a compact
+ * progress line through `detectState()`.
  *
  * ```yaml
  * - id: rock-tool-inventory
@@ -28,7 +29,7 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { detectPrompt, detectRecordFrom, mergeStatuses, parseDetectStatuses } from './detect.ts'
+import { assistantMessageText, commandOf, detectPrompt, mergeStatuses, parseDetectStatuses, touchedToolIds } from './detect.ts'
 import { toolStatusFrom } from './probe.ts'
 import type { DetectState, ToolDescriptor, ToolStatus } from './types.ts'
 
@@ -68,13 +69,15 @@ export default class RockToolInventoryController extends TypertRemoteService {
   })
 
   private readonly tools: readonly ToolDescriptor[]
-  private state: DetectState = { running: false, statuses: [], records: [] }
+  private state: DetectState
   private detectSessionId: SessionId | undefined
   private assistantText = ''
+  private touched = new Set<string>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockToolInventory')
     this.tools = config.tools ?? DEFAULT_TOOLS
+    this.state = { running: false, statuses: [], progress: { total: this.tools.length, detected: 0, steps: 0 } }
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.recordDetectEvent(session, event)
     })
@@ -86,7 +89,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return Promise.all(this.tools.map(tool => probeTool(tool)))
   }
 
-  /** Latest detection run state (transcript + merged statuses). */
+  /** Latest detection run state (statuses + progress; the process renders in the assistant session). */
   @Remote
   detectState(): DetectState {
     return this.state
@@ -94,21 +97,27 @@ export default class RockToolInventoryController extends TypertRemoteService {
 
   /**
    * Start one full detection run through the dedicated assistant LLM. Returns
-   * immediately with `running: true`; results stream in via {@link detectState}.
+   * immediately with `running: true`; statuses and progress stream in via {@link detectState}.
    */
   @Remote
   async detect(): Promise<DetectState> {
     if (this.state.running) return this.state
     const fast = await Promise.all(this.tools.map(tool => probeTool(tool)))
-    this.state = { running: true, statuses: fast, records: [] }
+    this.state = { running: true, statuses: fast, progress: { total: this.tools.length, detected: 0, steps: 0 } }
     this.detectSessionId = undefined
     this.assistantText = ''
+    this.touched = new Set()
     try {
       const sessionId = await this.launchAssistant()
       this.detectSessionId = sessionId
       this.state = { ...this.state, sessionId: String(sessionId) }
     } catch (error) {
-      this.state = { running: false, statuses: fast, records: [], error: messageOf(error) }
+      this.state = {
+        running: false,
+        statuses: fast,
+        progress: { total: this.tools.length, detected: 0, steps: 0 },
+        error: messageOf(error),
+      }
     }
     return this.state
   }
@@ -176,17 +185,25 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
   }
 
-  /** Record one event for the in-flight detection session and finalize on turn end. */
+  /** Track progress for the in-flight detection session and finalize on turn end. */
   private recordDetectEvent(session: Session, event: SessionEvent): void {
     if (this.detectSessionId === undefined || session.id !== this.detectSessionId) return
-    const record = detectRecordFrom(event)
-    if (record !== null) {
-      this.state.records = [...this.state.records, record]
-      if (record.type === 'assistant.message' && record.text !== undefined) {
-        this.assistantText += record.text
+    if (event.type === 'assistant/message') {
+      this.assistantText += assistantMessageText(event.data.message)
+    } else if (event.type === 'tool/call') {
+      const command = commandOf(event.data.arguments)
+      if (command !== undefined) {
+        for (const id of touchedToolIds(command, this.tools)) this.touched.add(id)
       }
+      this.state.progress = {
+        total: this.tools.length,
+        detected: this.touched.size,
+        ...(command === undefined ? {} : { current: command }),
+        steps: this.state.progress.steps + 1,
+      }
+    } else if (event.type === 'turn/end') {
+      this.finalizeDetect()
     }
-    if (event.type === 'turn/end') this.finalizeDetect()
   }
 
   /** Parse the assistant's JSON answer, merge over the fast probe, and settle the run. */
@@ -196,7 +213,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
       running: false,
       ...(this.state.sessionId === undefined ? {} : { sessionId: this.state.sessionId }),
       statuses: mergeStatuses(this.state.statuses, assistant),
-      records: this.state.records,
+      progress: this.state.progress,
     }
     this.detectSessionId = undefined
   }

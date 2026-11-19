@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectPrompt, extractJsonArray, mergeStatuses, parseDetectStatuses } from '../src/detect.ts'
+import { detectPrompt, extractJsonArray, mergeStatuses, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
 const TOOLS: readonly ToolDescriptor[] = [
@@ -80,5 +80,19 @@ describe('detectPrompt', () => {
     expect(prompt).toContain('codex')
     expect(prompt).toContain('pi')
     expect(prompt).toContain('JSON')
+  })
+})
+
+describe('touchedToolIds', () => {
+  it('matches a whole-token command', () => {
+    expect([...touchedToolIds('which codex', TOOLS)]).toEqual(['codex'])
+  })
+
+  it('does not match a token embedded in a longer word', () => {
+    expect([...touchedToolIds('echo pipe', TOOLS)]).toEqual([])
+  })
+
+  it('matches several tools in one combined command', () => {
+    expect([...touchedToolIds('for t in codex pi; do echo $t; done', TOOLS)].sort()).toEqual(['codex', 'pi'])
   })
 })

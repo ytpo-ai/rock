@@ -1,7 +1,7 @@
 /**
  * Rock tool inventory vocabulary: one probed agent tool on the employee
  * workbench, its detected install/run state, and the assistant-LLM detection
- * transcript exposed to the panel.
+ * progress exposed to the panel.
  *
  * @module @rock/rock-tool-inventory/types
  */
@@ -37,20 +37,16 @@ export interface ToolStatus {
   detectedBy?: DetectSource
 }
 
-/** One assistant-LLM detection transcript record. */
-export interface DetectRecord {
-  /** Record kind. */
-  type: 'assistant.message' | 'tool.call' | 'tool.result'
-  /** ISO timestamp. */
-  timestamp: string
-  /** Assistant message text (`assistant.message` only). */
-  text?: string
-  /** Tool id (`tool.call` / `tool.result` only). */
-  toolId?: string
-  /** The shell command the tool ran (`tool.call` only). */
-  command?: string
-  /** Whether the tool call succeeded (`tool.result` only). */
-  ok?: boolean
+/** Live progress of one assistant-LLM detection run. */
+export interface DetectProgress {
+  /** Total probe targets. */
+  total: number
+  /** Number of distinct targets the assistant has touched so far. */
+  detected: number
+  /** The last shell command the assistant ran, when any. */
+  current?: string
+  /** Number of shell commands run so far. */
+  steps: number
 }
 
 /** Current detection run state exposed to the panel. */
@@ -61,8 +57,8 @@ export interface DetectState {
   sessionId?: string
   /** Latest statuses: fast-probe prefill merged with assistant results. */
   statuses: ToolStatus[]
-  /** Detection transcript records, in order. */
-  records: DetectRecord[]
+  /** Live progress; the process itself renders in the assistant session. */
+  progress: DetectProgress
   /** Safe failure diagnostic when the run could not start or failed. */
   error?: string
 }
