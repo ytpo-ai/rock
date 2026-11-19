@@ -1,28 +1,147 @@
+/* Rock tool inventory: runner list plus the assistant-LLM detection transcript.
+   Surfaces reuse the shared --dsw-* tokens and the 13px detail scale. */
+
 .root {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.table th {
-  text-align: left;
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-secondary);
-  font-weight: 500;
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.table td {
-  padding: 8px 12px;
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
-.empty {
+.row:last-child {
+  border-bottom: 0;
+}
+
+.toolId {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.statusLabel {
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dsw-alias-label-secondary);
+}
+
+.version {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-link);
+}
+
+.empty {
   margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-error);
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+}
+
+.transcriptHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.transcriptTitle {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.records {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.record {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.recordMessage {
+  color: var(--dsw-alias-label-primary);
+  white-space: pre-wrap;
+}
+
+.recordTool {
+  display: flex;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.recordToolLabel {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.ongoing {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.skeletonRow {
+  height: 32px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-skeleton);
 }

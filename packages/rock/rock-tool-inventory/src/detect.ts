@@ -1,0 +1,141 @@
+/**
+ * Assistant-LLM detection vocabulary: build the dedicated-assistant probe
+ * prompt, parse its JSON answer into tool statuses, and merge assistant results
+ * over the fast `--version` probe. Pure functions so the controller stays thin
+ * and the parsing/merging is unit-testable without a live LLM.
+ *
+ * @module @rock/rock-tool-inventory/detect
+ */
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { DetectRecord, ToolDescriptor, ToolStatus } from './types.ts'
+
+/**
+ * Build the dedicated-assistant probe prompt for the given tools.
+ * @param tools - probe targets.
+ * @returns a prompt that asks for a strict JSON array.
+ */
+export function detectPrompt(tools: readonly ToolDescriptor[]): string {
+  const ids = tools.map(tool => tool.id).join(', ')
+  return [
+    '你是员工工作台的专属助理。请探测以下执行器是否已安装、以及是否有长驻服务/daemon 或监听端口正在运行：',
+    ids,
+    '',
+    '对每个执行器：',
+    '- installed：运行 `which <command>` 或 `<command> --version` 判断是否已安装；',
+    '- running：判断是否有长驻服务/daemon 或监听端口在运行（如 `pgrep -f`、`lsof -i`、端口健康检查等）。',
+    '',
+    '完成后只输出一个 JSON 数组，不要输出任何其他文字、不要用代码块包裹，每个元素结构如下：',
+    '{"id":"<执行器id>","installed":true,"running":false,"version":"<版本或省略>"}',
+    '',
+    '直接输出 JSON 数组。',
+  ].join('\n')
+}
+
+/** Extract the first JSON array literal from assistant output, or null. */
+export function extractJsonArray(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)
+  const candidate = fenced?.[1] === undefined ? text : fenced[1]
+  const start = candidate.indexOf('[')
+  const end = candidate.lastIndexOf(']')
+  if (start === -1 || end === -1 || end < start) return null
+  try {
+    return JSON.parse(candidate.slice(start, end + 1))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Parse the assistant's JSON array into statuses for the known tools. Unknown
+ * ids and entries without a boolean `installed` are dropped.
+ * @param text - assistant message text.
+ * @param tools - probe targets (determines the accepted id set).
+ * @returns assistant-detected statuses, possibly empty.
+ */
+export function parseDetectStatuses(text: string, tools: readonly ToolDescriptor[]): ToolStatus[] {
+  const raw = extractJsonArray(text)
+  if (!Array.isArray(raw)) return []
+  const known = new Set(tools.map(tool => tool.id))
+  const installDocById = new Map(tools.map(tool => [tool.id, tool.installDocUrl]))
+  const now = new Date().toISOString()
+  const out: ToolStatus[] = []
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue
+    const id = (item as { id?: unknown }).id
+    const installed = (item as { installed?: unknown }).installed
+    const running = (item as { running?: unknown }).running
+    const version = (item as { version?: unknown }).version
+    if (typeof id !== 'string' || !known.has(id)) continue
+    if (typeof installed !== 'boolean') continue
+    const installDocUrl = installDocById.get(id)
+    out.push({
+      id,
+      installed,
+      ...(typeof running === 'boolean' ? { running } : {}),
+      ...(typeof version === 'string' && version.length > 0 ? { version } : {}),
+      ...(installDocUrl === undefined || installDocUrl === '' ? {} : { installDocUrl }),
+      lastCheckedAt: now,
+      detectedBy: 'assistant',
+    })
+  }
+  return out
+}
+
+/** Merge assistant results over the fast probe, keeping declaration order. */
+export function mergeStatuses(fast: readonly ToolStatus[], assistant: readonly ToolStatus[]): ToolStatus[] {
+  const assistantById = new Map(assistant.map(status => [status.id, status]))
+  return fast.map(status => assistantById.get(status.id) ?? status)
+}
+
+/** Map one harness session event into a detection record, or null when not tracked. */
+export function detectRecordFrom(event: SessionEvent): DetectRecord | null {
+  switch (event.type) {
+    case 'tool/call': {
+      const command = commandOf(event.data.arguments)
+      return {
+        type: 'tool.call',
+        timestamp: new Date().toISOString(),
+        toolId: event.data.name,
+        ...(command === undefined ? {} : { command }),
+      }
+    }
+    case 'tool/result':
+      return {
+        type: 'tool.result',
+        timestamp: new Date().toISOString(),
+        toolId: String(event.data.message.toolCallId),
+        ok: event.data.message.isError !== true,
+      }
+    case 'assistant/message':
+      return {
+        type: 'assistant.message',
+        timestamp: new Date().toISOString(),
+        text: assistantMessageText(event.data.message),
+      }
+    default:
+      return null
+  }
+}
+
+/** Best-effort plain-text projection of an assistant message. */
+function assistantMessageText(message: unknown): string {
+  if (message === null || message === undefined) return ''
+  const content = (message as { content?: unknown }).content
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        const text = (block as { text?: unknown }).text
+        return typeof text === 'string' ? text : ''
+      })
+      .filter(text => text.length > 0)
+      .join('\n')
+  }
+  return JSON.stringify(message)
+}
+
+/** Best-effort command string from a shell tool-call argument. */
+function commandOf(args: unknown): string | undefined {
+  if (typeof args !== 'object' || args === null) return undefined
+  const command = (args as { command?: unknown }).command
+  return typeof command === 'string' ? command : undefined
+}
