@@ -75,6 +75,10 @@ describe('mergeStatuses', () => {
 })
 
 describe('detectPrompt', () => {
+  it('starts with the runner-detection title on its own line', () => {
+    expect(detectPrompt(TOOLS).split('\n')[0]).toBe('执行器检测')
+  })
+
   it('names every tool id', () => {
     const prompt = detectPrompt(TOOLS)
     expect(prompt).toContain('codex')

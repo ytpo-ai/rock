@@ -17,6 +17,8 @@ import type { ToolDescriptor, ToolStatus } from './types.ts'
 export function detectPrompt(tools: readonly ToolDescriptor[]): string {
   const ids = tools.map(tool => tool.id).join(', ')
   return [
+    '执行器检测',
+    '',
     '你是员工工作台的专属助理。请探测以下执行器是否已安装、以及是否有长驻服务/daemon 或监听端口正在运行：',
     ids,
     '',
