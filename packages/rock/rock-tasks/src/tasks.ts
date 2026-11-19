@@ -6,7 +6,7 @@
  *
  * @module @rock/rock-tasks/tasks
  */
-import type { TaskSummary } from './types.ts'
+import type { TaskSkill, TaskSummary } from './types.ts'
 
 /** Project a parsed gateway body (`{ data: { tasks: [...] } }`) into typed summaries. */
 export function tasksFrom(body: unknown): TaskSummary[] {
@@ -35,6 +35,7 @@ export function summaryFrom(raw: unknown): TaskSummary | null {
   const t = raw as Record<string, unknown>
   const id = typeof t.id === 'string' ? t.id : ''
   if (id.length === 0) return null
+  const skills = parseTaskSkills(t)
   return {
     id,
     type: typeof t.type === 'string' ? t.type : '',
@@ -49,6 +50,7 @@ export function summaryFrom(raw: unknown): TaskSummary | null {
     ...(typeof t.priority === 'string' ? { priority: t.priority } : {}),
     ...(typeof t.dueAt === 'string' ? { dueAt: t.dueAt } : {}),
     ...(typeof t.createdAt === 'string' ? { createdAt: t.createdAt } : {}),
+    ...(skills === undefined ? {} : { skills }),
   }
 }
 
@@ -68,4 +70,25 @@ export function projectsFrom(body: unknown): Array<{ id: string; name: string; s
     rows.push({ id, name, ...(typeof p.slug === 'string' ? { slug: p.slug } : {}) })
   }
   return rows
+}
+
+/**
+ * Parse skill entries from a raw task entry: a `skills` array of
+ * id/name objects, or an array of string ids, or undefined.
+ */
+function parseTaskSkills(raw: Record<string, unknown>): TaskSkill[] | undefined {
+  const skills = raw.skills
+  if (!Array.isArray(skills) || skills.length === 0) return undefined
+  const rows: TaskSkill[] = []
+  for (const entry of skills) {
+    if (typeof entry === 'object' && entry !== null) {
+      const obj = entry as Record<string, unknown>
+      const id = typeof obj.id === 'string' ? obj.id : ''
+      const name = typeof obj.name === 'string' ? obj.name : id
+      if (id.length > 0) rows.push({ id, name })
+    } else if (typeof entry === 'string') {
+      rows.push({ id: entry, name: entry })
+    }
+  }
+  return rows.length > 0 ? rows : undefined
 }

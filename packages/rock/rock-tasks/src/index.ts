@@ -29,6 +29,15 @@ import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from '
 
 export type * from './types.ts'
 
+/** Skill body fetched from the cloud for prompt/runtime injection. */
+interface TaskSkillBody {
+  id: string
+  name: string
+  slug: string
+  description: string
+  content?: string
+}
+
 /** Interval between project-list syncs (mirrors gateway projects into the workspace). */
 const PROJECT_SYNC_INTERVAL_MS = 60_000
 
@@ -231,6 +240,11 @@ export default class RockTasksController extends TypertRemoteService {
     if (agentPresets === undefined) throw new Error('agentPresets service unavailable')
     if (agents === undefined) throw new Error('agents service unavailable')
 
+    // Fetch skill bodies from the cloud. The thin-relay delegates to an
+    // external subagent (codex/opencode/dsh) as a separate process, so the
+    // skill content is injected into the task prompt it forwards.
+    const skillBodies = await this.fetchTaskSkills(task.id)
+
     this.ctx.logger.info(`rock-tasks: launchSession resolving preset ${presetId}`)
     const preset = await agentPresets.resolve(presetId)
     this.ctx.logger.info(`rock-tasks: launchSession preset ${presetId} resolved`)
@@ -272,7 +286,7 @@ export default class RockTasksController extends TypertRemoteService {
     this.records.openTask(task, botId, String(sessionId), cwd)
 
     handle.agent.followup(createUserMessage({
-      content: [{ type: 'text', text: this.taskPrompt(task, botId) }],
+      content: [{ type: 'text', text: this.taskPrompt(task, botId, skillBodies) }],
       source: { kind: 'user' },
     }))
     this.ctx.logger.info(`rock-tasks: launchSession followup submitted for ${sessionId}`)
@@ -282,14 +296,27 @@ export default class RockTasksController extends TypertRemoteService {
     })
   }
 
-  /** Build the task prompt with the task context + receipt contract. */
-  private taskPrompt(task: TaskSummary, botId: string): string {
+  /**
+   * Build the task prompt with the task context + receipt contract,
+   * prepending skill content for codex/opencode tools.
+   */
+  private taskPrompt(task: TaskSummary, botId: string, skillBodies?: TaskSkillBody[] | null): string {
     const prompt = [task.title, task.description].filter(text => text.length > 0).join('\n\n')
     const workspace = this.ctx.get('rockWorkspace') as {
       resolveTaskPath(taskId: string, projectId?: string | null): string
     } | undefined
     const receiptPath = workspace?.resolveTaskPath(task.id, task.projectId || null) ?? ''
-    return `${prompt}\n\n---\n任务上下文：\n- taskId: ${task.id}\n- projectId: ${task.projectId ?? '(无)'}\n- botId: ${botId}\n- 任务归档文件（追加回执到此文件）: ${receiptPath}`
+
+    let skillPrefix = ''
+    if (skillBodies && skillBodies.length > 0) {
+      const blocks = skillBodies.map((s) => {
+        const body = s.content ?? ''
+        return `<skill_content name="${escapeAttr(s.slug)}">\n<skill_instructions>\n${body}\n</skill_instructions>\n</skill_content>`
+      })
+      skillPrefix = `\n\n以下技能指令在执行任务时应遵循：\n\n${blocks.join('\n\n')}\n\n---\n\n`
+    }
+
+    return `${skillPrefix}${prompt}\n\n---\n任务上下文：\n- taskId: ${task.id}\n- projectId: ${task.projectId ?? '(无)'}\n- botId: ${botId}\n- 任务归档文件（追加回执到此文件）: ${receiptPath}`
   }
 
   /** Register the launched DSH session (sessionId → bot + taskId) so the gateway can validate reported events and link them to the task. */
@@ -373,6 +400,29 @@ export default class RockTasksController extends TypertRemoteService {
     }
   }
 
+  /** Fetch skill bodies from the cloud work-queue skills endpoint. Returns null when unconfigured. */
+  private async fetchTaskSkills(taskId: string): Promise<TaskSkillBody[] | null> {
+    const url = this.config.tasksUrl
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) return null
+    try {
+      const requestUrl = `${url}/${encodeURIComponent(taskId)}/skills`
+      const response = await fetch(requestUrl)
+      if (!response.ok) {
+        this.ctx.logger.warn(`rock-tasks: fetch skills failed HTTP ${response.status}`)
+        return null
+      }
+      const body = (await response.json()) as unknown
+      if (Array.isArray(body)) return body as TaskSkillBody[]
+      const envelope = (body as { data?: unknown }).data
+      if (Array.isArray(envelope)) return envelope as TaskSkillBody[]
+      return null
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tasks: fetch skills failed for task ${taskId}: ${messageOf(error)}`)
+      return null
+    }
+  }
+
   /** Resolve the employee id from the onboarding record, falling back to static config. */
   private resolveEmployeeId(): string {
     const onboarding = this.ctx.get('rockOnboarding') as { getRecord(): { employeeId: string } | null } | undefined
@@ -387,6 +437,11 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+/** Escape a skill slug for safe embedding in XML attribute context. */
+function escapeAttr(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 }
 
 declare module '@deepseek-ai/cordis' {

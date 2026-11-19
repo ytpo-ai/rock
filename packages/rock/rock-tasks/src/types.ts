@@ -6,6 +6,14 @@
  * @module @rock/rock-tasks/types
  */
 
+/** One skill associated with a task, as projected from the cloud work-queue API. */
+export interface TaskSkill {
+  /** Skill id from the agent_skills collection. */
+  id: string
+  /** Human-readable skill name. */
+  name: string
+}
+
 /** One task from the cloud `work_items` queue, projected for the console. */
 export interface TaskSummary {
   /** Task id. */
@@ -34,6 +42,8 @@ export interface TaskSummary {
   dueAt?: string
   /** Creation time as ISO-8601. */
   createdAt?: string
+  /** Associated skill information. */
+  skills?: TaskSkill[]
 }
 
 /** One employee-visible bot the execute dialog can select. */
