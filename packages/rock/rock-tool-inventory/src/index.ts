@@ -122,7 +122,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return this.state
   }
 
-  /** Launch the dedicated assistant session and submit the probe prompt. */
+  /** Launch the dedicated assistant session in the default workspace and submit the probe prompt. */
   private async launchAssistant(): Promise<SessionId> {
     const agentPresets = this.ctx.get('agentPresets') as {
       resolve(id: string): Promise<{ id: string }>
@@ -132,7 +132,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
     const agents = this.ctx.get('agents') as {
       create(options: {
         sessionId: SessionId
-        meta?: { agentPreset?: string }
+        meta?: { agentPreset?: string; cwd?: string }
         agentOptions?: AgentOptions
         setup?: (agentCtx: Context) => Promise<void>
       }): Promise<{ agent: { followup(message: unknown): void } }>
@@ -145,6 +145,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
     await using scope = await agentPresets.acquireScope(preset.id)
     void scope
 
+    const workspace = await this.resolveWorkspace()
     const assistant = this.assistantIdentity()
     const sessionId = brandString<SessionId>(`runner-detect-${randomUUID()}`)
     const agentOptions: AgentOptions = {
@@ -154,13 +155,20 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
     const handle = await agents.create({
       sessionId,
-      meta: { agentPreset: preset.id },
+      meta: {
+        agentPreset: preset.id,
+        ...(workspace === undefined ? {} : { cwd: workspace.path }),
+      },
       agentOptions,
       setup: async (agentCtx) => {
         await agentPresets.mount(agentCtx, preset.id)
       },
     })
-    await this.attachToWorkspace(String(sessionId))
+    if (workspace !== undefined) {
+      await workspace.attachSession(sessionId).catch((error: unknown) => {
+        this.ctx.logger.warn(`rock-tool-inventory: attach session ${String(sessionId)} to workspace failed: ${messageOf(error)}`)
+      })
+    }
     handle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: detectPrompt(this.tools) }],
       source: { kind: 'user' },
@@ -168,21 +176,33 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return sessionId
   }
 
-  /** Attach the detection session to the workspace root so it is visible/openable (best-effort). */
-  private async attachToWorkspace(sessionId: string): Promise<void> {
-    const workspace = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
-    const cwd = workspace?.rootPath() ?? null
-    if (cwd === null) return
+  /** Resolve the default workspace so the session groups there; fall back to the Rock root. */
+  private async resolveWorkspace(): Promise<{ path: string; attachSession(id: SessionId): Promise<void> } | undefined> {
     const registry = this.ctx.get('workspaceRegistry') as {
-      create(path: string): Promise<{ attachSession(id: string): Promise<void> }>
+      initializeDefault(resolveDirectory: () => Promise<string>):
+      Promise<{ path: string; attachSession(id: SessionId): Promise<void> } | undefined>
+      create(path: string): Promise<{ path: string; attachSession(id: SessionId): Promise<void> }>
     } | undefined
-    if (registry === undefined) return
+    if (registry === undefined) return undefined
+    const fallback = this.rockRoot()
     try {
-      const ws = await registry.create(cwd)
-      await ws.attachSession(sessionId)
+      const workspace = await registry.initializeDefault(() => Promise.resolve(fallback))
+      if (workspace !== undefined) return workspace
     } catch (error) {
-      this.ctx.logger.warn(`rock-tool-inventory: attach session ${sessionId} to workspace failed: ${messageOf(error)}`)
+      this.ctx.logger.warn(`rock-tool-inventory: resolve default workspace failed: ${messageOf(error)}`)
     }
+    try {
+      return await registry.create(fallback)
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tool-inventory: create workspace at "${fallback}" failed: ${messageOf(error)}`)
+      return undefined
+    }
+  }
+
+  /** The Rock workspace root as a fallback cwd; the process cwd when uninitialized. */
+  private rockRoot(): string {
+    const rock = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
+    return rock?.rootPath() ?? process.cwd()
   }
 
   /** Track progress for the in-flight detection session and finalize on turn end. */
