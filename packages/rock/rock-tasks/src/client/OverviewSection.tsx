@@ -74,39 +74,38 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
   const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
   const overview = useMemo(() => groupByBot(tasks), [tasks])
 
-  if (loading) {
-    return <p className={css.empty}>{t('overview.loading')}</p>
-  }
-  if (failed) {
-    return (
-      <p className={css.empty}>
-        {t('load.failed')} <Button variant="ghost" size="sm" onClick={() => { setReload(v => v + 1) }}>{t('load.retry')}</Button>
-      </p>
-    )
-  }
-  if (overview.length === 0) {
-    return <p className={css.empty}>{t('overview.empty')}</p>
-  }
   return (
-    <div className={css.overview}>
-      {overview.map(bot => (
-        <section key={bot.botId} className={css.botCard}>
-          <header className={css.botHeader}>
-            <span className={css.botId}>{botName(bot.botId)}</span>
-            <span className={bot.running ? css.running : css.idle}>
-              {bot.running ? t('overview.running') : t('overview.idle')}
-            </span>
-          </header>
-          <ul className={css.taskList}>
-            {bot.tasks.map(task => (
-              <li key={task.id} className={css.taskRow}>
-                <span className={css.taskTitle}>{task.title || task.id}</span>
-                <span className={css.taskStatus}>{statusLabel(t, task.status)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+    <div className={css.page}>
+      {loading ? (
+        <p className={css.empty}>{t('overview.loading')}</p>
+      ) : failed ? (
+        <p className={css.empty}>
+          {t('load.failed')} <Button variant="ghost" size="sm" onClick={() => { setReload(v => v + 1) }}>{t('load.retry')}</Button>
+        </p>
+      ) : overview.length === 0 ? (
+        <p className={css.empty}>{t('overview.empty')}</p>
+      ) : (
+        <div className={css.overview}>
+          {overview.map(bot => (
+            <section key={bot.botId} className={css.botCard}>
+              <header className={css.botHeader}>
+                <span className={css.botId}>{botName(bot.botId)}</span>
+                <span className={bot.running ? css.running : css.idle}>
+                  {bot.running ? t('overview.running') : t('overview.idle')}
+                </span>
+              </header>
+              <ul className={css.taskList}>
+                {bot.tasks.map(task => (
+                  <li key={task.id} className={css.taskRow}>
+                    <span className={css.taskTitle}>{task.title || task.id}</span>
+                    <span className={css.taskStatus}>{statusLabel(t, task.status)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -25,7 +25,7 @@ export type RockToolInventoryKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockToolInventoryKey, string> = {
-  nav: '执行器管理',
+  nav: '执行器',
   empty: '未配置工具探测。',
   'action.install': '安装文档',
   'status.running': '运行中',

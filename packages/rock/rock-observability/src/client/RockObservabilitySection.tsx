@@ -28,29 +28,32 @@ export function RockObservabilitySection({ t, remote }: RockObservabilitySection
     return () => { cancelled = true }
   }, [remote])
 
-  if (rows.length === 0) {
-    return <p className={css.empty}>{t('empty')}</p>
-  }
   return (
-    <table className={css.table}>
-      <thead>
-        <tr>
-          <th scope="col">{t('column.session')}</th>
-          <th scope="col">{t('column.turns')}</th>
-          <th scope="col">{t('column.steps')}</th>
-          <th scope="col">{t('column.tokens')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(row => (
-          <tr key={row.sessionId}>
-            <td>{row.sessionId}</td>
-            <td>{row.turns}</td>
-            <td>{row.steps}</td>
-            <td>{row.outputTokens}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className={css.page}>
+      {rows.length === 0 ? (
+        <p className={css.empty}>{t('empty')}</p>
+      ) : (
+        <table className={css.table}>
+          <thead>
+            <tr>
+              <th scope="col">{t('column.session')}</th>
+              <th scope="col">{t('column.turns')}</th>
+              <th scope="col">{t('column.steps')}</th>
+              <th scope="col">{t('column.tokens')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.sessionId}>
+                <td>{row.sessionId}</td>
+                <td>{row.turns}</td>
+                <td>{row.steps}</td>
+                <td>{row.outputTokens}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }
