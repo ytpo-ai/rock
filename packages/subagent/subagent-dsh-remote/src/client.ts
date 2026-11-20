@@ -166,25 +166,25 @@ export class DshRemoteClient {
 
   /** Create one session and return its id. */
   async createSession(args: SessionCreateArgs, signal: AbortSignal): Promise<SessionCreateValue> {
-    const value = await this.call('session/create', args, 'session-create', signal)
+    const value = await this.call('session/create', { request: args }, 'session-create', signal)
     return parseCreateValue(value)
   }
 
   /** Dispatch one prompt into the session. */
   async prompt(args: SessionPromptArgs, signal: AbortSignal): Promise<SessionPromptValue> {
-    const value = await this.call('session/prompt', args, 'prompt', signal)
+    const value = await this.call('session/prompt', { request: args }, 'prompt', signal)
     return parseAcceptedValue(value, 'prompt')
   }
 
   /** Block until the session reaches a stopping state or the deadline. */
   async wait(args: SessionWaitArgs, signal: AbortSignal): Promise<SessionWaitValue> {
-    const value = await this.call('session/wait', args, 'wait', signal)
+    const value = await this.call('session/wait', { request: args }, 'wait', signal)
     return parseWaitValue(value, 'wait')
   }
 
   /** Best-effort cancel the active turn without destroying the session. */
   async cancel(args: SessionCancelArgs, signal?: AbortSignal): Promise<SessionCancelValue> {
-    const value = await this.call('session/cancel', args, 'cancel', signal)
+    const value = await this.call('session/cancel', { request: args }, 'cancel', signal)
     return parseAcceptedValue(value, 'cancel')
   }
 

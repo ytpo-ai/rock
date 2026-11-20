@@ -66,6 +66,17 @@ describe('DshRemoteClient', () => {
     await expect(client.createSession({ cwd: '/tmp' }, signal)).resolves.toEqual({ sessionId: 'ses_x' })
   })
 
+  it('wraps method args in the request field the Host descriptor expects', async () => {
+    let seen: unknown
+    const fetchFn = envelopeFetch((_endpoint, args) => {
+      seen = args
+      return { sessionId: 'ses_x' }
+    })
+    const client = new DshRemoteClient('http://127.0.0.1:3080', 'cookie', fetchFn)
+    await client.createSession({ cwd: '/tmp' }, signal)
+    expect(seen).toEqual({ request: { cwd: '/tmp' } })
+  })
+
   it('wait returns the parsed stopping state', async () => {
     const fetchFn = envelopeFetch(() => ({ reason: 'idle', output: { records: [], truncated: false } }))
     const client = new DshRemoteClient('http://127.0.0.1:3080', 'cookie', fetchFn)
