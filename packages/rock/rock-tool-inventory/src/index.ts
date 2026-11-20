@@ -33,7 +33,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { assistantMessageText, commandOf, debugPrompt, detectPrompt, mergeStatuses, parseDebugResult, parseDetectStatuses, touchedToolIds } from './detect.ts'
 import { toolStatusFrom } from './probe.ts'
-import type { DebugState, DetectState, ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugState, DetectState, ToolConnectionConfig, ToolDescriptor, ToolStatus } from './types.ts'
 
 export type * from './types.ts'
 
@@ -57,11 +57,14 @@ const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
     id: 'opencode',
     command: 'opencode',
     serviceHint: '通过 opencode v2 本地常驻 server 的 HTTP REST 委派（发现文件 ~/.local/state/opencode/service.json 提供 url+password，Basic 鉴权）。',
+    configurable: true,
   },
   {
     id: 'dsh',
     command: 'dsh',
     serviceHint: '通过已运行的 dsh web Host 的 HTTP Remote API 委派（token→cookie→session/create→session/prompt→session/wait；Host 地址来自 ROCK_DSH_REMOTE_URL，token 来自 ROCK_DSH_REMOTE_TOKEN，默认 http://127.0.0.1:3080）。',
+    configurable: true,
+    requiresToken: true,
   },
   { id: 'claude-code', command: 'claude' },
 ]
@@ -69,12 +72,17 @@ const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
 /** JSON file persisting the last detection result across restarts. */
 const DEFAULT_STATE_PATH = '../.rock/tool-inventory.json'
 
+/** JSON file persisting the user-supplied service connections (url + token). */
+const DEFAULT_CONNECTIONS_PATH = '../.rock/tool-connections.json'
+
 /** Deployment-owned probe targets; patchable from cordis.yml. */
 export interface Config {
   /** Tool descriptors to probe; defaults to the shipped targets. */
   tools?: ToolDescriptor[]
   /** JSON file persisting the last detection result; defaults to the Rock home. */
   statePath?: string
+  /** JSON file persisting the service connections; defaults to the Rock home. */
+  connectionsPath?: string
 }
 
 /** Remote service carrying the tool inventory and the assistant detection run. */
@@ -86,12 +94,17 @@ export default class RockToolInventoryController extends TypertRemoteService {
       command: z.string().min(1),
       installDocUrl: z.string().default(''),
       serviceHint: z.string().default(''),
+      configurable: z.boolean().default(false),
+      requiresToken: z.boolean().default(false),
     })).default([...DEFAULT_TOOLS]),
     statePath: z.string().min(1).default(DEFAULT_STATE_PATH),
+    connectionsPath: z.string().min(1).default(DEFAULT_CONNECTIONS_PATH),
   })
 
   private readonly tools: readonly ToolDescriptor[]
   private readonly statePath: string
+  private readonly connectionsPath: string
+  private connections: Record<string, ToolConnectionConfig>
   private state: DetectState
   private debug: DebugState
   private detectSessionId: SessionId | undefined
@@ -105,6 +118,8 @@ export default class RockToolInventoryController extends TypertRemoteService {
     super(ctx, 'rockToolInventory')
     this.tools = config.tools ?? DEFAULT_TOOLS
     this.statePath = config.statePath ?? DEFAULT_STATE_PATH
+    this.connectionsPath = config.connectionsPath ?? DEFAULT_CONNECTIONS_PATH
+    this.connections = this.loadConnections()
     const persisted = this.loadPersisted()
     this.state = {
       running: false,
@@ -124,6 +139,12 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return Promise.all(this.tools.map(tool => probeTool(tool)))
   }
 
+  /** The probe-target descriptors (static config: service hint, configurability), in declaration order. */
+  @Remote
+  toolDescriptors(): ToolDescriptor[] {
+    return [...this.tools]
+  }
+
   /** Latest detection run state (statuses + progress; the process renders in the assistant session). */
   @Remote
   detectState(): DetectState {
@@ -134,6 +155,38 @@ export default class RockToolInventoryController extends TypertRemoteService {
   @Remote
   debugState(): DebugState {
     return this.debug
+  }
+
+  /** The persisted service connections, keyed by tool id (url + token). */
+  @Remote
+  connectionConfigs(): Record<string, ToolConnectionConfig> {
+    return { ...this.connections }
+  }
+
+  /**
+   * Persist one tool's service connection. Empty url/token fields clear the
+   * corresponding override so the assistant (or provider discovery) fills them.
+   * @param id - the tool type id.
+   * @param config - the url/token to persist.
+   */
+  @Remote
+  setConnectionConfig(id: string, config: ToolConnectionConfig): void {
+    const tool = this.tools.find(candidate => candidate.id === id)
+    if (tool === undefined) throw new Error(`unknown tool "${id}"`)
+    const normalized: ToolConnectionConfig = {
+      ...(config.url !== undefined && config.url.length > 0 ? { url: config.url } : {}),
+      ...(config.token !== undefined && config.token.length > 0 ? { token: config.token } : {}),
+    }
+    if (tool.requiresToken === true && normalized.token === undefined) {
+      throw new Error(`tool "${id}" requires a token`)
+    }
+    this.connections = { ...this.connections, [id]: normalized }
+    this.persistConnections()
+  }
+
+  /** The service connection for one tool, or undefined when none is persisted. */
+  connectionConfig(id: string): ToolConnectionConfig | undefined {
+    return this.connections[id]
   }
 
   /**
@@ -178,12 +231,16 @@ export default class RockToolInventoryController extends TypertRemoteService {
       this.debug = { running: false, progress: { total: 1, detected: 0, steps: 0 }, error: `unknown tool "${id}"` }
       return this.debug
     }
+    if (tool.requiresToken === true && this.connections[id]?.token === undefined) {
+      this.debug = { running: false, toolId: id, progress: { total: 1, detected: 0, steps: 0 }, error: `tool "${id}" requires a token; configure it first` }
+      return this.debug
+    }
     this.debug = { running: true, toolId: id, progress: { total: 1, detected: 0, steps: 0 } }
     this.debugSessionId = undefined
     this.debugToolId = id
     this.debugAssistantText = ''
     try {
-      const sessionId = await this.launchAssistant(debugPrompt(tool))
+      const sessionId = await this.launchAssistant(debugPrompt(tool, this.connections[id]))
       this.debugSessionId = sessionId
       this.debug = { ...this.debug, sessionId: String(sessionId) }
     } catch (error) {
@@ -398,6 +455,38 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
   }
 
+  /** Read the persisted service connections, or an empty map on absence/failure. */
+  private loadConnections(): Record<string, ToolConnectionConfig> {
+    let raw: string
+    try {
+      raw = readFileSync(this.connectionsPath, 'utf8')
+    } catch {
+      return {}
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null) return {}
+      const out: Record<string, ToolConnectionConfig> = {}
+      for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+        const config = normalizeConnection(value)
+        if (config !== undefined) out[id] = config
+      }
+      return out
+    } catch {
+      return {}
+    }
+  }
+
+  /** Persist the service connections so a restart keeps them. */
+  private persistConnections(): void {
+    try {
+      mkdirSync(dirname(this.connectionsPath), { recursive: true })
+      writeFileSync(this.connectionsPath, `${JSON.stringify(this.connections, null, 2)}\n`, 'utf8')
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tool-inventory: persist connections failed: ${messageOf(error)}`)
+    }
+  }
+
   /** The employee's dedicated assistant agent id, or undefined before sync. */
   private assistantIdentity(): { agentBotId: string } | undefined {
     const identity = this.ctx.get('seagullIdentity') as { getAssistants(): readonly { agentBotId: string }[] } | undefined
@@ -439,6 +528,16 @@ function isToolStatus(value: unknown): value is ToolStatus {
   const record = value as Record<string, unknown>
   return typeof record.id === 'string' && record.id.length > 0
     && typeof record.installed === 'boolean'
+}
+
+/** Normalize an unknown value into a connection config with only non-empty url/token fields, or undefined. */
+function normalizeConnection(value: unknown): ToolConnectionConfig | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as Record<string, unknown>
+  const url = typeof record.url === 'string' && record.url.length > 0 ? record.url : undefined
+  const token = typeof record.token === 'string' && record.token.length > 0 ? record.token : undefined
+  if (url === undefined && token === undefined) return undefined
+  return { ...(url === undefined ? {} : { url }), ...(token === undefined ? {} : { token }) }
 }
 
 declare module '@deepseek-ai/cordis' {

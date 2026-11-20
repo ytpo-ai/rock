@@ -109,6 +109,18 @@ describe('debugPrompt', () => {
   it('includes the install doc url when present', () => {
     expect(debugPrompt(TOOLS[0])).toContain('https://docs/codex')
   })
+
+  it('injects the configured url and token', () => {
+    const prompt = debugPrompt(TOOLS[0], { url: 'http://127.0.0.1:3087', token: 'SECRET' })
+    expect(prompt).toContain('http://127.0.0.1:3087')
+    expect(prompt).toContain('SECRET')
+  })
+
+  it('asks to auto-detect the url and read the token when neither is configured', () => {
+    const prompt = debugPrompt(TOOLS[1])
+    expect(prompt).toContain('请自行检测')
+    expect(prompt).toContain('请自行从发现文件读取')
+  })
 })
 
 describe('parseDebugResult', () => {

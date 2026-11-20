@@ -42,6 +42,9 @@ const DEFAULT_PROVIDER_NAME = 'opencode'
 /** Default delay between durable-message polls. */
 export const DEFAULT_POLL_INTERVAL_MS = 500
 
+/** The tool-type id the runtime connection config (url + token) is keyed by. */
+const TOOL_TYPE = 'opencode'
+
 /** Deployment-owned discovery, context, and polling settings. */
 export interface Config {
   /** Provider name on `ctx.subagents` (default `opencode`). */
@@ -102,6 +105,23 @@ class OpencodeProvider implements SubagentProvider {
     private readonly config: ResolvedConfig,
   ) {}
 
+  /** The user-supplied runtime connection (url + password), when the inventory panel persists one. */
+  private connectionOverride(): { url?: string; token?: string } | undefined {
+    const inventory = this.ctx.get('rockToolInventory') as {
+      connectionConfig(id: string): { url?: string; token?: string } | undefined
+    } | undefined
+    return inventory?.connectionConfig(TOOL_TYPE)
+  }
+
+  /** Resolve the service record, preferring the runtime url+password over static discovery. */
+  private resolveServiceWithOverride(): OpencodeServiceInfo {
+    const connection = this.connectionOverride()
+    if (connection !== undefined && connection.url !== undefined && connection.token !== undefined) {
+      return { url: connection.url, password: connection.token }
+    }
+    return resolveService(this.config)
+  }
+
   start(request: ResolvedSubagentStartRequest) {
     if (request.signal.aborted) {
       throw new Error('subagent-opencode: request was aborted before startup')
@@ -114,7 +134,7 @@ class OpencodeProvider implements SubagentProvider {
     }
     let service: OpencodeServiceInfo
     try {
-      service = resolveService(this.config)
+      service = this.resolveServiceWithOverride()
     } catch (error) {
       throw opencodeDiscoveryFailure(error)
     }

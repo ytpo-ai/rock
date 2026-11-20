@@ -7,7 +7,7 @@
  *
  * @module @rock/rock-tool-inventory/detect
  */
-import type { DebugResult, ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugResult, ToolConnectionConfig, ToolDescriptor, ToolStatus } from './types.ts'
 
 /**
  * Build the dedicated-assistant probe prompt for the given tools.
@@ -68,9 +68,10 @@ function extractJsonObject(text: string): unknown {
  * deliberately forbids the one-shot CLI-subprocess shortcut, which bypasses the
  * product's service-communication model.
  * @param tool - the probe target to debug.
+ * @param connection - the user-supplied url/token, when configured.
  * @returns a prompt that asks for a single JSON object.
  */
-export function debugPrompt(tool: ToolDescriptor): string {
+export function debugPrompt(tool: ToolDescriptor, connection?: ToolConnectionConfig): string {
   const lines = [
     '执行器调试',
     '',
@@ -79,6 +80,18 @@ export function debugPrompt(tool: ToolDescriptor): string {
   ]
   if (tool.serviceHint !== undefined && tool.serviceHint !== '') {
     lines.push(`服务通信方式：${tool.serviceHint}`, '')
+  }
+  if (connection !== undefined && connection.url !== undefined) {
+    lines.push(`连接地址（已配置）：${connection.url}`)
+  } else {
+    lines.push('连接地址未配置，请自行检测（探测监听端口、读发现文件如 ~/.local/state/opencode/service.json 等）。')
+  }
+  if (connection !== undefined && connection.token !== undefined) {
+    lines.push(`连接凭据（已配置）：${connection.token}`)
+  } else if (tool.requiresToken === true) {
+    lines.push('连接凭据（token）未配置，请用 ask-user 请求用户提供 token 后再继续。')
+  } else {
+    lines.push('连接凭据未配置，请自行从发现文件读取（如 service.json 的 password）。')
   }
   lines.push(
     '步骤：',

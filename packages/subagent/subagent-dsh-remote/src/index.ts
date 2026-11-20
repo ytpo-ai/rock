@@ -39,6 +39,9 @@ export const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
 /** Default per-poll `session/wait` deadline. */
 export const DEFAULT_WAIT_TIMEOUT_MS = 30_000
 
+/** The tool-type id the runtime connection config (url + token) is keyed by. */
+const TOOL_TYPE = 'dsh'
+
 /** Deployment-owned Host, context, and polling settings. */
 export interface Config {
   /** Provider name on `ctx.subagents` (default `dsh-remote`). */
@@ -74,6 +77,14 @@ class DshRemoteProvider implements SubagentProvider {
     private readonly config: ResolvedConfig,
   ) {}
 
+  /** The user-supplied runtime connection (url + token), when the inventory panel persists one. */
+  private connectionOverride(): { url?: string; token?: string } | undefined {
+    const inventory = this.ctx.get('rockToolInventory') as {
+      connectionConfig(id: string): { url?: string; token?: string } | undefined
+    } | undefined
+    return inventory?.connectionConfig(TOOL_TYPE)
+  }
+
   async start(request: ResolvedSubagentStartRequest): Promise<SubagentRun> {
     if (request.signal.aborted) {
       throw new Error('subagent-dsh-remote: request was aborted before startup')
@@ -84,13 +95,16 @@ class DshRemoteProvider implements SubagentProvider {
     } catch (error) {
       throw dshRemoteConfigurationFailure(error)
     }
-    if (this.config.token === '') {
+    const connection = this.connectionOverride()
+    const token = connection?.token ?? this.config.token
+    const baseUrl = connection?.url ?? this.config.baseUrl
+    if (token === '') {
       throw dshRemoteConfigurationFailure(new Error('subagent-dsh-remote: token must be a non-empty string'))
     }
     let client: DshRemoteClient
     try {
-      const cookie = await connectRemote(this.config.baseUrl, this.config.token, fetch)
-      client = new DshRemoteClient(this.config.baseUrl, cookie, fetch)
+      const cookie = await connectRemote(baseUrl, token, fetch)
+      client = new DshRemoteClient(baseUrl, cookie, fetch)
     } catch (error) {
       throw error instanceof DshRemoteRunFailure ? error : dshRemoteConnectFailure(error)
     }

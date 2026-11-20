@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { Button, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DebugResult, DebugState, DetectState, ToolStatus } from '@rock/rock-tool-inventory/types'
+import { Button, Input, Modal, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { DebugResult, DebugState, DetectState, ToolConnectionConfig, ToolDescriptor, ToolStatus } from '@rock/rock-tool-inventory/types'
 import css from './rock-tool-inventory.module.css'
 
 /** Poll interval while a detection run is in flight. */
@@ -14,10 +14,13 @@ const DETECT_POLL_MS = 1000
 export interface ToolInventorySectionInjected {
   remote: {
     listTools(): Promise<RemoteResult<ToolStatus[]>>
+    toolDescriptors(): Promise<RemoteResult<ToolDescriptor[]>>
     detect(): Promise<RemoteResult<DetectState>>
     detectState(): Promise<RemoteResult<DetectState>>
     debugTool(id: string): Promise<RemoteResult<DebugState>>
     debugState(): Promise<RemoteResult<DebugState>>
+    connectionConfigs(): Promise<RemoteResult<Record<string, ToolConnectionConfig>>>
+    setConnectionConfig(id: string, config: ToolConnectionConfig): Promise<RemoteResult<void>>
   }
   openSession: (sessionId: string) => void
 }
@@ -46,10 +49,15 @@ function formatTime(iso: string): string {
 /** Render the detected runner rows plus the single-line assistant-LLM detection progress. */
 export function ToolInventorySection({ t, remote, openSession }: ToolInventorySectionProps): ReactElement {
   const [tools, setTools] = useState<ToolStatus[]>([])
+  const [descriptors, setDescriptors] = useState<ToolDescriptor[]>([])
+  const [connections, setConnections] = useState<Record<string, ToolConnectionConfig>>({})
   const [detect, setDetect] = useState<DetectState | null>(null)
   const [debug, setDebug] = useState<DebugState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [configuring, setConfiguring] = useState<string | null>(null)
+  const [configUrl, setConfigUrl] = useState('')
+  const [configToken, setConfigToken] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -58,6 +66,12 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
       if (cancelled) return
       if (result.ok) setTools(result.value)
       else setLoadFailed(true)
+    })
+    void remote.toolDescriptors().then((result) => {
+      if (!cancelled && result.ok) setDescriptors(result.value)
+    })
+    void remote.connectionConfigs().then((result) => {
+      if (!cancelled && result.ok) setConnections(result.value)
     })
     void remote.detectState().then((result) => {
       if (!cancelled && result.ok) setDetect(result.value)
@@ -99,6 +113,33 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     void remote.debugTool(id).then((result) => {
       if (result.ok) setDebug(result.value)
       else setLoadFailed(true)
+    })
+  }
+
+  const descriptorById = new Map(descriptors.map(descriptor => [descriptor.id, descriptor]))
+
+  const openConfig = (id: string): void => {
+    const existing = connections[id]
+    setConfigUrl(existing?.url ?? '')
+    setConfigToken(existing?.token ?? '')
+    setConfiguring(id)
+  }
+
+  const closeConfig = (): void => {
+    setConfiguring(null)
+    setConfigUrl('')
+    setConfigToken('')
+  }
+
+  const saveConfig = (): void => {
+    if (configuring === null) return
+    void remote.setConnectionConfig(configuring, { url: configUrl, token: configToken }).then((result) => {
+      if (result.ok) {
+        setConnections(prev => ({ ...prev, [configuring]: { url: configUrl, token: configToken } }))
+        closeConfig()
+      } else {
+        setLoadFailed(true)
+      }
     })
   }
 
@@ -164,6 +205,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         <ul className={css.list}>
           {statuses.map((tool) => {
             const state = runnerState(tool)
+            const descriptor = descriptorById.get(tool.id)
             return (
               <li key={tool.id} className={css.row}>
                 <StateDot state={runnerDot(state)} />
@@ -173,20 +215,41 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
                 {state === 'missing' && tool.installDocUrl !== undefined
                   ? <a className={css.install} href={tool.installDocUrl} target="_blank" rel="noreferrer">{t('action.install')}</a>
                   : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => { runDebug(tool.id) }}
-                    >
-                      {debug?.toolId === tool.id && debugging ? t('debug.running') : t('debug.action')}
-                    </Button>
+                    <span className={css.actions}>
+                      {descriptor?.configurable === true
+                        ? (
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => { openConfig(tool.id) }}>
+                            {t('config.action')}
+                          </Button>
+                        )
+                        : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => { runDebug(tool.id) }}
+                      >
+                        {debug?.toolId === tool.id && debugging ? t('debug.running') : t('debug.action')}
+                      </Button>
+                    </span>
                   )}
               </li>
             )
           })}
         </ul>
       )}
+
+      <ConfigModal
+        toolId={configuring}
+        requiresToken={configuring !== null && descriptorById.get(configuring)?.requiresToken === true}
+        url={configUrl}
+        token={configToken}
+        onUrl={setConfigUrl}
+        onToken={setConfigToken}
+        onClose={closeConfig}
+        onSave={saveConfig}
+        t={t}
+      />
     </div>
   )
 }
@@ -243,5 +306,49 @@ function DebugResultRow(props: {
         )
         : null}
     </div>
+  )
+}
+
+/** Connection configuration dialog: url + token; the token is required for dsh. */
+function ConfigModal(props: {
+  toolId: string | null
+  requiresToken: boolean
+  url: string
+  token: string
+  onUrl: (value: string) => void
+  onToken: (value: string) => void
+  onClose: () => void
+  onSave: () => void
+  t: ToolInventorySectionProps['t']
+}): ReactElement {
+  const { toolId, requiresToken, url, token, onUrl, onToken, onClose, onSave, t } = props
+  const missingToken = requiresToken && token.trim().length === 0
+  return (
+    <Modal
+      open={toolId !== null}
+      onClose={onClose}
+      title={t('config.title', { tool: toolId ?? '' })}
+      closeLabel={t('config.cancel')}
+      footer={(
+        <span className={css.modalFooter}>
+          <Button size="sm" variant="ghost" onClick={onClose}>{t('config.cancel')}</Button>
+          <Button size="sm" variant="primary" disabled={missingToken} onClick={onSave}>{t('config.save')}</Button>
+        </span>
+      )}
+    >
+      <div className={css.configForm}>
+        <label className={css.configField}>
+          <span className={css.configLabel}>{t('config.url')}</span>
+          <Input value={url} onChange={(event) => { onUrl(event.target.value) }} placeholder={t('config.urlPlaceholder')} />
+        </label>
+        <label className={css.configField}>
+          <span className={css.configLabel}>{t('config.token')}{requiresToken ? ' *' : ''}</span>
+          <Input type="password" value={token} onChange={(event) => { onToken(event.target.value) }} placeholder={t('config.tokenPlaceholder')} />
+        </label>
+        {missingToken
+          ? <span className={css.configError}>{t('config.tokenRequired')}</span>
+          : null}
+      </div>
+    </Modal>
   )
 }

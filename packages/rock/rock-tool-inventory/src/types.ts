@@ -20,6 +20,18 @@ export interface ToolDescriptor {
    * tool has no resident service transport.
    */
   serviceHint?: string
+  /** Whether the panel offers a "configure" action to set the service connection (url + token). */
+  configurable?: boolean
+  /** Whether the connection token is required (dsh) rather than optional (opencode auto-discovers it). */
+  requiresToken?: boolean
+}
+
+/** A user-supplied service connection for one tool: its URL and secret token. */
+export interface ToolConnectionConfig {
+  /** Service base URL; empty means "detect it" (the assistant or provider discovery fills it). */
+  url?: string
+  /** Secret token/password; required for `dsh`, optional for `opencode`. */
+  token?: string
 }
 
 /** Which detection path produced a status. */
