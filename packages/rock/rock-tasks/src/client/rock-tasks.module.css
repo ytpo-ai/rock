@@ -606,13 +606,13 @@
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px 56px 96px 116px 148px 208px;
+  grid-template-columns: minmax(0, 1fr) 96px 96px 128px 128px 148px 208px;
   gap: 12px;
   align-items: center;
 }
 
 .listHead {
-  padding: 6px 0;
+  padding: 6px 12px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-secondary);
   font-size: 0.75em;
@@ -621,7 +621,7 @@
 }
 
 .listRow {
-  padding: 8px 0;
+  padding: 8px 12px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 
@@ -630,7 +630,7 @@
 }
 
 .listSubRow {
-  padding: 0 0 8px 0;
+  padding: 6px 12px 8px 12px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   background: color-mix(in srgb, var(--dsw-alias-label-secondary) 3%, transparent);
 }
@@ -721,6 +721,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   min-width: 0;
 }
@@ -736,6 +737,7 @@
   white-space: nowrap;
   color: var(--dsw-alias-label-secondary);
   font-size: 0.75em;
+  text-align: right;
 }
 
 .colExecutor {
@@ -744,6 +746,7 @@
   white-space: nowrap;
   color: var(--dsw-alias-label-secondary);
   font-size: 0.75em;
+  text-align: right;
 }
 
 .colCreatedDue {
