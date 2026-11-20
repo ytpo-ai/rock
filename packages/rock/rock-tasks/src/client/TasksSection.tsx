@@ -4,12 +4,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  Button, IconWarningTriangleOutlineRegular, Input, Menu, Modal, SegmentedTabs, StateDot, Tag, Toast,
+  Button, Checkbox, IconWarningTriangleOutlineRegular, Input, Menu, Modal, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SegmentedTab, StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from '@rock/rock-tasks/types'
 import type { RockTasksKey } from './locales.ts'
-import { STATUS_ORDER, statusLabel } from './status.ts'
+import { statusLabel } from './status.ts'
 import css from './rock-tasks.module.css'
 
 /** Host operations injected into the Cordis-free task table. */
@@ -30,23 +30,17 @@ export interface TasksSectionInjected {
 export type TasksSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<TasksSectionInjected>
 
-/** Panel tab: cloud queue (current) or the local archive (history). */
-type Tab = 'current' | 'history'
-
 /** Ordering applied within each status group. */
 type Sort = 'newest' | 'oldest' | 'due'
 
 /** Background queue refresh cadence. */
 const REFRESH_INTERVAL_MS = 15_000
 
-/** Terminal statuses: live in the archive, never the live queue. */
-const TERMINAL = new Set(['done', 'cancelled'])
-
 /** Statuses the backend allows `run` from. */
-const RUNNABLE = new Set(['pending', 'in-progress', 'bot-completed', 'blocked'])
+const RUNNABLE = new Set(['pending', 'in-progress', 'bot-completed'])
 
-/** Statuses that appear in the live "current" queue. */
-const ACTIVE_STATUSES = STATUS_ORDER.filter(status => !TERMINAL.has(status))
+/** Board status columns, in order (after the leading pool column). */
+const BOARD_STATUSES = ['pending', 'in-progress', 'bot-completed', 'awaiting-review', 'done'] as const
 
 /** Brand names for execution backends, kept verbatim (not translated). */
 const TOOL_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -73,9 +67,10 @@ function formatDate(iso: string): string {
   return Number.isNaN(ms) ? '' : dateFormatter.format(ms)
 }
 
-/** One status-group of task cards. */
-interface StatusGroup {
-  status: string
+/** One board column (pool or a status group). */
+interface BoardColumn {
+  key: string
+  title: string
   tasks: TaskSummary[]
 }
 
@@ -234,6 +229,13 @@ function dueMs(task: TaskSummary): number {
   return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms
 }
 
+/** Whether a task is due within the hour (or overdue): red card highlight. */
+function dueSoon(dueAt: string): boolean {
+  const ms = Date.parse(dueAt)
+  if (Number.isNaN(ms)) return false
+  return ms - Date.now() < 60 * 60 * 1000
+}
+
 /** Compare two tasks by the active ordering, applied within each status group. */
 function compareTasks(a: TaskSummary, b: TaskSummary, sort: Sort): number {
   if (sort === 'due') {
@@ -247,20 +249,14 @@ function compareTasks(a: TaskSummary, b: TaskSummary, sort: Sort): number {
 
 /** Render the task panel: a current/history tab split over the cloud queue and the local archive. */
 export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
-  const [tab, setTab] = useState<Tab>('current')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
-  const [archived, setArchived] = useState<ArchivedTaskSummary[]>([])
   const [bots, setBots] = useState<TaskBot[]>([])
   const [projects, setProjects] = useState<Array<{ id: string; name: string; slug?: string }>>([])
   const [loading, setLoading] = useState(true)
-  const [archivedLoading, setArchivedLoading] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
-  const [archivedFailed, setArchivedFailed] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [filterMenu, setFilterMenu] = useState(false)
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<Sort>('newest')
-  const [sortMenu, setSortMenu] = useState(false)
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set())
+  const [columnMenu, setColumnMenu] = useState(false)
   const [runTarget, setRunTarget] = useState<TaskSummary | null>(null)
   const [selectedBot, setSelectedBot] = useState('')
   const [botMenu, setBotMenu] = useState(false)
@@ -272,23 +268,6 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [recordsFailed, setRecordsFailed] = useState(false)
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
 
-  const loadArchived = (): void => {
-    setArchivedLoading(true)
-    setArchivedFailed(false)
-    void remote.listArchivedTasks().then((result) => {
-      setArchivedLoading(false)
-      if (result.ok) setArchived(result.value)
-      else setArchivedFailed(true)
-    })
-  }
-
-  /** Silent archive refresh: never flips the history skeleton on a poll or mutation. */
-  const refreshArchived = (): void => {
-    void remote.listArchivedTasks().then((result) => {
-      if (result.ok) { setArchived(result.value); setArchivedFailed(false) }
-    })
-  }
-
   /** Silent background refresh (polling, mutations, manual): never flips the page skeleton. */
   const refresh = (): void => {
     void remote.listTasks().then((result) => {
@@ -296,15 +275,12 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
     void remote.listBots().then((result) => { if (result.ok) setBots(result.value) })
     void remote.listProjects().then((result) => { if (result.ok) setProjects(result.value) })
-    refreshArchived()
   }
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setLoadFailed(false)
-    setArchivedLoading(true)
-    setArchivedFailed(false)
     void remote.listTasks().then((result) => {
       setLoading(false)
       if (cancelled) return
@@ -316,12 +292,6 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
     void remote.listProjects().then((result) => {
       if (!cancelled && result.ok) setProjects(result.value)
-    })
-    void remote.listArchivedTasks().then((result) => {
-      setArchivedLoading(false)
-      if (cancelled) return
-      if (result.ok) setArchived(result.value)
-      else setArchivedFailed(true)
     })
     return () => { cancelled = true }
   }, [remote])
@@ -344,33 +314,34 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
     void remote.listBots().then((result) => { if (result.ok) setBots(result.value) })
     void remote.listProjects().then((result) => { if (result.ok) setProjects(result.value) })
-    loadArchived()
   }
 
-  const visible = useMemo(() => tasks.filter((task) => {
-    if (tab === 'current' && TERMINAL.has(task.status)) return false
-    if (statusFilter !== 'all' && task.status !== statusFilter) return false
-    if (search.trim() !== '') {
-      const q = search.trim().toLowerCase()
-      const haystack = `${task.title}\n${task.description}\n${task.type}`.toLowerCase()
-      if (!haystack.includes(q)) return false
-    }
-    return true
-  }), [tasks, statusFilter, tab, search])
-
-  const groups = useMemo<StatusGroup[]>(() => {
-    const map = new Map<string, TaskSummary[]>()
-    for (const task of visible) {
-      const list = map.get(task.status) ?? []
+  const boardColumns = useMemo<BoardColumn[]>(() => {
+    const pool: TaskSummary[] = []
+    const byStatus = new Map<string, TaskSummary[]>()
+    for (const task of tasks) {
+      if (search.trim() !== '') {
+        const q = search.trim().toLowerCase()
+        const haystack = `${task.title}\n${task.description}\n${task.type}`.toLowerCase()
+        if (!haystack.includes(q)) continue
+      }
+      if (task.type === 'task' && task.executorId.length === 0) {
+        pool.push(task)
+        continue
+      }
+      const list = byStatus.get(task.status) ?? []
       list.push(task)
-      map.set(task.status, list)
+      byStatus.set(task.status, list)
     }
-    for (const list of map.values()) list.sort((a, b) => compareTasks(a, b, sort))
-    return STATUS_ORDER.flatMap((status) => {
-      const list = map.get(status)
-      return list === undefined ? [] : [{ status, tasks: list }]
-    })
-  }, [visible, sort])
+    for (const list of byStatus.values()) list.sort((a, b) => compareTasks(a, b, 'newest'))
+    pool.sort((a, b) => compareTasks(a, b, 'newest'))
+    return [
+      { key: 'pool', title: t('tasks.pool'), tasks: pool },
+      ...BOARD_STATUSES.map(status => ({ key: status, title: statusLabel(t, status), tasks: byStatus.get(status) ?? [] })),
+    ]
+  }, [tasks, search, t])
+
+  const visibleBoardColumns = boardColumns.filter(column => !hiddenColumns.has(column.key))
 
   const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
   const projectName = (projectId: string): string | undefined => projects.find(project => project.id === projectId)?.name
@@ -454,113 +425,86 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
   }
 
-  const tabs: readonly [SegmentedTab<Tab>, SegmentedTab<Tab>] = [
-    { value: 'current', label: t('tasks.tab.current'), id: 'rock-tasks-tab-current', panelId: 'rock-tasks-panel-current' },
-    { value: 'history', label: t('tasks.tab.history'), id: 'rock-tasks-tab-history', panelId: 'rock-tasks-panel-history' },
-  ]
-
-  const filterOptions = [
-    { id: 'all', label: t('tasks.filter.all') },
-    ...ACTIVE_STATUSES.map(status => ({ id: status, label: statusLabel(t, status) })),
-  ]
-
-  const sortOptions = [
-    { id: 'newest', label: t('tasks.sort.newest') },
-    { id: 'oldest', label: t('tasks.sort.oldest') },
-    { id: 'due', label: t('tasks.sort.due') },
-  ]
+  const toggleColumn = (key: string): void => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const currentBot = runTarget !== null ? bots.find(bot => bot.id === selectedBot) : undefined
-
-  const receiptOutcome = (entry: ArchivedTaskSummary): string | undefined => entry.receipt?.outcome
 
   return (
     <div className={css.root}>
       <div className={css.toolbar}>
-        <SegmentedTabs
-          size="sm"
-          label={t('tasks.tabs.label')}
-          value={tab}
-          onChange={setTab}
-          items={tabs}
-        />
         <div className={css.toolbarActions}>
-          {tab === 'current' && (
-            <div className={css.search}>
-              <Input
-                value={search}
-                onChange={(event) => { setSearch(event.target.value) }}
-                placeholder={t('tasks.search')}
-                aria-label={t('tasks.search')}
-              />
-            </div>
-          )}
-          {tab === 'current' && (
-            <Menu
-              open={sortMenu}
-              anchor={(
-                <Button size="sm" variant="outline" onClick={() => { setSortMenu(!sortMenu) }}>
-                  {sort === 'newest' ? t('tasks.sort.newest') : sort === 'oldest' ? t('tasks.sort.oldest') : t('tasks.sort.due')}
-                </Button>
-              )}
-              items={sortOptions}
-              selectedId={sort}
-              onSelect={(id) => { setSort(id as Sort); setSortMenu(false) }}
-              onClose={() => { setSortMenu(false) }}
+          <div className={css.search}>
+            <Input
+              value={search}
+              onChange={(event) => { setSearch(event.target.value) }}
+              placeholder={t('tasks.search')}
+              aria-label={t('tasks.search')}
             />
-          )}
-          {tab === 'current' && (
-            <Menu
-              open={filterMenu}
-              anchor={(
-                <Button size="sm" variant="outline" onClick={() => { setFilterMenu(!filterMenu) }}>
-                  {statusFilter === 'all' ? t('tasks.filter.all') : statusLabel(t, statusFilter)}
-                </Button>
-              )}
-              items={filterOptions}
-              selectedId={statusFilter}
-              onSelect={(id) => { setStatusFilter(id); setFilterMenu(false) }}
-              onClose={() => { setFilterMenu(false) }}
-            />
-          )}
+          </div>
+          <div className={css.columnMenu}>
+            <Button size="sm" variant="outline" onClick={() => { setColumnMenu(!columnMenu) }}>
+              {t('tasks.columns')}
+            </Button>
+            {columnMenu && (
+              <div className={css.columnMenuPanel}>
+                {boardColumns.map(column => (
+                  <Checkbox
+                    key={column.key}
+                    checked={!hiddenColumns.has(column.key)}
+                    onChange={() => { toggleColumn(column.key) }}
+                    label={column.title}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
           <Button size="sm" variant="outline" onClick={refresh}>{t('tasks.refresh')}</Button>
         </div>
       </div>
 
-      <div id={tab === 'current' ? 'rock-tasks-panel-current' : 'rock-tasks-panel-history'} role="tabpanel" aria-labelledby={tab === 'current' ? 'rock-tasks-tab-current' : 'rock-tasks-tab-history'}>
-        {tab === 'current' ? (
-          loading ? (
-            <div className={css.sections}>
-              <div className={css.skeletonCard} />
-              <div className={css.skeletonCard} />
-            </div>
-          ) : loadFailed ? (
-            <div className={css.loadError} role="alert">
-              <span>{t('load.failed')}</span>
-              <Button variant="ghost" size="sm" onClick={retryLoad}>{t('load.retry')}</Button>
-            </div>
-          ) : groups.length === 0 ? (
-            <div className={css.emptyState}>
-              <p className={css.empty}>{t('tasks.empty')}</p>
-              <Button variant="ghost" size="sm" onClick={refresh}>{t('tasks.refresh')}</Button>
-            </div>
-          ) : (
-            <div className={css.sections}>
-              {groups.map(group => (
-                <section key={group.status} className={css.statusSection}>
-                  <header className={css.statusHeader}>
-                    <StateDot state={statusDot(group.status)} />
-                    <span className={css.statusTitle}>{statusLabel(t, group.status)}</span>
-                    <Tag tone={statusTone(group.status)}>{group.tasks.length}</Tag>
-                  </header>
-                  <ul className={css.cards}>
-                    {group.tasks.map(task => (
-                      <li key={task.id} className={css.card}>
+      {loading ? (
+        <div className={css.board}>
+          <div className={css.skeletonCard} />
+          <div className={css.skeletonCard} />
+        </div>
+      ) : loadFailed ? (
+        <div className={css.loadError} role="alert">
+          <span>{t('load.failed')}</span>
+          <Button variant="ghost" size="sm" onClick={retryLoad}>{t('load.retry')}</Button>
+        </div>
+      ) : visibleBoardColumns.length === 0 ? (
+        <div className={css.emptyState}>
+          <p className={css.empty}>{t('tasks.empty')}</p>
+          <Button variant="ghost" size="sm" onClick={refresh}>{t('tasks.refresh')}</Button>
+        </div>
+      ) : (
+        <div className={css.board}>
+          {visibleBoardColumns.map(column => (
+            <section key={column.key} className={css.boardColumn}>
+              <header className={css.statusHeader}>
+                <StateDot state={column.key === 'pool' ? 'idle' : statusDot(column.key)} />
+                <span className={css.statusTitle}>{column.title}</span>
+                <Tag tone={column.key === 'pool' ? 'neutral' : statusTone(column.key)}>{column.tasks.length}</Tag>
+              </header>
+              <div className={css.boardColumnBody}>
+                <ul className={css.cards}>
+                  {column.tasks.map((task) => {
+                    const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
+                    return (
+                      <li key={task.id} className={danger ? `${css.card} ${css.cardDanger}` : css.card}>
                         <div className={css.cardBody}>
                           <div className={css.cardTitle}>{task.title || task.id}</div>
                           <div className={css.cardMeta}>
                             <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
                             {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
+                            {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
                             {task.status === 'done' && task.resolution !== undefined && (
                               <Tag tone={task.resolution === 'accepted' ? 'success' : 'danger'}>
                                 {task.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
@@ -596,60 +540,14 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                           )}
                         </div>
                       </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )
-        ) : archivedLoading ? (
-          <div className={css.sections}>
-            <div className={css.skeletonCard} />
-            <div className={css.skeletonCard} />
-          </div>
-        ) : archivedFailed ? (
-          <div className={css.loadError} role="alert">
-            <span>{t('load.archivedFailed')}</span>
-            <Button variant="ghost" size="sm" onClick={loadArchived}>{t('load.retry')}</Button>
-          </div>
-        ) : archived.length === 0 ? (
-          <p className={css.empty}>{t('tasks.historyEmpty')}</p>
-        ) : (
-          <ul className={css.cards}>
-            {archived.map(entry => (
-              <li key={entry.id} className={css.card}>
-                <div className={css.cardBody}>
-                  <div className={css.cardTitle}>{entry.title || entry.id}</div>
-                  <div className={css.cardMeta}>
-                    <Tag tone={statusTone(entry.status)}>{statusLabel(t, entry.status)}</Tag>
-                    {entry.resolution !== undefined && (
-                      <Tag tone={entry.resolution === 'accepted' ? 'success' : 'danger'}>
-                        {entry.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
-                      </Tag>
-                    )}
-                    {receiptOutcome(entry) !== undefined && (
-                      <Tag tone={receiptOutcome(entry) === 'success' ? 'success' : 'warning'}>
-                        {receiptOutcome(entry) === 'success' ? t('receipt.success') : t('receipt.partial')}
-                      </Tag>
-                    )}
-                  </div>
-                  <div className={css.cardFacts}>
-                    {entry.projectId !== null && projectName(entry.projectId) !== undefined && (
-                      <span className={css.cardFact}>{projectName(entry.projectId)}</span>
-                    )}
-                    {entry.createdAt !== undefined && (
-                      <span className={css.cardFact}>{t('task.created')} {formatDateTime(new Date(entry.createdAt).toISOString())}</span>
-                    )}
-                  </div>
-                </div>
-                <div className={css.cardActions}>
-                  <Button size="sm" variant="ghost" onClick={() => { openRecords(entry.id, entry.title || entry.id, 'history') }}>{t('records.open')}</Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                    )
+                  })}
+                </ul>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       {runTarget !== null && (
         <Modal

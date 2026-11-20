@@ -28,6 +28,10 @@ export interface TaskSummary {
   status: string
   /** Done-state sub-result (`accepted` / `rejected`), when the task is done. */
   resolution?: string
+  /** Blocked flag (方案 A): overlay on `status`, marked red in place. */
+  isBlocked?: boolean
+  /** Block reason, when blocked. */
+  blockReason?: string
   /** Owning agent bot id; empty when unassigned. */
   executorId: string
   /** Responsible human employee, when recorded. */

@@ -167,6 +167,55 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
+.board {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.boardColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 256px;
+  min-width: 256px;
+  max-height: calc(100vh - 220px);
+}
+
+.boardColumnBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cardDanger {
+  border-color: var(--dsw-alias-state-error-primary);
+  background-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+}
+
+.columnMenu {
+  position: relative;
+}
+
+.columnMenuPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+}
+
 .runDialog {
   display: flex;
   flex-direction: column;
