@@ -364,7 +364,7 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
             <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
           )}
           {task.status === 'awaiting-review' && (
-            <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.title')}</Button>
+            <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.open')}</Button>
           )}
         </div>
       </div>
@@ -429,7 +429,7 @@ function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit,
           <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
         )}
         {task.status === 'awaiting-review' && (
-          <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.title')}</Button>
+          <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.open')}</Button>
         )}
       </div>
     </div>
@@ -705,6 +705,8 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
             label={t('tasks.tabs.label')}
             size="sm"
           />
+        </div>
+        <div className={css.toolbarSecondary}>
           <div className={css.search}>
             <Input
               value={search}
@@ -713,8 +715,6 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               aria-label={t('tasks.search')}
             />
           </div>
-        </div>
-        <div className={css.toolbarSecondary}>
           <FilterMenu
             label={t('tasks.filter.allTypes')}
             value={typeFilter}

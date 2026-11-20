@@ -31,12 +31,13 @@
 .search {
   display: flex;
   align-items: center;
-  flex: 1;
-  max-width: 420px;
+  width: 240px;
+  flex-shrink: 0;
 }
 
 .search :global(span) {
   flex: 1;
+  height: 28px;
 }
 
 .empty {
@@ -599,28 +600,28 @@
 .listGrid {
   display: flex;
   flex-direction: column;
-  min-width: 940px;
+  min-width: 920px;
 }
 
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) 110px 64px 110px 150px 160px auto;
+  grid-template-columns: minmax(0, 1fr) 104px 56px 96px 116px 148px 208px;
   gap: 12px;
   align-items: center;
 }
 
 .listHead {
-  padding: 8px 0;
+  padding: 6px 0;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-secondary);
-  font-size: 0.8em;
+  font-size: 0.75em;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .listRow {
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 
@@ -679,6 +680,8 @@
   margin: 0;
   cursor: pointer;
   font: inherit;
+  font-size: 0.95em;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -710,6 +713,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--dsw-alias-label-secondary);
+  font-size: 0.85em;
 }
 
 .colExecutor {
@@ -717,6 +721,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--dsw-alias-label-secondary);
+  font-size: 0.85em;
 }
 
 .colCreatedDue {
@@ -730,12 +735,13 @@
 
 .createdLine {
   color: var(--dsw-alias-label-tertiary);
-  font-size: 0.8em;
+  font-size: 0.75em;
   white-space: nowrap;
 }
 
 .cellEmpty {
   color: var(--dsw-alias-label-tertiary);
+  font-size: 0.85em;
 }
 
 .colActions {
