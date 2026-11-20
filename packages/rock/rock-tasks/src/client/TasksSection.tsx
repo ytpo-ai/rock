@@ -22,6 +22,7 @@ export interface TasksSectionInjected {
     runTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
     submitTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
     continueTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
+    reviewTask(taskId: string, resolution: 'accepted' | 'rejected', reason: string): Promise<RemoteResult<TaskSummary>>
     listWorkRecords(taskId: string): Promise<RemoteResult<TaskWorkRecord[]>>
   }
 }
@@ -295,7 +296,7 @@ function FilterMenu({ label, value, items, onChange }: {
 }
 
 /** One board card, laid out as header / content / footer. */
-function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
+function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, onReview, acting }: {
   task: TaskSummary
   t: (key: RockTasksKey) => string
   botName: (botId: string) => string
@@ -303,7 +304,7 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
   onDetail: () => void
   onRun: () => void
   onSubmit: () => void
-  onContinue: () => void
+  onReview: () => void
   acting: boolean
 }): ReactElement {
   const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
@@ -362,8 +363,8 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
           {task.status === 'bot-completed' && task.executorId.length > 0 && (
             <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
           )}
-          {task.status === 'awaiting-review' && task.executorId.length > 0 && (
-            <Button size="sm" variant="outline" disabled={acting} onClick={onContinue}>{t('tasks.continue')}</Button>
+          {task.status === 'awaiting-review' && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.title')}</Button>
           )}
         </div>
       </div>
@@ -371,8 +372,8 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
   )
 }
 
-/** One grid row in the list view, with an optional full-width sub-row for skills/description. */
-function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
+/** One grid row in the list view. */
+function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onReview, acting }: {
   task: TaskSummary
   t: (key: RockTasksKey) => string
   botName: (botId: string) => string
@@ -380,69 +381,58 @@ function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit,
   onDetail: () => void
   onRun: () => void
   onSubmit: () => void
-  onContinue: () => void
+  onReview: () => void
   acting: boolean
 }): ReactElement {
   const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
   const countdown = dueCountdown(t, task.dueAt)
-  const hasSub = task.description !== '' || (task.skills !== undefined && task.skills.length > 0)
   return (
-    <>
-      <div role="row" className={danger ? `${css.listRow} ${css.listRowDanger}` : css.listRow}>
-        <div role="cell" className={css.colTitle}>
+    <div role="row" className={danger ? `${css.listRow} ${css.listRowDanger}` : css.listRow}>
+      <div role="cell" className={css.colTitle}>
+        <div className={css.titleLine}>
           <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
           <button type="button" className={css.titleButton} onClick={onDetail} title={t('detail.open')}>
             {task.title || task.id}
           </button>
         </div>
-        <div role="cell" className={css.colStatus}>
-          <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
-          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
-        </div>
-        <div role="cell" className={css.colPriority}>
-          {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
-        </div>
-        <div role="cell" className={css.colProject} title={projectName(task.projectId) ?? t('task.unassigned')}>
-          {projectName(task.projectId) ?? t('task.unassigned')}
-        </div>
-        <div role="cell" className={css.colOwner}>
-          <span className={css.ownerLine}>
-            <span className={css.ownerLabel}>{t('task.assignee')}</span>
-            <span className={css.ownerValue}>{task.assignee !== undefined && task.assignee !== '' ? t('task.you') : t('task.unassigned')}</span>
-          </span>
-          <span className={css.ownerLine}>
-            <span className={css.ownerLabel}>{t('task.executor')}</span>
-            <span className={css.ownerValue}>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
-          </span>
-        </div>
-        <div role="cell" className={css.colDue}>
-          {task.dueAt !== undefined && <span className={countdownClass(countdown.tone)}>{countdown.text}</span>}
-        </div>
-        <div role="cell" className={css.colActions}>
-          <Button size="sm" variant="ghost" onClick={onDetail}>{t('detail.open')}</Button>
-          {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
-          {task.status === 'bot-completed' && task.executorId.length > 0 && (
-            <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
-          )}
-          {task.status === 'awaiting-review' && task.executorId.length > 0 && (
-            <Button size="sm" variant="outline" disabled={acting} onClick={onContinue}>{t('tasks.continue')}</Button>
-          )}
-        </div>
-      </div>
-      {hasSub && (
-        <div role="row" className={css.listSubRow}>
-          <div role="cell" className={css.subRowCell}>
-            {task.skills !== undefined && task.skills.length > 0 && (
-              <div className={css.subRowLine}>
-                <span className={css.ownerLabel}>{t('task.skills')}</span>
-                <span className={css.ownerValue}>{task.skills.map(skill => skill.name).join('、')}</span>
-              </div>
-            )}
-            {task.description !== '' && <p className={css.rowDesc}>{task.description}</p>}
+        {task.skills !== undefined && task.skills.length > 0 && (
+          <div className={css.titleSkills}>
+            {task.skills.map(skill => <span key={skill.id} className={css.cardSkill}>{skill.name}</span>)}
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+      <div role="cell" className={css.colStatus}>
+        <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
+        {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+      </div>
+      <div role="cell" className={css.colPriority}>
+        {task.priority !== undefined
+          ? <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>
+          : <span className={css.cellEmpty}>—</span>}
+      </div>
+      <div role="cell" className={css.colProject} title={projectName(task.projectId) ?? t('task.unspecified')}>
+        {projectName(task.projectId) ?? t('task.unspecified')}
+      </div>
+      <div role="cell" className={css.colExecutor} title={task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}>
+        {task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}
+      </div>
+      <div role="cell" className={css.colCreatedDue}>
+        <span className={css.createdLine}>{task.createdAt !== undefined ? formatDateTime(task.createdAt) : '—'}</span>
+        {task.dueAt !== undefined
+          ? <span className={countdownClass(countdown.tone)}>{countdown.text}</span>
+          : <span className={css.cellEmpty}>—</span>}
+      </div>
+      <div role="cell" className={css.colActions}>
+        <Button size="sm" variant="outline" onClick={onDetail}>{t('detail.open')}</Button>
+        {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
+        {task.status === 'bot-completed' && task.executorId.length > 0 && (
+          <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
+        )}
+        {task.status === 'awaiting-review' && (
+          <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.title')}</Button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -473,6 +463,9 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [records, setRecords] = useState<TaskWorkRecord[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
   const [recordsFailed, setRecordsFailed] = useState(false)
+  const [reviewTarget, setReviewTarget] = useState<TaskSummary | null>(null)
+  const [reviewReason, setReviewReason] = useState('')
+  const [reviewing, setReviewing] = useState(false)
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
 
   /** Silent background refresh (polling, mutations, manual): never flips the page skeleton. */
@@ -646,15 +639,26 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
   }
 
-  const continueTask = (task: TaskSummary): void => {
-    setActing(true)
-    void remote.continueTask(task.id, task.executorId).then((result) => {
-      setActing(false)
+  const openReview = (task: TaskSummary): void => {
+    setReviewTarget(task)
+    setReviewReason('')
+  }
+
+  const submitReview = (resolution: 'accepted' | 'rejected' | 'continue'): void => {
+    if (reviewTarget === null) return
+    setReviewing(true)
+    const isContinue = resolution === 'continue'
+    const action = isContinue
+      ? remote.continueTask(reviewTarget.id, reviewTarget.executorId)
+      : remote.reviewTask(reviewTarget.id, resolution, reviewReason)
+    void action.then((result) => {
+      setReviewing(false)
       if (!result.ok) {
-        setToast({ text: t('toast.continue.failed'), key: Date.now(), success: false })
+        setToast({ text: t(isContinue ? 'toast.continue.failed' : 'toast.review.failed'), key: Date.now(), success: false })
         return
       }
-      setToast({ text: t('toast.continue.success'), key: Date.now(), success: true })
+      setToast({ text: t(isContinue ? 'toast.continue.success' : 'toast.review.success'), key: Date.now(), success: true })
+      setReviewTarget(null)
       refresh()
     })
   }
@@ -690,7 +694,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   return (
     <div className={css.root}>
       <div className={css.toolbar}>
-        <div className={css.toolbarActions}>
+        <div className={css.toolbarPrimary}>
           <SegmentedTabs
             items={[
               { value: 'board', label: t('tasks.view.board'), id: 'tasks-view-board', panelId: 'tasks-view-board-panel' },
@@ -709,6 +713,8 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               aria-label={t('tasks.search')}
             />
           </div>
+        </div>
+        <div className={css.toolbarSecondary}>
           <FilterMenu
             label={t('tasks.filter.allTypes')}
             value={typeFilter}
@@ -811,7 +817,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                               onDetail={() => { openDetail(task) }}
                               onRun={() => { openRun(task) }}
                               onSubmit={() => { submitTask(task) }}
-                              onContinue={() => { continueTask(task) }}
+                              onReview={() => { openReview(task) }}
                             />
                           ))}
                         </ul>
@@ -843,8 +849,8 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                   <span role="columnheader" className={css.colStatus}>{t('task.status')}</span>
                   <span role="columnheader" className={css.colPriority}>{t('task.priority')}</span>
                   <span role="columnheader" className={css.colProject}>{t('task.project')}</span>
-                  <span role="columnheader" className={css.colOwner}>{t('task.owner')}</span>
-                  <span role="columnheader" className={css.colDue}>{t('task.due')}</span>
+                  <span role="columnheader" className={css.colExecutor}>{t('task.executor')}</span>
+                  <span role="columnheader" className={css.colCreatedDue}>{t('task.createdDue')}</span>
                   <span role="columnheader" className={css.colActions}>
                     <span className={css.visuallyHidden}>{t('task.actions')}</span>
                   </span>
@@ -860,7 +866,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                     onDetail={() => { openDetail(task) }}
                     onRun={() => { openRun(task) }}
                     onSubmit={() => { submitTask(task) }}
-                    onContinue={() => { continueTask(task) }}
+                    onReview={() => { openReview(task) }}
                   />
                 ))}
               </div>
@@ -1015,6 +1021,34 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                 ))}
               </ul>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {reviewTarget !== null && (
+        <Modal
+          open
+          onClose={() => { if (!reviewing) setReviewTarget(null) }}
+          title={t('review.title')}
+          description={reviewTarget.title || reviewTarget.id}
+          closeLabel={t('run.cancel')}
+          footer={(
+            <>
+              <Button variant="ghost" disabled={reviewing} onClick={() => { setReviewTarget(null) }}>{t('run.cancel')}</Button>
+              <Button variant="outline" disabled={reviewing} onClick={() => { submitReview('continue') }}>{t('tasks.continue')}</Button>
+              <Button variant="outline" disabled={reviewing} onClick={() => { submitReview('rejected') }}>{t('review.reject')}</Button>
+              <Button variant="primary" disabled={reviewing} onClick={() => { submitReview('accepted') }}>{t('review.accept')}</Button>
+            </>
+          )}
+        >
+          <div className={css.reviewDialog}>
+            <p className={css.reviewDesc}>{t('review.description')}</p>
+            <Input
+              value={reviewReason}
+              onChange={(event) => { setReviewReason(event.target.value) }}
+              placeholder={t('review.reason')}
+              aria-label={t('review.reason')}
+            />
           </div>
         </Modal>
       )}

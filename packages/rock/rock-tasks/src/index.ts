@@ -85,7 +85,7 @@ export default class RockTasksController extends TypertRemoteService {
     void this.syncProjects()
     ctx.effect(() => {
       const timer = setInterval(() => { void this.syncProjects() }, PROJECT_SYNC_INTERVAL_MS)
-      timer.unref?.()
+      timer.unref()
       return () => { clearInterval(timer) }
     }, 'rock-tasks: syncProjects interval')
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
@@ -179,6 +179,12 @@ export default class RockTasksController extends TypertRemoteService {
     return this.postTaskAction(taskId, botId, 'continue')
   }
 
+  /** Accept or reject a task under review (assignee permission enforced by the gateway). */
+  @Remote
+  reviewTask(taskId: string, resolution: 'accepted' | 'rejected', reason: string): Promise<TaskSummary> {
+    return this.postReview(taskId, resolution, reason)
+  }
+
   /** POST one task action to the gateway and return the updated task. */
   private async postTaskAction(
     taskId: string,
@@ -203,6 +209,33 @@ export default class RockTasksController extends TypertRemoteService {
       }
       const task = taskFrom(await response.json())
       if (task === null) throw new RemoteError('rockTasks/runFailed', `${action} task returned a malformed task`, {})
+      return task
+    } catch (error) {
+      if (error instanceof RemoteError) throw error
+      throw new RemoteError('rockTasks/runFailed', messageOf(error), {}, { cause: error })
+    }
+  }
+
+  /** POST an accept/reject review to the gateway and return the updated task. */
+  private async postReview(taskId: string, resolution: 'accepted' | 'rejected', reason: string): Promise<TaskSummary> {
+    const url = this.config.tasksUrl
+    const employeeId = this.resolveEmployeeId()
+    if (url.length === 0 || employeeId.length === 0) {
+      throw new RemoteError('rockTasks/unconfigured', 'tasksUrl or employeeId unconfigured', {})
+    }
+    const requestUrl = `${url}/${encodeURIComponent(taskId)}/review`
+    this.ctx.logger.info(`rock-tasks: review task=${taskId} resolution=${resolution} employee=${employeeId}`)
+    try {
+      const response = await fetch(requestUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ employeeId, resolution, reason }),
+      })
+      if (!response.ok) {
+        throw new RemoteError('rockTasks/runFailed', `review task failed HTTP ${response.status}`, {})
+      }
+      const task = taskFrom(await response.json())
+      if (task === null) throw new RemoteError('rockTasks/runFailed', 'review task returned a malformed task', {})
       return task
     } catch (error) {
       if (error instanceof RemoteError) throw error

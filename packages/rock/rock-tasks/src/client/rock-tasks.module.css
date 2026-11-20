@@ -11,18 +11,17 @@
 
 .toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.tabs {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.toolbarActions {
+.toolbarPrimary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbarSecondary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -32,7 +31,8 @@
 .search {
   display: flex;
   align-items: center;
-  width: 220px;
+  flex: 1;
+  max-width: 420px;
 }
 
 .search :global(span) {
@@ -605,7 +605,7 @@
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) 110px 64px 120px 170px 150px auto;
+  grid-template-columns: minmax(0, 2fr) 110px 64px 110px 150px 160px auto;
   gap: 12px;
   align-items: center;
 }
@@ -649,9 +649,22 @@
 
 .colTitle {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.titleLine {
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.titleSkills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .titleButton {
@@ -699,36 +712,30 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-.colOwner {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.ownerLine {
-  display: flex;
-  gap: 4px;
-  min-width: 0;
-  font-size: 0.85em;
-}
-
-.ownerValue {
+.colExecutor {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.colCreatedDue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   min-width: 0;
-}
-
-.ownerLabel {
-  flex-shrink: 0;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.colDue {
-  text-align: right;
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.createdLine {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.cellEmpty {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .colActions {
@@ -749,4 +756,17 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ── Review modal ── */
+
+.reviewDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reviewDesc {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
 }
