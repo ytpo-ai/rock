@@ -4,7 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  AnimatedRows, Button, Checkbox, DisclosureRow, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
+  Button, Checkbox, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
   IconWarningTriangleOutlineRegular, Input, Menu, Modal, SegmentedTabs, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -371,8 +371,8 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
   )
 }
 
-/** One list row: a disclosure header plus an expanded detail body. */
-function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
+/** One grid row in the list view, with an optional full-width sub-row for skills/description. */
+function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
   task: TaskSummary
   t: (key: RockTasksKey) => string
   botName: (botId: string) => string
@@ -383,21 +383,42 @@ function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onC
   onContinue: () => void
   acting: boolean
 }): ReactElement {
-  const [open, setOpen] = useState(false)
-  const expandable = task.description !== ''
-    || task.assignee !== undefined
-    || task.isBlocked === true
-    || (task.skills !== undefined && task.skills.length > 0)
+  const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
   const countdown = dueCountdown(t, task.dueAt)
+  const hasSub = task.description !== '' || (task.skills !== undefined && task.skills.length > 0)
   return (
-    <DisclosureRow
-      icon={<StateDot state={statusDot(task.status)} />}
-      title={task.title || task.id}
-      open={open}
-      expandable={expandable}
-      onToggle={() => { setOpen(!open) }}
-      headerAccessory={(
-        <div className={css.rowActions}>
+    <>
+      <div role="row" className={danger ? `${css.listRow} ${css.listRowDanger}` : css.listRow}>
+        <div role="cell" className={css.colTitle}>
+          <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
+          <button type="button" className={css.titleButton} onClick={onDetail} title={t('detail.open')}>
+            {task.title || task.id}
+          </button>
+        </div>
+        <div role="cell" className={css.colStatus}>
+          <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
+          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+        </div>
+        <div role="cell" className={css.colPriority}>
+          {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
+        </div>
+        <div role="cell" className={css.colProject} title={projectName(task.projectId) ?? t('task.unassigned')}>
+          {projectName(task.projectId) ?? t('task.unassigned')}
+        </div>
+        <div role="cell" className={css.colOwner}>
+          <span className={css.ownerLine}>
+            <span className={css.ownerLabel}>{t('task.assignee')}</span>
+            <span className={css.ownerValue}>{task.assignee !== undefined && task.assignee !== '' ? t('task.you') : t('task.unassigned')}</span>
+          </span>
+          <span className={css.ownerLine}>
+            <span className={css.ownerLabel}>{t('task.executor')}</span>
+            <span className={css.ownerValue}>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
+          </span>
+        </div>
+        <div role="cell" className={css.colDue}>
+          {task.dueAt !== undefined && <span className={countdownClass(countdown.tone)}>{countdown.text}</span>}
+        </div>
+        <div role="cell" className={css.colActions}>
           <Button size="sm" variant="ghost" onClick={onDetail}>{t('detail.open')}</Button>
           {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
           {task.status === 'bot-completed' && task.executorId.length > 0 && (
@@ -407,45 +428,21 @@ function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onC
             <Button size="sm" variant="outline" disabled={acting} onClick={onContinue}>{t('tasks.continue')}</Button>
           )}
         </div>
-      )}
-      collapsedContent={(
-        <span className={css.rowMeta}>
-          <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
-          {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
-          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
-          <span className={css.rowProject}>{projectName(task.projectId) ?? t('task.unassigned')}</span>
-          {task.dueAt !== undefined && <span className={countdownClass(countdown.tone)}>{countdown.text}</span>}
-        </span>
-      )}
-    >
-      {expandable && (
-        <div className={css.rowExpanded}>
-          <div className={css.rowField}>
-            <span className={css.cardFieldLabel}>{t('task.executor')}</span>
-            <span>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
+      </div>
+      {hasSub && (
+        <div role="row" className={css.listSubRow}>
+          <div role="cell" className={css.subRowCell}>
+            {task.skills !== undefined && task.skills.length > 0 && (
+              <div className={css.subRowLine}>
+                <span className={css.ownerLabel}>{t('task.skills')}</span>
+                <span className={css.ownerValue}>{task.skills.map(skill => skill.name).join('、')}</span>
+              </div>
+            )}
+            {task.description !== '' && <p className={css.rowDesc}>{task.description}</p>}
           </div>
-          {task.assignee !== undefined && task.assignee !== '' && (
-            <div className={css.rowField}>
-              <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
-              <span>{t('task.you')}</span>
-            </div>
-          )}
-          {task.skills !== undefined && task.skills.length > 0 && (
-            <div className={css.rowField}>
-              <span className={css.cardFieldLabel}>{t('task.skills')}</span>
-              <span>{task.skills.map(skill => skill.name).join('、')}</span>
-            </div>
-          )}
-          {task.isBlocked === true && task.blockReason !== undefined && (
-            <div className={css.rowField}>
-              <span className={css.cardFieldLabel}>{t('task.blockReason')}</span>
-              <span>{task.blockReason}</span>
-            </div>
-          )}
-          {task.description !== '' && <p className={css.rowDesc}>{task.description}</p>}
         </div>
       )}
-    </DisclosureRow>
+    </>
   )
 }
 
@@ -839,17 +836,22 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               <p className={css.empty}>{t('tasks.emptyList')}</p>
             </div>
           ) : (
-            <AnimatedRows
-              className={css.list as string}
-              role="list"
-              label={t('tasks.listLabel')}
-              rowKeys={pageItems.map(item => item.id)}
-              ready
-              resetKey={`${search}:${typeFilter}:${statusFilter}:${projectFilter}:${sort}`}
-            >
-              {pageItems.map(task => (
-                <div key={task.id} data-row-key={task.id}>
-                  <TaskRow
+            <div className={css.listTable}>
+              <div className={css.listGrid} role="table" aria-label={t('tasks.listLabel')}>
+                <div className={css.listHead} role="row">
+                  <span role="columnheader" className={css.colTitle}>{t('task.title')}</span>
+                  <span role="columnheader" className={css.colStatus}>{t('task.status')}</span>
+                  <span role="columnheader" className={css.colPriority}>{t('task.priority')}</span>
+                  <span role="columnheader" className={css.colProject}>{t('task.project')}</span>
+                  <span role="columnheader" className={css.colOwner}>{t('task.owner')}</span>
+                  <span role="columnheader" className={css.colDue}>{t('task.due')}</span>
+                  <span role="columnheader" className={css.colActions}>
+                    <span className={css.visuallyHidden}>{t('task.actions')}</span>
+                  </span>
+                </div>
+                {pageItems.map(task => (
+                  <TaskGridRow
+                    key={task.id}
                     task={task}
                     t={t}
                     botName={botName}
@@ -860,9 +862,9 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                     onSubmit={() => { submitTask(task) }}
                     onContinue={() => { continueTask(task) }}
                   />
-                </div>
-              ))}
-            </AnimatedRows>
+                ))}
+              </div>
+            </div>
           )}
           {totalPages > 1 && (
             <div className={css.listPager}>
