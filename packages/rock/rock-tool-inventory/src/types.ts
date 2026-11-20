@@ -64,3 +64,15 @@ export interface DetectState {
   /** Safe failure diagnostic when the run could not start or failed. */
   error?: string
 }
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * A detection run finished: the assistant result was merged over the fast
+     * probe and persisted. Payload-free; consumers re-read
+     * `ctx.rockToolInventory` for the fresh statuses.
+     * @mode emit
+     */
+    'rock-tool-inventory/detected'(): void
+  }
+}

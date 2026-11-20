@@ -32,6 +32,7 @@ export interface RockBotManagerSectionInjected {
     rebindBot(id: string, toolType: string): Promise<RemoteResult<void>>
     toolTypes(): Promise<RemoteResult<string[]>>
     installedTools(): Promise<RemoteResult<string[]>>
+    watchDetected(signal?: AbortSignal): AsyncIterable<number>
     providers(): Promise<RemoteResult<Array<{ id: string; name: string }>>>
     testBot(id: string): Promise<RemoteResult<BotTestResult>>
   }
@@ -82,6 +83,21 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     void remote.installedTools().then((result) => { if (!cancelled && result.ok) setInstalled(new Set(result.value)) })
     void remote.providers().then((result) => { if (!cancelled && result.ok) setProviders(result.value) })
     return () => { cancelled = true }
+  }, [remote])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        for await (const _revision of remote.watchDetected(controller.signal)) {
+          void remote.installedTools().then((result) => { if (result.ok) setInstalled(new Set(result.value)) })
+        }
+      } catch (error) {
+        // The refresh stream closed on unmount or carrier loss; a remount re-syncs installed tools.
+        console.warn('[rock-bot-manager] detection stream closed:', error)
+      }
+    })()
+    return () => { controller.abort() }
   }, [remote])
 
   const retryLoad = (): void => {

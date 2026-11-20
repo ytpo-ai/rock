@@ -17,6 +17,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+// Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
+import type {} from '@rock/rock-tool-inventory'
+import { installedToolIds, type InstalledStatus } from './installed.ts'
 import { RockBotService } from './service.ts'
 import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
@@ -84,6 +87,8 @@ export default class RockBotController extends TypertRemoteService {
 
   private readonly service: RockBotService
   private readonly config: Config
+  private readonly detectedListeners = new Set<() => void>()
+  private detectedRevision = 0
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockBots')
@@ -97,6 +102,17 @@ export default class RockBotController extends TypertRemoteService {
     }, (error: unknown) => {
       ctx.logger.warn(`rock-bot-manager: failed to load bots: ${messageOf(error)}`)
     })
+    ctx.effect(() => () => {
+      for (const listener of this.detectedListeners) listener()
+      this.detectedListeners.clear()
+    }, 'rock-bot-manager: close detection followers')
+    ctx.on('rock-tool-inventory/detected', () => { this.publishDetected() })
+  }
+
+  /** Advance the detection revision and wake every `watchDetected` follower. */
+  private publishDetected(): void {
+    this.detectedRevision += 1
+    for (const listener of this.detectedListeners) listener()
   }
 
   /** Host-side read of the live bot list (no Remote serialization). */
@@ -212,8 +228,31 @@ export default class RockBotController extends TypertRemoteService {
   async installedTools(): Promise<string[]> {
     const inventory = this.optionalInventory()
     if (inventory === undefined) return []
-    const statuses = await inventory.listTools()
-    return statuses.filter(status => status.installed).map(status => status.id)
+    return installedToolIds(await inventory.listTools(), inventory.detectState().statuses)
+  }
+
+  /**
+   * Stream the detection revision, waking on each completed detection run so
+   * the client can re-read {@link installedTools} without polling.
+   * @param signal - subscriber lifetime.
+   * @returns the current revision after each completed detection run.
+   */
+  @Remote({ mode: 'stream' })
+  async *watchDetected(signal: AbortSignal): AsyncIterable<number> {
+    let update = Promise.withResolvers<void>()
+    const changed = (): void => { update.resolve() }
+    this.detectedListeners.add(changed)
+    signal.addEventListener('abort', changed, { once: true })
+    try {
+      while (!signal.aborted) {
+        yield this.detectedRevision
+        await update.promise
+        update = Promise.withResolvers<void>()
+      }
+    } finally {
+      this.detectedListeners.delete(changed)
+      signal.removeEventListener('abort', changed)
+    }
   }
 
   /** Rebind a bot — local definition or cloud-sourced binding — and persist. */
@@ -285,8 +324,11 @@ export default class RockBotController extends TypertRemoteService {
   }
 
   /** The optional tool-inventory service, structurally typed to avoid a package cycle. */
-  private optionalInventory(): { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined {
-    return this.ctx.get('rockToolInventory') as { listTools(): Promise<{ id: string; installed: boolean }[]> } | undefined
+  private optionalInventory(): {
+    listTools(): Promise<InstalledStatus[]>
+    detectState(): { statuses: readonly InstalledStatus[] }
+  } | undefined {
+    return this.ctx.get('rockToolInventory')
   }
 
   /** The optional workspace service, structurally typed to avoid a package cycle. */
@@ -296,7 +338,7 @@ export default class RockBotController extends TypertRemoteService {
 
   /** The optional LLM runtime, structurally typed to avoid a package cycle. */
   private optionalLlm(): { listProviders(): Array<{ id: string; name: string }> } | undefined {
-    return this.ctx.get('llm') as { listProviders(): Array<{ id: string; name: string }> } | undefined
+    return this.ctx.get('llm')
   }
 }
 

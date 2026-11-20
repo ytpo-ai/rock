@@ -256,6 +256,12 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
     this.detectSessionId = undefined
     this.persistState(statuses, lastDetectedAt)
+    try {
+      this.ctx.emit('rock-tool-inventory/detected')
+    } catch (error) {
+      // Emit dispatches listeners inline; a throwing consumer must not undo the persisted result.
+      this.ctx.logger.warn(`rock-tool-inventory: detected listener failed: ${messageOf(error)}`)
+    }
   }
 
   /** Read the last persisted detection result, or an empty state on absence/failure. */
