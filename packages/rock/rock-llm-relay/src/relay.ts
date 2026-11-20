@@ -98,7 +98,7 @@ export class RockLlmRelay {
     if (connectorKey !== undefined && connectorKey !== '') headers.set('authorization', `Bearer ${connectorKey}`)
 
     const doForward = this.options.forward ?? ((target: string, init: RequestInit) => fetch(target, init))
-    return doForward(url, { method: 'POST', headers, body })
+    return doForward(url, { method: 'POST', headers, body: forceRelayModel(body) })
   }
 
   private async pipeResponse(res: ServerResponse, upstream: Response): Promise<void> {
@@ -138,4 +138,20 @@ function diagnosticOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+/** The placeholder model id the relay stamps so Seagull routes by bot binding, not the caller's model. */
+const RELAY_MODEL = 'seagull-relay'
+
+/** Replace a JSON request body's top-level `model` field with {@link RELAY_MODEL}. */
+function forceRelayModel(body: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return body
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return body
+  ;(parsed as Record<string, unknown>).model = RELAY_MODEL
+  return JSON.stringify(parsed)
 }

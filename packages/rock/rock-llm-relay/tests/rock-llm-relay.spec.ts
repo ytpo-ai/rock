@@ -58,6 +58,23 @@ describe('RockLlmRelay', () => {
     expect(headers.get('authorization')).toBe('Bearer sk-connector-test')
   })
 
+  it('replaces the request model with the bot-binding placeholder', async () => {
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const server = relay({ forward })
+    servers.push(server)
+    const port = await server.start()
+
+    await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer sk-rock-test' },
+      body: JSON.stringify({ model: 'gpt-5', messages: [] }),
+    })
+
+    const [, init] = forward.mock.calls[0]! as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as { model: string }
+    expect(body.model).toBe('seagull-relay')
+  })
+
   it('forwards the /responses suffix to the per-bot cloud endpoint', async () => {
     const forward = vi.fn().mockResolvedValue(sseResponse())
     const server = relay({ forward })

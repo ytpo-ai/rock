@@ -55,7 +55,7 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 
 权限矩阵：本地 bot 全权（编辑/删除/重绑）；认领 bot 只读但可重绑（`canRebind=true`）；专属助理只读且不可重绑（`canRebind=false`）。
 
-云端 bot 卡片提供「LLM 代理」按钮，打开右侧抽屉展示上述清单，每项带复制按钮；`API 协议` 固定 `OpenAI Chat Completions`，`模型 ID` 填 bot 的真实模型 id（无模型时回退占位符 `seagull-relay`），`模型名` 为 `{模型ID}/{bot名}`，`API 密钥` 为 `rock-llm-relay` 生成的本地 relay key（与 connector key 无关）。
+云端 bot 卡片提供「LLM 代理」按钮，打开右侧抽屉展示上述清单，每项带复制按钮；`API 协议` 固定 `OpenAI Chat Completions`，`模型 ID` 填 bot 的真实模型 id（仅用于展示；无模型时回退占位符 `seagull-relay`），`模型名` 为 `{模型ID}/{bot名}`，`API 密钥` 为 `rock-llm-relay` 生成的本地 relay key（与 connector key 无关）。`rock-llm-relay` 转发时会把请求体里的 `model` 无条件替换为 `seagull-relay`，使 Seagull 始终按 bot 绑定模型路由。
 
 ## Known Limitations and Deferred Work
 
