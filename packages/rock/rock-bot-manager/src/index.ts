@@ -26,12 +26,13 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 // Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
 import type {} from '@rock/rock-tool-inventory'
 import { installedToolIds, type InstalledStatus } from './installed.ts'
+import { buildLlmProxyChecklist } from './proxy.ts'
 import { RockBotService } from './service.ts'
 import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
 import { presetForToolType } from './tool-preset.ts'
 import { buildUnifiedBots } from './unify.ts'
-import type { BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult } from './types.ts'
+import type { BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult, LlmProxyChecklist } from './types.ts'
 
 export { presetForToolType } from './tool-preset.ts'
 export type * from './types.ts'
@@ -192,6 +193,15 @@ export default class RockBotController extends TypertRemoteService {
   @Remote
   providers(): Array<{ id: string; name: string }> {
     return this.optionalLlm()?.listProviders() ?? []
+  }
+
+  /** DSH custom-model-API checklist for one cloud bot (D-034); null for local bots. */
+  @Remote
+  getLlmProxy(id: string): LlmProxyChecklist | null {
+    if (this.service.get(id) !== undefined) return null
+    const relay = this.optionalRelay()
+    if (relay === undefined) throw new RemoteError('rockBots/invalid', 'llm relay unavailable', {})
+    return buildLlmProxyChecklist(id, this.botNameOf(id) ?? id, relay.getFacts())
   }
 
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */
@@ -365,6 +375,19 @@ export default class RockBotController extends TypertRemoteService {
   /** The optional workspace service, structurally typed to avoid a package cycle. */
   private optionalWorkspace(): { listProjects(): Array<{ id: string; name: string }> } | undefined {
     return this.ctx.get('rockWorkspace') as { listProjects(): Array<{ id: string; name: string }> } | undefined
+  }
+
+  /** The optional LLM relay facts service, structurally typed to avoid a package cycle. */
+  private optionalRelay(): { getFacts(): { baseUrl: string; apiKey: string } } | undefined {
+    return this.ctx.get('rockLlmRelay') as { getFacts(): { baseUrl: string; apiKey: string } } | undefined
+  }
+
+  /** Resolve a cloud bot's display name from the identity service, or undefined. */
+  private botNameOf(id: string): string | undefined {
+    const identity = this.optionalIdentity()
+    if (identity === undefined) return undefined
+    const ref = [...identity.getClaims(), ...identity.getAssistants()].find(item => item.agentBotId === id)
+    return ref?.name
   }
 
   /** The optional LLM runtime, structurally typed to avoid a package cycle. */

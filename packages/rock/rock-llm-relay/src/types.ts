@@ -17,6 +17,8 @@ export interface RockLlmRelayOptions {
   host: string
   /** Loopback bind port. */
   port: number
+  /** Local inbound bearer key required on every request; distinct from the cloud connector key. */
+  localKey: string
   /** Seagull cloud LLM Proxy origin; the relay appends `/v1/bots/{agentBotId}<path-suffix>`. */
   cloudBaseUrl: string
   /** Resolve the connector key presented as the cloud Bearer (D-034/REQ-013). */
@@ -27,6 +29,18 @@ export interface RockLlmRelayOptions {
   resolveEmployeeId: (agentBotId: string) => string | undefined
   /** Forward transport, injectable for tests. */
   forward?: (url: string, init: RequestInit) => Promise<Response>
+}
+
+/** Host-side facts the relay exposes to other plugins (the bot-manager drawer). */
+export interface RockLlmRelayFacts {
+  /** Loopback bind host. */
+  host: string
+  /** Actual bound port. */
+  port: number
+  /** Loopback origin, e.g. `http://127.0.0.1:4090`. */
+  baseUrl: string
+  /** Local inbound bearer key (distinct from the cloud connector key). */
+  apiKey: string
 }
 
 /** One parsed relay route: `/v1/bots/{agentBotId}{pathSuffix}`. */

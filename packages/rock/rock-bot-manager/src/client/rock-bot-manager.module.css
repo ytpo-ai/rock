@@ -190,3 +190,113 @@
   border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-skeleton);
 }
+
+/* LLM proxy drawer: pin the Modal dialog to the right edge, full height. */
+.proxyDrawer {
+  position: fixed;
+  top: var(--dsh-frame-chrome-top, 0px);
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  height: auto;
+  gap: 0;
+  padding: 0;
+  border-radius: var(--dsw-radius-panel) 0 0 var(--dsw-radius-panel);
+}
+
+.proxyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 16px 12px 20px;
+  border-bottom: 0.5px solid var(--dsw-alias-settings-card-stroke);
+}
+
+.proxyTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.proxyBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.proxyDescription {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.proxySection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proxySectionTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.proxyField {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-l1);
+}
+
+.proxyFieldMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.proxyFieldLabel {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.proxyFieldValue {
+  font-family: var(--dsh-font-family-code-default);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+  user-select: all;
+}
+
+.proxyNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.proxyFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 0.5px solid var(--dsw-alias-settings-card-stroke);
+}

@@ -5,7 +5,8 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { Button, Input, Menu, Modal, Pill, StateDot, Tag, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { BotDefinition, BotInput, BotRow, BotSource, BotTestResult } from '@rock/rock-bot-manager/types'
+import type { BotDefinition, BotInput, BotRow, BotSource, BotTestResult, LlmProxyChecklist } from '@rock/rock-bot-manager/types'
+import { LlmProxyDrawer } from './LlmProxyDrawer.tsx'
 import css from './rock-bot-manager.module.css'
 
 /** Empty create-form state. */
@@ -35,6 +36,7 @@ export interface RockBotManagerSectionInjected {
     watchDetected(signal?: AbortSignal): AsyncIterable<number>
     providers(): Promise<RemoteResult<Array<{ id: string; name: string }>>>
     testBot(id: string): Promise<RemoteResult<BotTestResult>>
+    getLlmProxy(id: string): Promise<RemoteResult<LlmProxyChecklist | null>>
   }
 }
 
@@ -67,6 +69,7 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
   const [providerMenu, setProviderMenu] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, BotTestResult>>({})
+  const [proxy, setProxy] = useState<LlmProxyChecklist | null>(null)
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
@@ -211,6 +214,16 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
       const value = result.value
       setTestResults(prev => ({ ...prev, [id]: value }))
       if (value.ok) showToast(t('toast.tested'), true)
+    })
+  }
+
+  const openProxy = (id: string): void => {
+    void remote.getLlmProxy(id).then((result) => {
+      if (result.ok && result.value !== null) {
+        setProxy(result.value)
+      } else {
+        showToast(t('proxy.failed'), false)
+      }
     })
   }
 
@@ -384,6 +397,11 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
                   <Button size="sm" disabled={testing === bot.id} onClick={() => { runTest(bot.id) }}>
                     {testing === bot.id ? t('test.running') : t('test')}
                   </Button>
+                  {bot.source !== 'local' && (
+                    <Button size="sm" variant="outline" onClick={() => { openProxy(bot.id) }}>
+                      {t('proxy.button')}
+                    </Button>
+                  )}
                   {bot.source === 'local' && (
                     <Button size="sm" variant="outline" onClick={() => { openEdit(bot) }}>
                       {t('edit')}
@@ -458,6 +476,10 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
         >
           {deleteTarget.name}
         </Modal>
+      )}
+
+      {proxy !== null && (
+        <LlmProxyDrawer t={t} checklist={proxy} onClose={() => { setProxy(null) }} />
       )}
 
       {toast !== null && (

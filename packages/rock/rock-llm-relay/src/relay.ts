@@ -28,7 +28,7 @@ export class RockLlmRelay {
     this.server = server
     await new Promise<void>((resolve, reject) => {
       server.on('error', reject)
-      server.listen(this.options.port, this.options.host, () => resolve())
+      server.listen(this.options.port, this.options.host, () => { resolve() })
     })
     const address = server.address()
     return typeof address === 'object' && address !== null ? address.port : this.options.port
@@ -38,15 +38,22 @@ export class RockLlmRelay {
   stop(): Promise<void> {
     return new Promise((resolve) => {
       const server = this.server
-      if (server === undefined) return resolve()
+      if (server === undefined) {
+        resolve()
+        return
+      }
       this.server = undefined
-      server.close(() => resolve())
+      server.close(() => { resolve() })
     })
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== 'POST') {
       this.writeJson(res, 405, { error: { message: 'method not allowed' } })
+      return
+    }
+    if (!this.authorized(req)) {
+      this.writeJson(res, 401, { error: { message: 'invalid api key', type: 'invalid_request_error', code: 'invalid_api_key' } })
       return
     }
     const route = parseRelayRoute(req.url ?? '')
@@ -68,9 +75,14 @@ export class RockLlmRelay {
       let raw = ''
       req.setEncoding('utf8')
       req.on('data', (chunk: string) => { raw += chunk })
-      req.on('end', () => resolve(raw))
+      req.on('end', () => { resolve(raw) })
       req.on('error', reject)
     })
+  }
+
+  /** Whether the inbound request presents the loopback bearer key. */
+  private authorized(req: IncomingMessage): boolean {
+    return req.headers.authorization === `Bearer ${this.options.localKey}`
   }
 
   private async forward(route: RelayRoute, body: string): Promise<Response> {
@@ -93,7 +105,7 @@ export class RockLlmRelay {
     res.statusCode = upstream.status
     const contentType = upstream.headers.get('content-type')
     if (contentType !== null) res.setHeader('content-type', contentType)
-    res.flushHeaders?.()
+    res.flushHeaders()
     if (upstream.body === null) {
       res.end()
       return
@@ -124,5 +136,6 @@ export class RockLlmRelay {
 /** A safe, secret-free diagnostic for an unknown thrown value. */
 function diagnosticOf(error: unknown): string {
   if (error instanceof Error) return error.message
-  return String(error ?? 'unknown error')
+  if (typeof error === 'string') return error
+  return 'unknown error'
 }

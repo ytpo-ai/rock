@@ -98,6 +98,24 @@ export interface BotTestResult {
   error?: string
 }
 
+/** A ready-to-paste checklist for wiring one cloud bot into DSH's custom model API (D-034). */
+export interface LlmProxyChecklist {
+  /** Cloud agent bot id the relay routes by. */
+  botId: string
+  /** DSH provider id, derived as `rock-{agentBotId}`. */
+  providerId: string
+  /** DSH provider display name (bot name). */
+  displayName: string
+  /** DSH provider API address (base URL through the relay). */
+  baseUrl: string
+  /** DSH provider API protocol (fixed: OpenAI Chat Completions). */
+  protocol: string
+  /** Local relay bearer key the DSH provider authenticates with. */
+  apiKey: string
+  /** Model id to send (`seagull-relay`, routed by bot binding). */
+  modelId: string
+}
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** A bot with the same id already exists. */

@@ -5,6 +5,7 @@ function relay(overrides: Partial<ConstructorParameters<typeof RockLlmRelay>[0]>
   return new RockLlmRelay({
     host: '127.0.0.1',
     port: 0,
+    localKey: 'sk-rock-test',
     cloudBaseUrl: 'http://cloud.test',
     resolveConnectorKey: () => 'sk-connector-test',
     connectorClientId: 'rock-a',
@@ -39,7 +40,7 @@ describe('RockLlmRelay', () => {
 
     const response = await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer sk-rock-test' },
       body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
     })
 
@@ -47,7 +48,7 @@ describe('RockLlmRelay', () => {
     expect(await response.text()).toContain('data:')
 
     expect(forward).toHaveBeenCalledTimes(1)
-    const [url, init] = forward.mock.calls[0]!
+    const [url, init] = forward.mock.calls[0]! as [string, RequestInit]
     expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/chat/completions')
     const headers = init.headers as Headers
     expect(headers.get('x-seagull-agent-bot-id')).toBe('agent-bot-C')
@@ -65,13 +66,45 @@ describe('RockLlmRelay', () => {
 
     await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/responses`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer sk-rock-test' },
       body: JSON.stringify({ model: 'seagull-relay', input: [] }),
     })
 
-    const [url, init] = forward.mock.calls[0]!
+    const [url, init] = forward.mock.calls[0]! as [string, RequestInit]
     expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/responses')
     expect((init.headers as Headers).get('authorization')).toBe('Bearer sk-connector-test')
+  })
+
+  it('returns 401 for a request missing the local bearer key', async () => {
+    const forward = vi.fn()
+    const server = relay({ forward })
+    servers.push(server)
+    const port = await server.start()
+
+    const response = await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
+    })
+
+    expect(response.status).toBe(401)
+    expect(forward).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 for a request with the wrong local bearer key', async () => {
+    const forward = vi.fn()
+    const server = relay({ forward })
+    servers.push(server)
+    const port = await server.start()
+
+    const response = await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer sk-wrong' },
+      body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
+    })
+
+    expect(response.status).toBe(401)
+    expect(forward).not.toHaveBeenCalled()
   })
 
   it('returns 404 for a path that does not name an agent bot', async () => {
@@ -79,7 +112,10 @@ describe('RockLlmRelay', () => {
     servers.push(server)
     const port = await server.start()
 
-    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST' })
+    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk-rock-test' },
+    })
     expect(response.status).toBe(404)
   })
 })
