@@ -43,7 +43,7 @@ const REFRESH_INTERVAL_MS = 15_000
 const TERMINAL = new Set(['done', 'cancelled'])
 
 /** Statuses the backend allows `run` from. */
-const RUNNABLE = new Set(['pending', 'in-progress', 'blocked'])
+const RUNNABLE = new Set(['pending', 'in-progress', 'bot-completed', 'blocked'])
 
 /** Statuses that appear in the live "current" queue. */
 const ACTIVE_STATUSES = STATUS_ORDER.filter(status => !TERMINAL.has(status))
@@ -91,6 +91,7 @@ function statusTone(status: string): TagTone {
   switch (status) {
     case 'done': return 'success'
     case 'awaiting-review':
+    case 'bot-completed':
     case 'blocked': return 'warning'
     case 'in-progress': return 'info'
     default: return 'neutral'
@@ -102,7 +103,8 @@ function statusDot(status: string): StateDotState {
   switch (status) {
     case 'done': return 'done'
     case 'blocked':
-    case 'awaiting-review': return 'warning'
+    case 'awaiting-review':
+    case 'bot-completed': return 'warning'
     case 'in-progress': return 'ongoing'
     default: return 'idle'
   }
@@ -586,7 +588,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                           {RUNNABLE.has(task.status) && (
                             <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
                           )}
-                          {task.status === 'in-progress' && task.executorId.length > 0 && (
+                          {task.status === 'bot-completed' && task.executorId.length > 0 && (
                             <Button size="sm" variant="outline" disabled={acting} onClick={() => { submitTask(task) }}>{t('tasks.submit')}</Button>
                           )}
                           {task.status === 'awaiting-review' && task.executorId.length > 0 && (

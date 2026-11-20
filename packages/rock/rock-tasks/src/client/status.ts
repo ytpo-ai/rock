@@ -2,7 +2,7 @@
 import type { RockTasksKey } from './locales.ts'
 
 /** Canonical status order for grouping and filtering. */
-export const STATUS_ORDER = ['pending', 'in-progress', 'awaiting-review', 'blocked', 'done', 'cancelled'] as const
+export const STATUS_ORDER = ['pending', 'in-progress', 'bot-completed', 'awaiting-review', 'blocked', 'done', 'cancelled'] as const
 
 /** Localized status label, falling back to the raw status. */
 export function statusLabel(t: (key: RockTasksKey) => string, status: string): string {

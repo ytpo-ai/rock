@@ -7,7 +7,7 @@
  */
 
 /** Task statuses that keep a bot's binding locked. */
-export const ACTIVE_TASK_STATUSES = new Set(['pending', 'planning', 'planned', 'in-progress', 'awaiting-review', 'blocked'])
+export const ACTIVE_TASK_STATUSES = new Set(['pending', 'planning', 'planned', 'in-progress', 'bot-completed', 'awaiting-review', 'blocked'])
 
 /** Bot ids owning at least one active task, deduplicated in first-seen order. */
 export function activeBotIdsFrom(tasks: Array<Record<string, unknown>>): string[] {

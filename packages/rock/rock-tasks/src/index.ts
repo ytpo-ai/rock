@@ -156,7 +156,7 @@ export default class RockTasksController extends TypertRemoteService {
     return task
   }
 
-  /** Submit the task for review (in-progress → awaiting-review). */
+  /** Submit the task for review (bot-completed → awaiting-review). */
   @Remote
   async submitTask(taskId: string, botId: string): Promise<TaskSummary> {
     const task = await this.postTaskAction(taskId, botId, 'submit')
