@@ -335,7 +335,7 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
       <div className={css.cardFields}>
         <div className={css.cardField}>
           <span className={css.cardFieldLabel}>{t('task.project')}</span>
-          <span className={css.cardFieldValue}>{projectName(task.projectId) ?? t('task.unassigned')}</span>
+          <span className={css.cardFieldValue}>{projectName(task.projectId) ?? t('task.global')}</span>
         </div>
         <div className={css.cardField}>
           <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
@@ -386,53 +386,64 @@ function TaskGridRow({ task, t, botName, projectName, onDetail, onRun, onSubmit,
 }): ReactElement {
   const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
   const countdown = dueCountdown(t, task.dueAt)
+  const hasSub = task.description !== '' || (task.skills !== undefined && task.skills.length > 0)
   return (
-    <div role="row" className={danger ? `${css.listRow} ${css.listRowDanger}` : css.listRow}>
-      <div role="cell" className={css.colTitle}>
-        <div className={css.titleLine}>
-          <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
-          <button type="button" className={css.titleButton} onClick={onDetail} title={t('detail.open')}>
-            {task.title || task.id}
-          </button>
-        </div>
-        {task.skills !== undefined && task.skills.length > 0 && (
-          <div className={css.titleSkills}>
-            {task.skills.map(skill => <span key={skill.id} className={css.cardSkill}>{skill.name}</span>)}
+    <>
+      <div role="row" className={danger ? `${css.listRow} ${css.listRowDanger}` : css.listRow}>
+        <div role="cell" className={css.colTitle}>
+          <div className={css.titleLine}>
+            <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
+            <button type="button" className={css.titleButton} onClick={onDetail} title={t('detail.open')}>
+              {task.title || task.id}
+            </button>
           </div>
-        )}
+        </div>
+        <div role="cell" className={css.colStatus}>
+          <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
+          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+        </div>
+        <div role="cell" className={css.colPriority}>
+          {task.priority !== undefined
+            ? <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>
+            : <span className={css.cellEmpty}>—</span>}
+        </div>
+        <div role="cell" className={css.colProject} title={projectName(task.projectId) ?? t('task.global')}>
+          {projectName(task.projectId) ?? t('task.global')}
+        </div>
+        <div role="cell" className={css.colExecutor} title={task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}>
+          {task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}
+        </div>
+        <div role="cell" className={css.colCreatedDue}>
+          <span className={css.createdLine}>{task.createdAt !== undefined ? formatDateTime(task.createdAt) : '—'}</span>
+          {task.dueAt !== undefined
+            ? <span className={countdownClass(countdown.tone)}>{countdown.text}</span>
+            : <span className={css.cellEmpty}>—</span>}
+        </div>
+        <div role="cell" className={css.colActions}>
+          <Button size="sm" variant="outline" onClick={onDetail}>{t('detail.open')}</Button>
+          {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
+          {task.status === 'bot-completed' && task.executorId.length > 0 && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
+          )}
+          {task.status === 'awaiting-review' && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.open')}</Button>
+          )}
+        </div>
       </div>
-      <div role="cell" className={css.colStatus}>
-        <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
-        {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
-      </div>
-      <div role="cell" className={css.colPriority}>
-        {task.priority !== undefined
-          ? <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>
-          : <span className={css.cellEmpty}>—</span>}
-      </div>
-      <div role="cell" className={css.colProject} title={projectName(task.projectId) ?? t('task.unspecified')}>
-        {projectName(task.projectId) ?? t('task.unspecified')}
-      </div>
-      <div role="cell" className={css.colExecutor} title={task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}>
-        {task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}
-      </div>
-      <div role="cell" className={css.colCreatedDue}>
-        <span className={css.createdLine}>{task.createdAt !== undefined ? formatDateTime(task.createdAt) : '—'}</span>
-        {task.dueAt !== undefined
-          ? <span className={countdownClass(countdown.tone)}>{countdown.text}</span>
-          : <span className={css.cellEmpty}>—</span>}
-      </div>
-      <div role="cell" className={css.colActions}>
-        <Button size="sm" variant="outline" onClick={onDetail}>{t('detail.open')}</Button>
-        {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
-        {task.status === 'bot-completed' && task.executorId.length > 0 && (
-          <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
-        )}
-        {task.status === 'awaiting-review' && (
-          <Button size="sm" variant="outline" disabled={acting} onClick={onReview}>{t('review.open')}</Button>
-        )}
-      </div>
-    </div>
+      {hasSub && (
+        <div role="row" className={css.listSubRow}>
+          <div role="cell" className={css.subRowCell}>
+            {task.skills !== undefined && task.skills.length > 0 && (
+              <div className={css.subRowLine}>
+                <span className={css.subRowLabel}>{t('task.skills')}</span>
+                <span className={css.subRowValue}>{task.skills.map(skill => skill.name).join('、')}</span>
+              </div>
+            )}
+            {task.description !== '' && <p className={css.subRowDesc}>{task.description}</p>}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -958,7 +969,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
             <div className={css.detailFields}>
               <div className={css.rowField}>
                 <span className={css.cardFieldLabel}>{t('task.project')}</span>
-                <span>{projectName(detailTarget.projectId) ?? t('task.unassigned')}</span>
+                <span>{projectName(detailTarget.projectId) ?? t('task.global')}</span>
               </div>
               <div className={css.rowField}>
                 <span className={css.cardFieldLabel}>{t('task.executor')}</span>
