@@ -14,6 +14,12 @@ export interface ToolDescriptor {
   command: string
   /** Official install documentation URL surfaced for missing tools. */
   installDocUrl?: string
+  /**
+   * How Rock delegates tasks to this tool's resident service/daemon (the debug
+   * smoke-test target), as opposed to a one-shot CLI subprocess. Absent when the
+   * tool has no resident service transport.
+   */
+  serviceHint?: string
 }
 
 /** Which detection path produced a status. */

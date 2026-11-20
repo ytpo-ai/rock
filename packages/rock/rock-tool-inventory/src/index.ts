@@ -46,10 +46,23 @@ const ASSISTANT_MODEL = 'seagull-relay'
 
 /** Probe targets the workbench ships by default. */
 const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
-  { id: 'codex', command: 'codex', installDocUrl: 'https://developers.openai.com/codex/cli' },
+  {
+    id: 'codex',
+    command: 'codex',
+    installDocUrl: 'https://developers.openai.com/codex/cli',
+    serviceHint: '通过 codex app-server daemon 的控制 unix socket 委派（默认 ~/.codex/app-server-control/app-server-control.sock，JSON-RPC）。',
+  },
   { id: 'pi', command: 'pi', installDocUrl: 'https://github.com/badlogic/pi-mono' },
-  { id: 'opencode', command: 'opencode' },
-  { id: 'dsh', command: 'dsh' },
+  {
+    id: 'opencode',
+    command: 'opencode',
+    serviceHint: '通过 opencode v2 本地常驻 server 的 HTTP REST 委派（发现文件 ~/.local/state/opencode/service.json 提供 url+password，Basic 鉴权）。',
+  },
+  {
+    id: 'dsh',
+    command: 'dsh',
+    serviceHint: '通过已运行的 dsh web Host 的 HTTP Remote API 委派（token→cookie→session/create→session/prompt→session/wait；Host 地址来自 ROCK_DSH_REMOTE_URL，token 来自 ROCK_DSH_REMOTE_TOKEN，默认 http://127.0.0.1:3080）。',
+  },
   { id: 'claude-code', command: 'claude' },
 ]
 
@@ -72,6 +85,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
       id: z.string().min(1),
       command: z.string().min(1),
       installDocUrl: z.string().default(''),
+      serviceHint: z.string().default(''),
     })).default([...DEFAULT_TOOLS]),
     statePath: z.string().min(1).default(DEFAULT_STATE_PATH),
   })

@@ -3,7 +3,7 @@ import { commandOf, debugPrompt, detectPrompt, extractJsonArray, mergeStatuses, 
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
 const TOOLS: readonly ToolDescriptor[] = [
-  { id: 'codex', command: 'codex', installDocUrl: 'https://docs/codex' },
+  { id: 'codex', command: 'codex', installDocUrl: 'https://docs/codex', serviceHint: '通过 daemon socket 委派' },
   { id: 'pi', command: 'pi' },
 ]
 
@@ -92,10 +92,18 @@ describe('debugPrompt', () => {
     expect(debugPrompt(TOOLS[0]).split('\n')[0]).toBe('执行器调试')
   })
 
-  it('names the target tool id and command', () => {
+  it('targets the service-communication channel, not a one-shot subprocess', () => {
     const prompt = debugPrompt(TOOLS[0])
-    expect(prompt).toContain('codex')
-    expect(prompt).toContain('冒烟测试')
+    expect(prompt).toContain('服务通信')
+    expect(prompt).toContain('不是一次性 CLI 子进程')
+  })
+
+  it('includes the service hint when present', () => {
+    expect(debugPrompt(TOOLS[0])).toContain('通过 daemon socket 委派')
+  })
+
+  it('omits the service-hint line when absent', () => {
+    expect(debugPrompt(TOOLS[1])).not.toContain('服务通信方式')
   })
 
   it('includes the install doc url when present', () => {

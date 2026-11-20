@@ -62,9 +62,11 @@ function extractJsonObject(text: string): unknown {
 
 /**
  * Build the dedicated-assistant debug prompt for one tool. Asks the assistant
- * to actually smoke-test the tool's invocation, diagnose a failure, attempt a
- * fix (or request human action through `ask-user`), re-test, and report a
- * strict JSON object.
+ * to smoke-test the tool's resident service/daemon channel (the way Rock
+ * delegates tasks to it), diagnose a failure, attempt a fix (or request human
+ * action through `ask-user`), re-test, and report a strict JSON object. It
+ * deliberately forbids the one-shot CLI-subprocess shortcut, which bypasses the
+ * product's service-communication model.
  * @param tool - the probe target to debug.
  * @returns a prompt that asks for a single JSON object.
  */
@@ -72,14 +74,21 @@ export function debugPrompt(tool: ToolDescriptor): string {
   const lines = [
     '执行器调试',
     '',
-    `你是员工工作台的专属助理。请调试执行器「${tool.id}」，目标：让它真正能执行一次任务。`,
+    `你是员工工作台的专属助理。请调试执行器「${tool.id}」的「服务通信」通道——即 Rock 委派任务给它的常驻服务/daemon，而不是一次性 CLI 子进程。`,
     '',
-    '步骤：',
-    `1. 冒烟测试：用命令「${tool.command}」实际执行一个最小任务（例如让它回答「1+1=?」或打印版本），观察 stdout/stderr 与退出码；`,
-    '2. 诊断：若失败，定位原因（命令缺失、认证未配置、常驻服务/端口不可达、配置错误等），用 which/--version/pgrep/lsof/curl 等命令排查；',
-    '3. 修复：尝试可行的修复（安装缺失组件、写入/修正配置、启动常驻服务等）；需要人工操作（如粘贴 token/key）时用 ask-user 明确请求；',
-    '4. 复测：修复后重新执行冒烟测试，确认是否真正跑通。',
   ]
+  if (tool.serviceHint !== undefined && tool.serviceHint !== '') {
+    lines.push(`服务通信方式：${tool.serviceHint}`, '')
+  }
+  lines.push(
+    '步骤：',
+    '1. 冒烟测试：走上述服务通道实际派发一个最小任务并收回结果（用 curl/HTTP 或对应 socket/端口探测，验证「建会话 → 派发 → 收结果」全链路）；',
+    '2. 诊断：若失败，定位原因（服务未启动、端口/socket 不可达、token/凭据缺失或过期、配置错误等）；',
+    '3. 修复：尝试可行的修复（启动常驻服务、补齐凭据、修正配置等）；需要人工操作（如粘贴 token/key）时用 ask-user 明确请求；',
+    '4. 复测：修复后重新走服务通道冒烟，确认真正跑通。',
+    '',
+    '注意：不要用「' + tool.command + ' …」拉起全新的一次性子进程冒烟；目标是与外部工具的服务通信通道本身。',
+  )
   if (tool.installDocUrl !== undefined && tool.installDocUrl !== '') {
     lines.push(`安装文档：${tool.installDocUrl}`)
   }
