@@ -26,7 +26,7 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 // Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
 import type {} from '@rock/rock-tool-inventory'
 import { installedToolIds, type InstalledStatus } from './installed.ts'
-import { buildLlmProxyChecklist } from './proxy.ts'
+import { buildLlmProxyChecklist, RELAY_MODEL } from './proxy.ts'
 import { RockBotService } from './service.ts'
 import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
@@ -201,7 +201,10 @@ export default class RockBotController extends TypertRemoteService {
     if (this.service.get(id) !== undefined) return null
     const relay = this.optionalRelay()
     if (relay === undefined) throw new RemoteError('rockBots/invalid', 'llm relay unavailable', {})
-    return buildLlmProxyChecklist(id, this.botNameOf(id) ?? id, relay.getFacts())
+    const ref = this.cloudBotRef(id)
+    const name = ref?.name ?? id
+    const modelId = ref?.model?.model ?? RELAY_MODEL
+    return buildLlmProxyChecklist(id, name, modelId, relay.getFacts())
   }
 
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */
@@ -382,12 +385,11 @@ export default class RockBotController extends TypertRemoteService {
     return this.ctx.get('rockLlmRelay') as { getFacts(): { baseUrl: string; apiKey: string } } | undefined
   }
 
-  /** Resolve a cloud bot's display name from the identity service, or undefined. */
-  private botNameOf(id: string): string | undefined {
+  /** Resolve a cloud bot's name + model summary from the identity service, or undefined. */
+  private cloudBotRef(id: string): { name?: string; model?: BotModelInfo } | undefined {
     const identity = this.optionalIdentity()
     if (identity === undefined) return undefined
-    const ref = [...identity.getClaims(), ...identity.getAssistants()].find(item => item.agentBotId === id)
-    return ref?.name
+    return [...identity.getClaims(), ...identity.getAssistants()].find(item => item.agentBotId === id)
   }
 
   /** The optional LLM runtime, structurally typed to avoid a package cycle. */

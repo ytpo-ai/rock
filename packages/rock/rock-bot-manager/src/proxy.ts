@@ -10,7 +10,7 @@ import type { LlmProxyChecklist } from './types.ts'
 /** The DSH provider protocol the relay exposes (OpenAI-compatible chat completions). */
 export const RELAY_PROTOCOL = 'OpenAI Chat Completions'
 
-/** The model id the relay sends upstream; Seagull treats it as "route by bot binding". */
+/** The placeholder model id used when a bot's real model id is unavailable; Seagull routes by bot binding. */
 export const RELAY_MODEL = 'seagull-relay'
 
 /** Relay facts needed to build a checklist (structurally minimal). */
@@ -22,7 +22,7 @@ export interface RelayFacts {
 }
 
 /** Build the DSH custom-model-API checklist for one cloud bot. */
-export function buildLlmProxyChecklist(id: string, name: string, facts: RelayFacts): LlmProxyChecklist {
+export function buildLlmProxyChecklist(id: string, name: string, modelId: string, facts: RelayFacts): LlmProxyChecklist {
   return {
     botId: id,
     providerId: providerIdFor(id),
@@ -30,7 +30,8 @@ export function buildLlmProxyChecklist(id: string, name: string, facts: RelayFac
     baseUrl: `${facts.baseUrl.replace(/\/$/, '')}/v1/bots/${encodeURIComponent(id)}`,
     protocol: RELAY_PROTOCOL,
     apiKey: facts.apiKey,
-    modelId: RELAY_MODEL,
+    modelId,
+    modelName: `${modelId}/${name}`,
   }
 }
 

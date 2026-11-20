@@ -59,6 +59,7 @@ export function LlmProxyDrawer({ t, checklist, onClose }: LlmProxyDrawerProps): 
         <section className={css.proxySection}>
           <h3 className={css.proxySectionTitle}>{t('proxy.section.model')}</h3>
           <CopyRow label={t('proxy.modelId')} value={checklist.modelId} copyLabel={copyLabel} copiedLabel={copiedLabel} />
+          <CopyRow label={t('proxy.modelName')} value={checklist.modelName} copyLabel={copyLabel} copiedLabel={copiedLabel} />
           <div className={css.proxyField}>
             <div className={css.proxyFieldMeta}>
               <span className={css.proxyFieldLabel}>{t('proxy.inputTypes')}</span>

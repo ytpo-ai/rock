@@ -14,7 +14,8 @@ const checklist: LlmProxyChecklist = {
   baseUrl: 'http://127.0.0.1:4090/v1/bots/agent-bot-C',
   protocol: 'OpenAI Chat Completions',
   apiKey: 'sk-rock-test',
-  modelId: 'seagull-relay',
+  modelId: 'gpt-5',
+  modelName: 'gpt-5/客服助手',
 }
 
 /** Return the key verbatim so assertions target the checklist values, not localized copy. */
@@ -29,13 +30,14 @@ describe('LlmProxyDrawer', () => {
     expect(screen.getByText('http://127.0.0.1:4090/v1/bots/agent-bot-C')).toBeTruthy()
     expect(screen.getByText('OpenAI Chat Completions')).toBeTruthy()
     expect(screen.getByText('sk-rock-test')).toBeTruthy()
-    expect(screen.getByText('seagull-relay')).toBeTruthy()
+    expect(screen.getByText('gpt-5')).toBeTruthy()
+    expect(screen.getByText('gpt-5/客服助手')).toBeTruthy()
   })
 
   it('offers a copy action for each copyable field', () => {
     render(<LlmProxyDrawer t={t} checklist={checklist} onClose={() => {}} />)
 
-    // Six copyable fields (5 provider + model id) plus the header/footer close buttons.
-    expect(screen.getAllByText('proxy.copy').length).toBe(6)
+    // Seven copyable fields (5 provider + model id + model name) plus the header/footer close buttons.
+    expect(screen.getAllByText('proxy.copy').length).toBe(7)
   })
 })

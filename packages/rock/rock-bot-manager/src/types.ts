@@ -112,8 +112,10 @@ export interface LlmProxyChecklist {
   protocol: string
   /** Local relay bearer key the DSH provider authenticates with. */
   apiKey: string
-  /** Model id to send (`seagull-relay`, routed by bot binding). */
+  /** Real model id sent upstream (the bot's bound model, e.g. `gpt-5`). */
   modelId: string
+  /** Model display name: `{modelId}/{botName}`. */
+  modelName: string
 }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {

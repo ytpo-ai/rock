@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildLlmProxyChecklist, providerIdFor, RELAY_MODEL, RELAY_PROTOCOL } from '../src/proxy.ts'
+import { buildLlmProxyChecklist, providerIdFor, RELAY_PROTOCOL } from '../src/proxy.ts'
 
 describe('buildLlmProxyChecklist', () => {
-  it('derives the provider id, base URL, protocol, key, and model id', () => {
-    const checklist = buildLlmProxyChecklist('agent-bot-C', '客服助手', {
+  it('derives the provider id, base URL, protocol, key, and model fields', () => {
+    const checklist = buildLlmProxyChecklist('agent-bot-C', '客服助手', 'gpt-5', {
       baseUrl: 'http://127.0.0.1:4090',
       apiKey: 'sk-rock-test',
     })
@@ -14,11 +14,12 @@ describe('buildLlmProxyChecklist', () => {
     expect(checklist.baseUrl).toBe('http://127.0.0.1:4090/v1/bots/agent-bot-C')
     expect(checklist.protocol).toBe(RELAY_PROTOCOL)
     expect(checklist.apiKey).toBe('sk-rock-test')
-    expect(checklist.modelId).toBe(RELAY_MODEL)
+    expect(checklist.modelId).toBe('gpt-5')
+    expect(checklist.modelName).toBe('gpt-5/客服助手')
   })
 
   it('strips a trailing slash from the relay origin before appending the bot path', () => {
-    const checklist = buildLlmProxyChecklist('agent-bot-C', 'x', {
+    const checklist = buildLlmProxyChecklist('agent-bot-C', 'x', 'm', {
       baseUrl: 'http://127.0.0.1:4090/',
       apiKey: 'k',
     })

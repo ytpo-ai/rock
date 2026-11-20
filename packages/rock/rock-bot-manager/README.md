@@ -51,11 +51,11 @@ Rock 本地 bot 管理器：在员工工作台上持久化并服务**本地自�
 - `watchDetected()` — 检测完成时推送修订号的流；面板订阅后在检测结束后即时刷新已安装工具，无需轮询
 - `providers()` — 已注册的 LLM provider 路由（供新增/编辑表单的 provider 下拉）
 - `testBot(id): BotTestResult` — 用固定 prompt「查询当前北京天气」对绑定工具做一次非交互 smoke test，返回 `{ ok, toolType, answer?, error? }`
-- `getLlmProxy(id): LlmProxyChecklist | null` — 为**云端 bot**（claimed/assistant）生成 DSH「自定义模型 API」填写清单（providerId/displayName/baseUrl/protocol/apiKey/modelId），本地 bot 返回 null；数据来自 `ctx.rockLlmRelay.getFacts()`
+- `getLlmProxy(id): LlmProxyChecklist | null` — 为**云端 bot**（claimed/assistant）生成 DSH「自定义模型 API」填写清单（providerId/displayName/baseUrl/protocol/apiKey/modelId/modelName），本地 bot 返回 null；数据来自 `ctx.rockLlmRelay.getFacts()`
 
 权限矩阵：本地 bot 全权（编辑/删除/重绑）；认领 bot 只读但可重绑（`canRebind=true`）；专属助理只读且不可重绑（`canRebind=false`）。
 
-云端 bot 卡片提供「LLM 代理」按钮，打开右侧抽屉展示上述清单，每项带复制按钮；`API 协议` 固定 `OpenAI Chat Completions`，`模型 ID` 固定 `seagull-relay`（Seagull 按 bot 绑定模型路由），`API 密钥` 为 `rock-llm-relay` 生成的本地 relay key（与 connector key 无关）。
+云端 bot 卡片提供「LLM 代理」按钮，打开右侧抽屉展示上述清单，每项带复制按钮；`API 协议` 固定 `OpenAI Chat Completions`，`模型 ID` 填 bot 的真实模型 id（无模型时回退占位符 `seagull-relay`），`模型名` 为 `{模型ID}/{bot名}`，`API 密钥` 为 `rock-llm-relay` 生成的本地 relay key（与 connector key 无关）。
 
 ## Known Limitations and Deferred Work
 
