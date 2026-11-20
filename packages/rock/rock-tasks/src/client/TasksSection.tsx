@@ -345,6 +345,11 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
           <span className={css.cardFieldValue}>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
         </div>
       </div>
+      {task.skills !== undefined && task.skills.length > 0 && (
+        <div className={css.cardSkills}>
+          {task.skills.map(skill => <span key={skill.id} className={css.cardSkill}>{skill.name}</span>)}
+        </div>
+      )}
 
       {/* footer: created time + actions */}
       <div className={css.cardFooter}>
@@ -379,7 +384,10 @@ function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onC
   acting: boolean
 }): ReactElement {
   const [open, setOpen] = useState(false)
-  const expandable = task.description !== '' || task.assignee !== undefined || task.isBlocked === true
+  const expandable = task.description !== ''
+    || task.assignee !== undefined
+    || task.isBlocked === true
+    || (task.skills !== undefined && task.skills.length > 0)
   const countdown = dueCountdown(t, task.dueAt)
   return (
     <DisclosureRow
@@ -420,6 +428,12 @@ function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onC
             <div className={css.rowField}>
               <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
               <span>{t('task.you')}</span>
+            </div>
+          )}
+          {task.skills !== undefined && task.skills.length > 0 && (
+            <div className={css.rowField}>
+              <span className={css.cardFieldLabel}>{t('task.skills')}</span>
+              <span>{task.skills.map(skill => skill.name).join('、')}</span>
             </div>
           )}
           {task.isBlocked === true && task.blockReason !== undefined && (
@@ -946,6 +960,14 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                 <div className={css.rowField}>
                   <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
                   <span>{t('task.you')}</span>
+                </div>
+              )}
+              {detailTarget.skills !== undefined && detailTarget.skills.length > 0 && (
+                <div className={css.rowField}>
+                  <span className={css.cardFieldLabel}>{t('task.skills')}</span>
+                  <span className={css.cardSkills}>
+                    {detailTarget.skills.map(skill => <span key={skill.id} className={css.cardSkill}>{skill.name}</span>)}
+                  </span>
                 </div>
               )}
               {detailTarget.dueAt !== undefined && (

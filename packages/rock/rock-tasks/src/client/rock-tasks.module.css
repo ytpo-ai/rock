@@ -427,6 +427,23 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.cardSkills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cardSkill {
+  display: inline-block;
+  font-size: 0.8em;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--dsw-alias-label-secondary);
+  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 10%, transparent);
+  white-space: nowrap;
+}
+
 .cardFooter {
   display: flex;
   align-items: center;
