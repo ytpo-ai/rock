@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DetectState, ToolStatus } from '@rock/rock-tool-inventory/types'
+import { Button, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { DebugResult, DebugState, DetectState, ToolStatus } from '@rock/rock-tool-inventory/types'
 import css from './rock-tool-inventory.module.css'
 
 /** Poll interval while a detection run is in flight. */
@@ -16,6 +16,8 @@ export interface ToolInventorySectionInjected {
     listTools(): Promise<RemoteResult<ToolStatus[]>>
     detect(): Promise<RemoteResult<DetectState>>
     detectState(): Promise<RemoteResult<DetectState>>
+    debugTool(id: string): Promise<RemoteResult<DebugState>>
+    debugState(): Promise<RemoteResult<DebugState>>
   }
   openSession: (sessionId: string) => void
 }
@@ -45,6 +47,7 @@ function formatTime(iso: string): string {
 export function ToolInventorySection({ t, remote, openSession }: ToolInventorySectionProps): ReactElement {
   const [tools, setTools] = useState<ToolStatus[]>([])
   const [detect, setDetect] = useState<DetectState | null>(null)
+  const [debug, setDebug] = useState<DebugState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
 
@@ -59,6 +62,9 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     void remote.detectState().then((result) => {
       if (!cancelled && result.ok) setDetect(result.value)
     })
+    void remote.debugState().then((result) => {
+      if (!cancelled && result.ok) setDebug(result.value)
+    })
     return () => { cancelled = true }
   }, [remote])
 
@@ -72,6 +78,16 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     return () => { clearInterval(timer) }
   }, [detect?.running, remote])
 
+  useEffect(() => {
+    if (debug?.running !== true) return
+    const timer = setInterval(() => {
+      void remote.debugState().then((result) => {
+        if (result.ok) setDebug(result.value)
+      })
+    }, DETECT_POLL_MS)
+    return () => { clearInterval(timer) }
+  }, [debug?.running, remote])
+
   const runDetect = (): void => {
     void remote.detect().then((result) => {
       if (result.ok) setDetect(result.value)
@@ -79,11 +95,22 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     })
   }
 
+  const runDebug = (id: string): void => {
+    void remote.debugTool(id).then((result) => {
+      if (result.ok) setDebug(result.value)
+      else setLoadFailed(true)
+    })
+  }
+
   const statuses = detect !== null && detect.statuses.length > 0 ? detect.statuses : tools
   const running = detect?.running === true
+  const debugging = debug?.running === true
+  const busy = running || debugging
   const progress = detect?.progress
   const sessionId = detect?.sessionId
   const lastDetectedAt = detect?.lastDetectedAt
+  const debugSessionId = debug?.sessionId
+  const debugResult = debug?.result
 
   return (
     <div className={css.root}>
@@ -91,7 +118,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         {lastDetectedAt !== undefined
           ? <span className={css.lastRun}>{t('detect.lastRun', { time: formatTime(lastDetectedAt) })}</span>
           : null}
-        <Button variant="primary" size="sm" disabled={running} onClick={runDetect}>
+        <Button variant="primary" size="sm" disabled={busy} onClick={runDetect}>
           {running ? t('detect.running') : t('detect.action')}
         </Button>
       </div>
@@ -104,6 +131,20 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
           t={t}
           openSession={openSession}
         />
+      ) : null}
+
+      {debug !== null && debugging ? (
+        <ProgressRow
+          running
+          current={debug.progress.current}
+          sessionId={debugSessionId}
+          t={t}
+          openSession={openSession}
+        />
+      ) : null}
+
+      {debugResult !== undefined && !debugging ? (
+        <DebugResultRow result={debugResult} sessionId={debugSessionId} t={t} openSession={openSession} />
       ) : null}
 
       {loading ? (
@@ -131,7 +172,16 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
                 <span className={css.version}>{tool.version ?? '—'}</span>
                 {state === 'missing' && tool.installDocUrl !== undefined
                   ? <a className={css.install} href={tool.installDocUrl} target="_blank" rel="noreferrer">{t('action.install')}</a>
-                  : null}
+                  : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => { runDebug(tool.id) }}
+                    >
+                      {debug?.toolId === tool.id && debugging ? t('debug.running') : t('debug.action')}
+                    </Button>
+                  )}
               </li>
             )
           })}
@@ -156,6 +206,35 @@ function ProgressRow(props: {
   return (
     <div className={css.progressRow}>
       <span className={css.progressCurrent}>{statusText}</span>
+      {sessionId !== undefined
+        ? (
+          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+            {t('progress.viewSession')}
+          </Button>
+        )
+        : null}
+    </div>
+  )
+}
+
+/** One completed debug run: pass/fail tag + summary + view-session link. */
+function DebugResultRow(props: {
+  result: DebugResult
+  sessionId: string | undefined
+  t: ToolInventorySectionProps['t']
+  openSession: (sessionId: string) => void
+}): ReactElement {
+  const { result, sessionId, t, openSession } = props
+  const detail = result.ok ? result.summary : (result.summary ?? result.diagnostic)
+  return (
+    <div className={css.debugResult}>
+      <Tag tone={result.ok ? 'success' : 'danger'}>
+        {result.ok ? t('debug.pass') : t('debug.fail')}
+      </Tag>
+      <span className={css.debugToolId}>{result.id}</span>
+      {detail !== undefined
+        ? <span className={css.debugDetail}>{detail}</span>
+        : null}
       {sessionId !== undefined
         ? (
           <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>

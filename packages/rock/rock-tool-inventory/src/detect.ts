@@ -7,7 +7,7 @@
  *
  * @module @rock/rock-tool-inventory/detect
  */
-import type { ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugResult, ToolDescriptor, ToolStatus } from './types.ts'
 
 /**
  * Build the dedicated-assistant probe prompt for the given tools.
@@ -43,6 +43,75 @@ export function extractJsonArray(text: string): unknown {
     return JSON.parse(candidate.slice(start, end + 1))
   } catch {
     return null
+  }
+}
+
+/** Extract the first JSON object literal from assistant output, or null. */
+function extractJsonObject(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)
+  const candidate = fenced?.[1] === undefined ? text : fenced[1]
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start === -1 || end === -1 || end < start) return null
+  try {
+    return JSON.parse(candidate.slice(start, end + 1))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build the dedicated-assistant debug prompt for one tool. Asks the assistant
+ * to actually smoke-test the tool's invocation, diagnose a failure, attempt a
+ * fix (or request human action through `ask-user`), re-test, and report a
+ * strict JSON object.
+ * @param tool - the probe target to debug.
+ * @returns a prompt that asks for a single JSON object.
+ */
+export function debugPrompt(tool: ToolDescriptor): string {
+  const lines = [
+    '执行器调试',
+    '',
+    `你是员工工作台的专属助理。请调试执行器「${tool.id}」，目标：让它真正能执行一次任务。`,
+    '',
+    '步骤：',
+    `1. 冒烟测试：用命令「${tool.command}」实际执行一个最小任务（例如让它回答「1+1=?」或打印版本），观察 stdout/stderr 与退出码；`,
+    '2. 诊断：若失败，定位原因（命令缺失、认证未配置、常驻服务/端口不可达、配置错误等），用 which/--version/pgrep/lsof/curl 等命令排查；',
+    '3. 修复：尝试可行的修复（安装缺失组件、写入/修正配置、启动常驻服务等）；需要人工操作（如粘贴 token/key）时用 ask-user 明确请求；',
+    '4. 复测：修复后重新执行冒烟测试，确认是否真正跑通。',
+  ]
+  if (tool.installDocUrl !== undefined && tool.installDocUrl !== '') {
+    lines.push(`安装文档：${tool.installDocUrl}`)
+  }
+  lines.push(
+    '',
+    '最后输出一个 ```json 代码块，内含单个 JSON 对象：',
+    '{"ok": true/false, "summary": "<一句话结论>", "diagnostic": "<失败原因或下一步，成功时省略>"}',
+  )
+  return lines.join('\n')
+}
+
+/**
+ * Parse the assistant's debug JSON object into a result for the known tool.
+ * A missing or malformed object settles as `ok: false` with no summary so the
+ * controller still records the run without throwing.
+ * @param text - assistant message text.
+ * @param tool - the probe target that was debugged.
+ * @returns the debug result, always carrying the tool id.
+ */
+export function parseDebugResult(text: string, tool: ToolDescriptor): DebugResult {
+  const raw = extractJsonObject(text)
+  const finishedAt = new Date().toISOString()
+  if (raw === null || typeof raw !== 'object') return { id: tool.id, ok: false, finishedAt }
+  const record = raw as { ok?: unknown; summary?: unknown; diagnostic?: unknown }
+  const summary = typeof record.summary === 'string' && record.summary.length > 0 ? record.summary : undefined
+  const diagnostic = typeof record.diagnostic === 'string' && record.diagnostic.length > 0 ? record.diagnostic : undefined
+  return {
+    id: tool.id,
+    ok: record.ok === true,
+    ...(summary === undefined ? {} : { summary }),
+    ...(diagnostic === undefined ? {} : { diagnostic }),
+    finishedAt,
   }
 }
 

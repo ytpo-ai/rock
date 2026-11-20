@@ -31,9 +31,9 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { assistantMessageText, commandOf, detectPrompt, mergeStatuses, parseDetectStatuses, touchedToolIds } from './detect.ts'
+import { assistantMessageText, commandOf, debugPrompt, detectPrompt, mergeStatuses, parseDebugResult, parseDetectStatuses, touchedToolIds } from './detect.ts'
 import { toolStatusFrom } from './probe.ts'
-import type { DetectState, ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugState, DetectState, ToolDescriptor, ToolStatus } from './types.ts'
 
 export type * from './types.ts'
 
@@ -79,8 +79,12 @@ export default class RockToolInventoryController extends TypertRemoteService {
   private readonly tools: readonly ToolDescriptor[]
   private readonly statePath: string
   private state: DetectState
+  private debug: DebugState
   private detectSessionId: SessionId | undefined
+  private debugSessionId: SessionId | undefined
+  private debugToolId: string | undefined
   private assistantText = ''
+  private debugAssistantText = ''
   private touched = new Set<string>()
 
   constructor(ctx: Context, config: Config) {
@@ -94,6 +98,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
       statuses: persisted.statuses,
       progress: { total: this.tools.length, detected: 0, steps: 0 },
     }
+    this.debug = { running: false, progress: { total: 1, detected: 0, steps: 0 } }
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.recordDetectEvent(session, event)
     })
@@ -111,20 +116,26 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return this.state
   }
 
+  /** Latest per-tool debug run state (result + progress; the process renders in the assistant session). */
+  @Remote
+  debugState(): DebugState {
+    return this.debug
+  }
+
   /**
    * Start one full detection run through the dedicated assistant LLM. Returns
    * immediately with `running: true`; statuses and progress stream in via {@link detectState}.
    */
   @Remote
   async detect(): Promise<DetectState> {
-    if (this.state.running) return this.state
+    if (this.state.running || this.debug.running) return this.state
     const fast = await Promise.all(this.tools.map(tool => probeTool(tool)))
     this.state = { running: true, statuses: fast, progress: { total: this.tools.length, detected: 0, steps: 0 } }
     this.detectSessionId = undefined
     this.assistantText = ''
     this.touched = new Set()
     try {
-      const sessionId = await this.launchAssistant()
+      const sessionId = await this.launchAssistant(detectPrompt(this.tools))
       this.detectSessionId = sessionId
       this.state = { ...this.state, sessionId: String(sessionId) }
     } catch (error) {
@@ -138,8 +149,42 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return this.state
   }
 
-  /** Launch the dedicated assistant session in the default workspace and submit the probe prompt. */
-  private async launchAssistant(): Promise<SessionId> {
+  /**
+   * Start one per-tool debug run through the dedicated assistant LLM: smoke-test
+   * the tool's invocation, diagnose, attempt a fix, and re-test. Returns
+   * immediately with `running: true`; the result and progress stream in via
+   * {@link debugState}.
+   * @param id - the tool type id to debug.
+   */
+  @Remote
+  async debugTool(id: string): Promise<DebugState> {
+    if (this.debug.running || this.state.running) return this.debug
+    const tool = this.tools.find(candidate => candidate.id === id)
+    if (tool === undefined) {
+      this.debug = { running: false, progress: { total: 1, detected: 0, steps: 0 }, error: `unknown tool "${id}"` }
+      return this.debug
+    }
+    this.debug = { running: true, toolId: id, progress: { total: 1, detected: 0, steps: 0 } }
+    this.debugSessionId = undefined
+    this.debugToolId = id
+    this.debugAssistantText = ''
+    try {
+      const sessionId = await this.launchAssistant(debugPrompt(tool))
+      this.debugSessionId = sessionId
+      this.debug = { ...this.debug, sessionId: String(sessionId) }
+    } catch (error) {
+      this.debug = {
+        running: false,
+        toolId: id,
+        progress: { total: 1, detected: 0, steps: 0 },
+        error: messageOf(error),
+      }
+    }
+    return this.debug
+  }
+
+  /** Launch the dedicated assistant session in the default workspace and submit a probe/debug prompt. */
+  private async launchAssistant(prompt: string): Promise<SessionId> {
     const agentPresets = this.ctx.get('agentPresets') as {
       resolve(id: string): Promise<{ id: string }>
       acquireScope(id: string): Promise<{ key: unknown } & AsyncDisposable>
@@ -186,7 +231,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
       })
     }
     handle.agent.followup(createUserMessage({
-      content: [{ type: 'text', text: detectPrompt(this.tools) }],
+      content: [{ type: 'text', text: prompt }],
       source: { kind: 'user' },
     }))
     return sessionId
@@ -221,9 +266,17 @@ export default class RockToolInventoryController extends TypertRemoteService {
     return rock?.rootPath() ?? process.cwd()
   }
 
-  /** Track progress for the in-flight detection session and finalize on turn end. */
+  /** Dispatch a session event to the in-flight detection or debug run it belongs to. */
   private recordDetectEvent(session: Session, event: SessionEvent): void {
-    if (this.detectSessionId === undefined || session.id !== this.detectSessionId) return
+    if (session.id === this.detectSessionId) {
+      this.recordDetectEventForDetect(event)
+    } else if (session.id === this.debugSessionId) {
+      this.recordDetectEventForDebug(event)
+    }
+  }
+
+  /** Track progress for the in-flight detection session and finalize on turn end. */
+  private recordDetectEventForDetect(event: SessionEvent): void {
     if (event.type === 'assistant/message') {
       this.assistantText += assistantMessageText(event.data.message)
     } else if (event.type === 'tool/call') {
@@ -239,6 +292,23 @@ export default class RockToolInventoryController extends TypertRemoteService {
       }
     } else if (event.type === 'turn/end') {
       this.finalizeDetect()
+    }
+  }
+
+  /** Track progress for the in-flight debug session and finalize on turn end. */
+  private recordDetectEventForDebug(event: SessionEvent): void {
+    if (event.type === 'assistant/message') {
+      this.debugAssistantText += assistantMessageText(event.data.message)
+    } else if (event.type === 'tool/call') {
+      const command = commandOf(event.data.arguments)
+      this.debug.progress = {
+        total: 1,
+        detected: command === undefined ? 0 : 1,
+        ...(command === undefined ? {} : { current: command }),
+        steps: this.debug.progress.steps + 1,
+      }
+    } else if (event.type === 'turn/end') {
+      this.finalizeDebug()
     }
   }
 
@@ -262,6 +332,25 @@ export default class RockToolInventoryController extends TypertRemoteService {
       // Emit dispatches listeners inline; a throwing consumer must not undo the persisted result.
       this.ctx.logger.warn(`rock-tool-inventory: detected listener failed: ${messageOf(error)}`)
     }
+  }
+
+  /** Parse the assistant's debug JSON answer, settle the run, and keep the result for the panel. */
+  private finalizeDebug(): void {
+    const toolId = this.debugToolId
+    const tool = toolId === undefined ? undefined : this.tools.find(candidate => candidate.id === toolId)
+    const result = tool === undefined
+      ? { id: toolId ?? '', ok: false, finishedAt: new Date().toISOString(), diagnostic: 'unknown tool' }
+      : parseDebugResult(this.debugAssistantText, tool)
+    this.debug = {
+      running: false,
+      ...(this.debug.sessionId === undefined ? {} : { sessionId: this.debug.sessionId }),
+      ...(toolId === undefined ? {} : { toolId }),
+      result,
+      progress: this.debug.progress,
+    }
+    this.debugSessionId = undefined
+    this.debugToolId = undefined
+    this.debugAssistantText = ''
   }
 
   /** Read the last persisted detection result, or an empty state on absence/failure. */

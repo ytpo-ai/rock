@@ -65,6 +65,36 @@ export interface DetectState {
   error?: string
 }
 
+/** Outcome of one per-tool assistant debug run. */
+export interface DebugResult {
+  /** Tool type id that was debugged. */
+  id: string
+  /** Whether the tool's invocation smoke-test passed (or was fixed to pass). */
+  ok: boolean
+  /** The assistant's plain-text conclusion, when it produced one. */
+  summary?: string
+  /** A safe diagnostic or the next fix step, when the run did not pass. */
+  diagnostic?: string
+  /** ISO timestamp when the debug run finished. */
+  finishedAt?: string
+}
+
+/** Current per-tool debug run state exposed to the panel. */
+export interface DebugState {
+  /** Whether a debug run is in flight. */
+  running: boolean
+  /** The tool id being debugged (or last debugged). */
+  toolId?: string
+  /** The assistant session id for the current (or last) run. */
+  sessionId?: string
+  /** The completed result of the last debug run, when any. */
+  result?: DebugResult
+  /** Live progress; the full process renders in the assistant session. */
+  progress: DetectProgress
+  /** Safe failure diagnostic when the run could not start or failed. */
+  error?: string
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**

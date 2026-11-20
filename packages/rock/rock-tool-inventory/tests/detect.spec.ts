@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandOf, detectPrompt, extractJsonArray, mergeStatuses, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
+import { commandOf, debugPrompt, detectPrompt, extractJsonArray, mergeStatuses, parseDebugResult, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
 const TOOLS: readonly ToolDescriptor[] = [
@@ -84,6 +84,41 @@ describe('detectPrompt', () => {
     expect(prompt).toContain('codex')
     expect(prompt).toContain('pi')
     expect(prompt).toContain('JSON')
+  })
+})
+
+describe('debugPrompt', () => {
+  it('starts with the runner-debug title on its own line', () => {
+    expect(debugPrompt(TOOLS[0]).split('\n')[0]).toBe('执行器调试')
+  })
+
+  it('names the target tool id and command', () => {
+    const prompt = debugPrompt(TOOLS[0])
+    expect(prompt).toContain('codex')
+    expect(prompt).toContain('冒烟测试')
+  })
+
+  it('includes the install doc url when present', () => {
+    expect(debugPrompt(TOOLS[0])).toContain('https://docs/codex')
+  })
+})
+
+describe('parseDebugResult', () => {
+  it('parses a pass result with a summary', () => {
+    const result = parseDebugResult('```json\n{"ok":true,"summary":"codex answered"}\n```', TOOLS[0])
+    expect(result).toMatchObject({ id: 'codex', ok: true, summary: 'codex answered' })
+    expect(result.finishedAt).toBeTypeOf('string')
+  })
+
+  it('parses a fail result with a diagnostic', () => {
+    const result = parseDebugResult('{"ok":false,"summary":"codex failed","diagnostic":"missing token"}', TOOLS[0])
+    expect(result).toMatchObject({ id: 'codex', ok: false, summary: 'codex failed', diagnostic: 'missing token' })
+  })
+
+  it('settles as not-ok without a summary on malformed JSON', () => {
+    const result = parseDebugResult('no json here', TOOLS[1])
+    expect(result).toMatchObject({ id: 'pi', ok: false })
+    expect(result.summary).toBeUndefined()
   })
 })
 

@@ -109,6 +109,32 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.debugResult {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.debugToolId {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.debugDetail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
 .skeletonRow {
   height: 32px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
