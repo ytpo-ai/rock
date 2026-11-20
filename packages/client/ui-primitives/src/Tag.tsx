@@ -21,6 +21,8 @@ export type TagTone =
   | 'info'
   /** Tinted amber: attention needed, not yet a failure. */
   | 'warning'
+  /** Tinted violet: a review or acceptance state. */
+  | 'violet'
   /** Tinted red: a failure. */
   | 'danger'
 

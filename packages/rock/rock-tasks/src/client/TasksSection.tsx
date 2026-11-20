@@ -85,9 +85,8 @@ interface RecordTarget {
 function statusTone(status: string): TagTone {
   switch (status) {
     case 'done': return 'success'
-    case 'awaiting-review':
-    case 'bot-completed':
-    case 'blocked': return 'warning'
+    case 'awaiting-review': return 'violet'
+    case 'bot-completed': return 'warning'
     case 'in-progress': return 'info'
     default: return 'neutral'
   }
@@ -257,6 +256,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [search, setSearch] = useState('')
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set())
   const [columnMenu, setColumnMenu] = useState(false)
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({})
   const [runTarget, setRunTarget] = useState<TaskSummary | null>(null)
   const [selectedBot, setSelectedBot] = useState('')
   const [botMenu, setBotMenu] = useState(false)
@@ -434,6 +434,11 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     })
   }
 
+  const columnLimit = (key: string): number => columnLimits[key] ?? 20
+  const showMore = (key: string): void => {
+    setColumnLimits(prev => ({ ...prev, [key]: (prev[key] ?? 20) + 20 }))
+  }
+
   const currentBot = runTarget !== null ? bots.find(bot => bot.id === selectedBot) : undefined
 
   return (
@@ -495,7 +500,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               </header>
               <div className={css.boardColumnBody}>
                 <ul className={css.cards}>
-                  {column.tasks.map((task) => {
+                  {column.tasks.slice(0, columnLimit(column.key)).map((task) => {
                     const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
                     return (
                       <li key={task.id} className={danger ? `${css.card} ${css.cardDanger}` : css.card}>
@@ -544,6 +549,9 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                   })}
                 </ul>
               </div>
+              {column.tasks.length > columnLimit(column.key) && (
+                <Button size="sm" variant="ghost" onClick={() => { showMore(column.key) }}>{t('tasks.more')}</Button>
+              )}
             </section>
           ))}
         </div>

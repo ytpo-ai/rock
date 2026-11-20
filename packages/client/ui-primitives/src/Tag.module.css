@@ -51,6 +51,11 @@
   color: var(--dsw-alias-state-warn-primary);
 }
 
+.tag[data-tone='violet'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-done-primary) 10%, transparent);
+  color: var(--dsw-alias-state-done-primary);
+}
+
 .tag[data-tone='danger'] {
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
   color: var(--dsw-alias-state-error-primary);
