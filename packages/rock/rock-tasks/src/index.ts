@@ -23,7 +23,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { projectsFrom, taskFrom, tasksFrom } from './tasks.ts'
-import { presetForToolType } from './tool-preset.ts'
+import { presetForToolType } from '@rock/rock-bot-manager'
 import { TaskArchiveStore } from './work-records.ts'
 import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
 

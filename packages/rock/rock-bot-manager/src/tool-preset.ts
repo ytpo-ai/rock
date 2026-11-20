@@ -1,8 +1,11 @@
 /**
  * Thin-relay preset routing: map a bot's bound execution backend (`toolType`)
- * to the rock-app thin-relay preset id. Unknown bindings fall back to codex.
+ * to the rock-app thin-relay preset id. The preset's only tool is `subagent`
+ * scoped to the matching `subagent-*` provider, so a bot delegates through the
+ * service channel instead of a one-shot CLI. Unknown bindings fall back to
+ * codex.
  *
- * @module @rock/rock-tasks/tool-preset
+ * @module @rock/rock-bot-manager/tool-preset
  */
 
 /** Thin-relay preset ids keyed by bot toolType; unknown bindings fall back to codex. */

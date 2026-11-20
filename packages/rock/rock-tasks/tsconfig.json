@@ -34,6 +34,9 @@
     },
     {
       "path": "../../../packages/util/brand"
+    },
+    {
+      "path": "../rock-bot-manager"
     }
   ]
 }

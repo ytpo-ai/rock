@@ -14,20 +14,26 @@
  *
  * @module @rock/rock-bot-manager
  */
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type { AgentOptions } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 // Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
 import type {} from '@rock/rock-tool-inventory'
 import { installedToolIds, type InstalledStatus } from './installed.ts'
 import { RockBotService } from './service.ts'
 import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
+import { presetForToolType } from './tool-preset.ts'
 import { buildUnifiedBots } from './unify.ts'
-import { DEFAULT_TOOL_RUN_TIMEOUT_MS, runTool, TEST_PROMPT } from './run.ts'
-import type { ToolRunSpec } from './run.ts'
 import type { BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult } from './types.ts'
 
+export { presetForToolType } from './tool-preset.ts'
 export type * from './types.ts'
 
 const DEFAULT_STORE_PATH = '../.rock/bots.json'
@@ -36,14 +42,15 @@ const DEFAULT_BINDINGS_PATH = '../.rock/bindings.json'
 /** Tool types the binding selector offers before deployment overrides them. */
 const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-code']
 
-/** Best-effort non-interactive run commands for the card's "test" action, keyed by tool type. */
-const DEFAULT_TOOL_RUN: Record<string, ToolRunSpec> = {
-  codex: { command: 'codex', args: ['exec', '--', '{prompt}'] },
-  pi: { command: 'pi', args: ['exec', '{prompt}'] },
-  opencode: { command: 'opencode', args: ['run', '{prompt}'] },
-  dsh: { command: 'dsh', args: ['--profile', 'headless', '{prompt}'] },
-  'claude-code': { command: 'claude', args: ['-p', '{prompt}'] },
-}
+/** The dedicated-assistant-style cloud route used to drive the thin-relay test session. */
+const TEST_PROVIDER = 'seagull-cloud'
+const TEST_MODEL = 'seagull-relay'
+
+/** The fixed smoke-test prompt the card's "test" action sends through the bound backend. */
+const TEST_PROMPT = '请查询并回答当前北京的天气'
+
+/** Default wall-clock timeout for one thin-relay test run. */
+const DEFAULT_TEST_TIMEOUT_MS = 120_000
 
 /** Deployment-owned persistence facts; patchable from cordis.yml. */
 export interface Config {
@@ -57,8 +64,8 @@ export interface Config {
   toolTypes?: string[]
   /** JSON file persisting cloud-sourced bot bindings. */
   bindingsPath?: string
-  /** Non-interactive run commands keyed by tool type; `{prompt}` is replaced with the smoke-test prompt. */
-  toolRun?: Record<string, ToolRunSpec>
+  /** Wall-clock timeout for one thin-relay test run; defaults to {@link DEFAULT_TEST_TIMEOUT_MS}. */
+  testTimeoutMs?: number
 }
 
 /** The seagull-identity service surface the unified list reads, structurally typed to avoid a package cycle. */
@@ -78,17 +85,14 @@ export default class RockBotController extends TypertRemoteService {
     employeeId: z.string().default(''),
     toolTypes: z.array(z.string().min(1)).default(DEFAULT_TOOL_TYPES),
     bindingsPath: z.string().min(1).default(DEFAULT_BINDINGS_PATH),
-    toolRun: z.dict(z.object({
-      command: z.string().min(1),
-      args: z.array(z.string()).default([]),
-      timeoutMs: z.number().step(1).min(1).default(DEFAULT_TOOL_RUN_TIMEOUT_MS),
-    })).default({ ...DEFAULT_TOOL_RUN }),
+    testTimeoutMs: z.number().step(1).min(1).default(DEFAULT_TEST_TIMEOUT_MS),
   })
 
   private readonly service: RockBotService
   private readonly config: Config
   private readonly detectedListeners = new Set<() => void>()
   private detectedRevision = 0
+  private readonly pendingTests = new Map<SessionId, PendingTest>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockBots')
@@ -105,8 +109,13 @@ export default class RockBotController extends TypertRemoteService {
     ctx.effect(() => () => {
       for (const listener of this.detectedListeners) listener()
       this.detectedListeners.clear()
-    }, 'rock-bot-manager: close detection followers')
+      for (const [sessionId, pending] of this.pendingTests) {
+        pending.resolve({ ok: false, toolType: pending.toolType, error: 'service disposed' })
+        this.pendingTests.delete(sessionId)
+      }
+    }, 'rock-bot-manager: close detection followers and settle pending tests')
     ctx.on('rock-tool-inventory/detected', () => { this.publishDetected() })
+    ctx.on('session/event', (session: Session, event: SessionEvent) => { this.recordTestEvent(session, event) })
   }
 
   /** Advance the detection revision and wake every `watchDetected` follower. */
@@ -269,23 +278,45 @@ export default class RockBotController extends TypertRemoteService {
     }
   }
 
-  /** Run one bound tool's non-interactive smoke-test with the fixed weather prompt. */
+  /**
+   * Run one bound tool's smoke-test through its thin-relay preset: the bot's
+   * delegator agent forwards the fixed prompt to the bound `subagent-*` provider
+   * (the service channel), and the assistant output is returned. Falls back to a
+   * structured failure when the agent runtime is unavailable or the launch fails.
+   */
   @Remote
   async testBot(id: string): Promise<BotTestResult> {
     const bot = this.service.get(id)
     if (bot === undefined) throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
     const toolType = bot.tool.toolType
-    const spec = (this.config.toolRun ?? DEFAULT_TOOL_RUN)[toolType]
-    if (spec === undefined) {
-      return { ok: false, toolType, error: `no run command configured for tool "${toolType}"` }
+    const presetId = presetForToolType(toolType)
+    const agentPresets = this.optionalAgentPresets()
+    const agents = this.optionalAgents()
+    if (agentPresets === undefined || agents === undefined) {
+      return { ok: false, toolType, error: 'agent runtime unavailable' }
     }
-    const result = await runTool(spec, TEST_PROMPT)
-    return {
-      ok: result.ok,
-      toolType,
-      ...result.answer === undefined ? {} : { answer: result.answer },
-      ...result.error === undefined ? {} : { error: result.error },
+    let result: Promise<BotTestResult>
+    try {
+      const preset = await agentPresets.resolve(presetId)
+      await using scope = await agentPresets.acquireScope(preset.id)
+      void scope
+      const sessionId = brandString<SessionId>(`bot-test-${randomUUID()}`)
+      const agentOptions: AgentOptions = { provider: TEST_PROVIDER, model: TEST_MODEL, agentId: id }
+      const handle = await agents.create({
+        sessionId,
+        meta: { agentPreset: preset.id },
+        agentOptions,
+        setup: async (agentCtx) => { await agentPresets.mount(agentCtx, preset.id) },
+      })
+      result = this.awaitTestResult(sessionId, toolType)
+      handle.agent.followup(createUserMessage({
+        content: [{ type: 'text', text: TEST_PROMPT }],
+        source: { kind: 'user' },
+      }))
+    } catch (error) {
+      return { ok: false, toolType, error: messageOf(error) }
     }
+    return await result
   }
 
   /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
@@ -340,6 +371,62 @@ export default class RockBotController extends TypertRemoteService {
   private optionalLlm(): { listProviders(): Array<{ id: string; name: string }> } | undefined {
     return this.ctx.get('llm')
   }
+
+  /** The optional agent-preset registry, structurally typed to avoid a package cycle. */
+  private optionalAgentPresets(): {
+    resolve(id: string): Promise<{ id: string }>
+    acquireScope(id: string): Promise<{ key: unknown } & AsyncDisposable>
+    mount(ctx: Context, id: string): Promise<unknown>
+  } | undefined {
+    return this.ctx.get('agentPresets')
+  }
+
+  /** The optional agent runtime, structurally typed to avoid a package cycle. */
+  private optionalAgents(): {
+    create(options: {
+      sessionId: SessionId
+      meta?: { agentPreset?: string }
+      agentOptions?: AgentOptions
+      setup?: (agentCtx: Context) => Promise<void>
+    }): Promise<{ agent: { followup(message: unknown): void } }>
+  } | undefined {
+    return this.ctx.get('agents')
+  }
+
+  /** Fold session events for an in-flight test run and settle it on turn end. */
+  private recordTestEvent(session: Session, event: SessionEvent): void {
+    const pending = this.pendingTests.get(session.id)
+    if (pending === undefined) return
+    if (event.type === 'assistant/message') {
+      const content = event.data.message.content
+      if (content.length > 0) pending.message = content
+    } else if (event.type === 'turn/end') {
+      const text = blocksToText(pending.message ?? [])
+      pending.resolve({
+        ok: text.length > 0,
+        toolType: pending.toolType,
+        ...(text.length > 0 ? { answer: text } : { error: 'tool produced no output' }),
+      })
+    }
+  }
+
+  /** Register an in-flight test session and settle on turn end or timeout. */
+  private awaitTestResult(sessionId: SessionId, toolType: string): Promise<BotTestResult> {
+    return new Promise<BotTestResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingTests.delete(sessionId)
+        resolve({ ok: false, toolType, error: 'test timed out' })
+      }, this.config.testTimeoutMs ?? DEFAULT_TEST_TIMEOUT_MS)
+      this.pendingTests.set(sessionId, {
+        toolType,
+        resolve: (result) => {
+          clearTimeout(timer)
+          this.pendingTests.delete(sessionId)
+          resolve(result)
+        },
+      })
+    })
+  }
 }
 
 /** Map a domain-service failure to a Remote error the Client can branch on. */
@@ -358,6 +445,24 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+/** One in-flight thin-relay test run awaiting its turn end. */
+interface PendingTest {
+  /** The bound tool type, echoed into the result. */
+  toolType: string
+  /** The last non-empty assistant message content, or undefined. */
+  message?: readonly ContentBlock[]
+  /** Settle the run; clears its timeout and removes the pending entry. */
+  resolve: (result: BotTestResult) => void
+}
+
+/** Join the text blocks of assistant content into one trimmed string. */
+function blocksToText(blocks: readonly ContentBlock[]): string {
+  return blocks
+    .map(block => (block.type === 'text' ? block.text : ''))
+    .join('')
+    .trim()
 }
 
 declare module '@deepseek-ai/cordis' {

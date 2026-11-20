@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { projectsFrom, taskFrom, tasksFrom } from '../src/tasks.ts'
-import { presetForToolType } from '../src/tool-preset.ts'
 
 describe('tasksFrom', () => {
   it('projects the gateway envelope body and drops malformed rows', () => {
@@ -67,18 +66,5 @@ describe('projectsFrom', () => {
     expect(projectsFrom(null)).toEqual([])
     expect(projectsFrom({ data: { projects: 'nope' } })).toEqual([])
     expect(projectsFrom({ projects: [] })).toEqual([])
-  })
-})
-
-describe('presetForToolType', () => {
-  it('routes codex and dsh to their thin-relay presets', () => {
-    expect(presetForToolType('codex')).toBe('rock-codex')
-    expect(presetForToolType('dsh')).toBe('rock-dsh')
-  })
-
-  it('falls back to codex for unknown bindings', () => {
-    expect(presetForToolType('pi')).toBe('rock-codex')
-    expect(presetForToolType('acp')).toBe('rock-codex')
-    expect(presetForToolType('')).toBe('rock-codex')
   })
 })
