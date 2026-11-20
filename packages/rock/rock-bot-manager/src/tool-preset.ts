@@ -8,10 +8,16 @@
  * @module @rock/rock-bot-manager/tool-preset
  */
 
-/** Thin-relay preset ids keyed by bot toolType; unknown bindings fall back to codex. */
+/**
+ * Thin-relay preset ids keyed by bot toolType; unknown bindings fall back to
+ * codex. Each preset's `subagent` tool is scoped to the matching service
+ * backend: codex → daemon socket, dsh → `dsh web` Remote API, opencode → local
+ * REST server.
+ */
 const TOOL_PRESETS: Readonly<Record<string, string>> = {
   codex: 'rock-codex',
-  dsh: 'rock-dsh',
+  dsh: 'rock-dsh-remote',
+  opencode: 'rock-opencode',
 }
 
 /** The thin-relay preset id for a bot's bound execution backend. */
