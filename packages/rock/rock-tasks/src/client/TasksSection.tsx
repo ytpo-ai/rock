@@ -1,18 +1,19 @@
-/** Rock task-management panel: current/history tabs, status-grouped task cards, search/sort/filter, and the run-bot + records dialogs. */
+/** Rock task-management panel: board/list dual view over the employee-visible queue, with run/submit/continue and work records. */
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  Button, Checkbox, IconWarningTriangleOutlineRegular, Input, Menu, Modal, StateDot, Tag, Toast,
+  AnimatedRows, Button, Checkbox, DisclosureRow, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
+  IconWarningTriangleOutlineRegular, Input, Menu, Modal, SegmentedTabs, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from '@rock/rock-tasks/types'
+import type { TaskBot, TaskSummary, TaskWorkRecord } from '@rock/rock-tasks/types'
 import type { RockTasksKey } from './locales.ts'
-import { statusLabel } from './status.ts'
+import { STATUS_ORDER, statusLabel } from './status.ts'
 import css from './rock-tasks.module.css'
 
-/** Host operations injected into the Cordis-free task table. */
+/** Host operations injected into the Cordis-free task panel. */
 export interface TasksSectionInjected {
   remote: {
     listTasks(): Promise<RemoteResult<TaskSummary[]>>
@@ -22,19 +23,23 @@ export interface TasksSectionInjected {
     submitTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
     continueTask(taskId: string, botId: string): Promise<RemoteResult<TaskSummary>>
     listWorkRecords(taskId: string): Promise<RemoteResult<TaskWorkRecord[]>>
-    listArchivedTasks(): Promise<RemoteResult<ArchivedTaskSummary[]>>
-    getArchivedTask(taskId: string): Promise<RemoteResult<{ summary: ArchivedTaskSummary | null; records: TaskWorkRecord[] }>>
   }
 }
 
 export type TasksSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<TasksSectionInjected>
 
-/** Ordering applied within each status group. */
+/** Ordering applied within the list view. */
 type Sort = 'newest' | 'oldest' | 'due'
+
+/** Which panel is shown: the kanban board or the list. */
+type View = 'board' | 'list'
 
 /** Background queue refresh cadence. */
 const REFRESH_INTERVAL_MS = 15_000
+
+/** Sentinel id for the "all" option in a filter menu. */
+const FILTER_ALL = '__all__'
 
 /** Statuses the backend allows `run` from. */
 const RUNNABLE = new Set(['pending', 'in-progress', 'bot-completed'])
@@ -53,18 +58,11 @@ const TOOL_TYPE_LABELS: Readonly<Record<string, string>> = {
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-const dateFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 
 /** Format an ISO-8601 timestamp as a compact local date + time, or '' when unparseable. */
 function formatDateTime(iso: string): string {
   const ms = Date.parse(iso)
   return Number.isNaN(ms) ? '' : dateTimeFormatter.format(ms)
-}
-
-/** Format an ISO-8601 timestamp as a compact local date, or '' when unparseable. */
-function formatDate(iso: string): string {
-  const ms = Date.parse(iso)
-  return Number.isNaN(ms) ? '' : dateFormatter.format(ms)
 }
 
 /** One board column (pool or a status group). */
@@ -74,13 +72,6 @@ interface BoardColumn {
   tasks: TaskSummary[]
 }
 
-/** The task whose records dialog is open. */
-interface RecordTarget {
-  id: string
-  title: string
-  kind: 'current' | 'history'
-}
-
 /** Tag tone for one work-queue status. */
 function statusTone(status: string): TagTone {
   switch (status) {
@@ -88,6 +79,7 @@ function statusTone(status: string): TagTone {
     case 'awaiting-review': return 'violet'
     case 'bot-completed': return 'warning'
     case 'in-progress': return 'info'
+    case 'cancelled': return 'quiet'
     default: return 'neutral'
   }
 }
@@ -235,7 +227,7 @@ function dueSoon(dueAt: string): boolean {
   return ms - Date.now() < 60 * 60 * 1000
 }
 
-/** Compare two tasks by the active ordering, applied within each status group. */
+/** Compare two tasks by the active ordering. */
 function compareTasks(a: TaskSummary, b: TaskSummary, sort: Sort): number {
   if (sort === 'due') {
     const delta = dueMs(a) - dueMs(b)
@@ -246,23 +238,227 @@ function compareTasks(a: TaskSummary, b: TaskSummary, sort: Sort): number {
   return sort === 'oldest' ? delta : -delta
 }
 
-/** Render the task panel: a current/history tab split over the cloud queue and the local archive. */
+/** Countdown text and tone for a due date: overdue red, <1h soon, otherwise normal. */
+function dueCountdown(t: (key: RockTasksKey) => string, dueAt?: string): { text: string; tone: 'overdue' | 'soon' | 'normal' } {
+  if (dueAt === undefined) return { text: '', tone: 'normal' }
+  const due = Date.parse(dueAt)
+  if (Number.isNaN(due)) return { text: '', tone: 'normal' }
+  const diff = due - Date.now()
+  const abs = Math.abs(diff)
+  const totalMin = Math.floor(abs / 60_000)
+  const days = Math.floor(totalMin / 1440)
+  const hours = Math.floor((totalMin % 1440) / 60)
+  const mins = totalMin % 60
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0 || days > 0) parts.push(`${hours}h`)
+  parts.push(`${mins}m`)
+  const time = parts.join(' ')
+  const tone = diff < 0 ? 'overdue' : diff < 3_600_000 ? 'soon' : 'normal'
+  const text = diff < 0
+    ? t('task.dueCountdown.overdue').replace('{time}', time)
+    : t('task.dueCountdown.remaining').replace('{time}', time)
+  return { text, tone }
+}
+
+/** Countdown class for one tone. */
+function countdownClass(tone: 'overdue' | 'soon' | 'normal'): string | undefined {
+  if (tone === 'overdue') return css.countdownOverdue
+  if (tone === 'soon') return css.countdownSoon
+  return css.countdown
+}
+
+/** A filter dropdown: an outline button anchored to a Menu, with a leading "all" row. */
+function FilterMenu({ label, value, items, onChange }: {
+  label: string
+  value: string
+  items: Array<{ id: string; label: string }>
+  onChange: (value: string) => void
+}): ReactElement {
+  const [open, setOpen] = useState(false)
+  const selected = items.some(item => item.id === value) ? value : FILTER_ALL
+  const rows = [{ id: FILTER_ALL, label }, ...items]
+  return (
+    <Menu
+      open={open}
+      anchor={(
+        <Button size="sm" variant="outline" onClick={() => { setOpen(!open) }}>
+          {rows.find(row => row.id === selected)?.label ?? label}
+        </Button>
+      )}
+      items={rows}
+      selectedId={selected}
+      onSelect={(id) => { onChange(id === FILTER_ALL ? '' : id); setOpen(false) }}
+      onClose={() => { setOpen(false) }}
+    />
+  )
+}
+
+/** One board card, laid out as header / content / footer. */
+function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
+  task: TaskSummary
+  t: (key: RockTasksKey) => string
+  botName: (botId: string) => string
+  projectName: (projectId?: string) => string | undefined
+  onDetail: () => void
+  onRun: () => void
+  onSubmit: () => void
+  onContinue: () => void
+  acting: boolean
+}): ReactElement {
+  const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
+  const countdown = dueCountdown(t, task.dueAt)
+  return (
+    <li className={danger ? `${css.card} ${css.cardDanger}` : css.card}>
+      {/* header: kind + priority + blocked/resolution + due countdown */}
+      <div className={css.cardHeader}>
+        <div className={css.cardBadges}>
+          <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
+          {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
+          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+          {task.status === 'done' && task.resolution !== undefined && (
+            <Tag tone={task.resolution === 'accepted' ? 'success' : 'danger'}>
+              {task.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
+            </Tag>
+          )}
+        </div>
+        {task.dueAt !== undefined && (
+          <span className={countdownClass(countdown.tone)}>{countdown.text}</span>
+        )}
+      </div>
+
+      {/* content: title -> project -> assignee -> executor bot */}
+      <button type="button" className={css.cardTitle} onClick={onDetail} title={t('detail.open')}>
+        {task.title || task.id}
+      </button>
+      <div className={css.cardFields}>
+        <div className={css.cardField}>
+          <span className={css.cardFieldLabel}>{t('task.project')}</span>
+          <span className={css.cardFieldValue}>{projectName(task.projectId) ?? t('task.unassigned')}</span>
+        </div>
+        <div className={css.cardField}>
+          <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
+          <span className={css.cardFieldValue}>{task.assignee !== undefined && task.assignee !== '' ? t('task.you') : t('task.unassigned')}</span>
+        </div>
+        <div className={css.cardField}>
+          <span className={css.cardFieldLabel}>{t('task.executor')}</span>
+          <span className={css.cardFieldValue}>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
+        </div>
+      </div>
+
+      {/* footer: created time + actions */}
+      <div className={css.cardFooter}>
+        <span className={css.cardCreated}>{task.createdAt !== undefined ? formatDateTime(task.createdAt) : ''}</span>
+        <div className={css.cardActions}>
+          <Button size="sm" variant="ghost" onClick={onDetail}>{t('detail.open')}</Button>
+          {RUNNABLE.has(task.status) && (
+            <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>
+          )}
+          {task.status === 'bot-completed' && task.executorId.length > 0 && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
+          )}
+          {task.status === 'awaiting-review' && task.executorId.length > 0 && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onContinue}>{t('tasks.continue')}</Button>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+/** One list row: a disclosure header plus an expanded detail body. */
+function TaskRow({ task, t, botName, projectName, onDetail, onRun, onSubmit, onContinue, acting }: {
+  task: TaskSummary
+  t: (key: RockTasksKey) => string
+  botName: (botId: string) => string
+  projectName: (projectId?: string) => string | undefined
+  onDetail: () => void
+  onRun: () => void
+  onSubmit: () => void
+  onContinue: () => void
+  acting: boolean
+}): ReactElement {
+  const [open, setOpen] = useState(false)
+  const expandable = task.description !== '' || task.assignee !== undefined || task.isBlocked === true
+  const countdown = dueCountdown(t, task.dueAt)
+  return (
+    <DisclosureRow
+      icon={<StateDot state={statusDot(task.status)} />}
+      title={task.title || task.id}
+      open={open}
+      expandable={expandable}
+      onToggle={() => { setOpen(!open) }}
+      headerAccessory={(
+        <div className={css.rowActions}>
+          <Button size="sm" variant="ghost" onClick={onDetail}>{t('detail.open')}</Button>
+          {RUNNABLE.has(task.status) && <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>}
+          {task.status === 'bot-completed' && task.executorId.length > 0 && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onSubmit}>{t('tasks.submit')}</Button>
+          )}
+          {task.status === 'awaiting-review' && task.executorId.length > 0 && (
+            <Button size="sm" variant="outline" disabled={acting} onClick={onContinue}>{t('tasks.continue')}</Button>
+          )}
+        </div>
+      )}
+      collapsedContent={(
+        <span className={css.rowMeta}>
+          <Tag tone={statusTone(task.status)}>{statusLabel(t, task.status)}</Tag>
+          {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
+          {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+          <span className={css.rowProject}>{projectName(task.projectId) ?? t('task.unassigned')}</span>
+          {task.dueAt !== undefined && <span className={countdownClass(countdown.tone)}>{countdown.text}</span>}
+        </span>
+      )}
+    >
+      {expandable && (
+        <div className={css.rowExpanded}>
+          <div className={css.rowField}>
+            <span className={css.cardFieldLabel}>{t('task.executor')}</span>
+            <span>{task.executorId.length > 0 ? botName(task.executorId) : t('task.unassigned')}</span>
+          </div>
+          {task.assignee !== undefined && task.assignee !== '' && (
+            <div className={css.rowField}>
+              <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
+              <span>{t('task.you')}</span>
+            </div>
+          )}
+          {task.isBlocked === true && task.blockReason !== undefined && (
+            <div className={css.rowField}>
+              <span className={css.cardFieldLabel}>{t('task.blockReason')}</span>
+              <span>{task.blockReason}</span>
+            </div>
+          )}
+          {task.description !== '' && <p className={css.rowDesc}>{task.description}</p>}
+        </div>
+      )}
+    </DisclosureRow>
+  )
+}
+
+/** Render the employee-visible queue: a board/list dual view over cloud tasks. */
 export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [bots, setBots] = useState<TaskBot[]>([])
   const [projects, setProjects] = useState<Array<{ id: string; name: string; slug?: string }>>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [view, setView] = useState<View>('board')
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [projectFilter, setProjectFilter] = useState('')
+  const [sort, setSort] = useState<Sort>('newest')
+  const [page, setPage] = useState(1)
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set())
   const [columnMenu, setColumnMenu] = useState(false)
   const [columnLimits, setColumnLimits] = useState<Record<string, number>>({})
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({})
   const [runTarget, setRunTarget] = useState<TaskSummary | null>(null)
   const [selectedBot, setSelectedBot] = useState('')
   const [botMenu, setBotMenu] = useState(false)
   const [running, setRunning] = useState(false)
   const [acting, setActing] = useState(false)
-  const [recordTarget, setRecordTarget] = useState<RecordTarget | null>(null)
+  const [detailTarget, setDetailTarget] = useState<TaskSummary | null>(null)
   const [records, setRecords] = useState<TaskWorkRecord[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
   const [recordsFailed, setRecordsFailed] = useState(false)
@@ -297,12 +493,15 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
   }, [remote])
 
   // Poll the queue so newly pushed cloud tasks surface without a manual reload.
-  // `refresh` closes over the stable `remote` handle and React setters, so a
-  // stale closure cannot observe or write anything different.
   useEffect(() => {
     const timer = setInterval(refresh, REFRESH_INTERVAL_MS)
     return () => { clearInterval(timer) }
   }, [remote])
+
+  // Filter/search/sort changes reset the list to the first page.
+  useEffect(() => {
+    setPage(1)
+  }, [search, typeFilter, statusFilter, projectFilter, sort, view])
 
   const retryLoad = (): void => {
     setLoading(true)
@@ -316,6 +515,11 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
     void remote.listProjects().then((result) => { if (result.ok) setProjects(result.value) })
   }
 
+  const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
+  const projectName = (projectId?: string): string | undefined =>
+    projectId === undefined ? undefined : projects.find(project => project.id === projectId)?.name
+
+  /** Board columns: pool + statuses, client-grouped and filtered by search/type/project. */
   const boardColumns = useMemo<BoardColumn[]>(() => {
     const pool: TaskSummary[] = []
     const byStatus = new Map<string, TaskSummary[]>()
@@ -325,6 +529,8 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
         const haystack = `${task.title}\n${task.description}\n${task.type}`.toLowerCase()
         if (!haystack.includes(q)) continue
       }
+      if (typeFilter !== '' && task.type !== typeFilter) continue
+      if (projectFilter !== '' && task.projectId !== projectFilter) continue
       if (task.type === 'task' && task.executorId.length === 0) {
         pool.push(task)
         continue
@@ -339,49 +545,66 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
       { key: 'pool', title: t('tasks.pool'), tasks: pool },
       ...BOARD_STATUSES.map(status => ({ key: status, title: statusLabel(t, status), tasks: byStatus.get(status) ?? [] })),
     ]
-  }, [tasks, search, t])
+  }, [tasks, search, typeFilter, projectFilter, t])
+
+  /** List rows: filtered, sorted, client-side paginated. */
+  const listRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const rows = tasks.filter((task) => {
+      if (typeFilter !== '' && task.type !== typeFilter) return false
+      if (statusFilter !== '' && task.status !== statusFilter) return false
+      if (projectFilter !== '' && task.projectId !== projectFilter) return false
+      if (q !== '') {
+        const haystack = `${task.title}\n${task.description}\n${task.type}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+    rows.sort((a, b) => compareTasks(a, b, sort))
+    return rows
+  }, [tasks, search, typeFilter, statusFilter, projectFilter, sort])
+
+  const pageSize = 20
+  const totalPages = Math.max(1, Math.ceil(listRows.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = listRows.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   const visibleBoardColumns = boardColumns.filter(column => !hiddenColumns.has(column.key))
 
-  const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
-  const projectName = (projectId: string): string | undefined => projects.find(project => project.id === projectId)?.name
+  /** Whether a board column is collapsed; empty columns collapse by default until toggled. */
+  const columnCollapsed = (key: string, count: number): boolean =>
+    key in collapsedColumns ? collapsedColumns[key] === true : count === 0
+  const toggleColumnCollapse = (key: string, count: number): void => {
+    setCollapsedColumns(prev => ({ ...prev, [key]: !(key in prev ? prev[key] === true : count === 0) }))
+  }
 
   const openRun = (task: TaskSummary): void => {
     setRunTarget(task)
     setSelectedBot(task.executorId.length > 0 ? task.executorId : '')
   }
 
-  const openRecords = (id: string, title: string, kind: RecordTarget['kind']): void => {
-    setRecordTarget({ id, title, kind })
+  const openDetail = (task: TaskSummary): void => {
+    setDetailTarget(task)
     setRecords([])
     setRecordsFailed(false)
     setRecordsLoading(true)
-    if (kind === 'current') {
-      void remote.listWorkRecords(id).then((result) => {
-        setRecordsLoading(false)
-        if (result.ok) setRecords(result.value)
-        else setRecordsFailed(true)
-      })
-    } else {
-      void remote.getArchivedTask(id).then((result) => {
-        setRecordsLoading(false)
-        if (result.ok) setRecords(result.value.records)
-        else setRecordsFailed(true)
-      })
-    }
+    void remote.listWorkRecords(task.id).then((result) => {
+      setRecordsLoading(false)
+      if (result.ok) setRecords(result.value)
+      else setRecordsFailed(true)
+    })
   }
 
-  // Live work-record heartbeat: refresh the records list while the dialog is open.
+  // Live work-record heartbeat: refresh the records list while the detail modal is open.
   useEffect(() => {
-    if (recordTarget === null) return
+    if (detailTarget === null) return
     const timer = setInterval(() => {
-      const request = recordTarget.kind === 'current'
-        ? remote.listWorkRecords(recordTarget.id).then(result => result.ok ? result.value : [])
-        : remote.getArchivedTask(recordTarget.id).then(result => result.ok ? result.value.records : [])
-      void request.then((value) => { setRecords(value) })
+      void remote.listWorkRecords(detailTarget.id).then((result) => {
+        if (result.ok) setRecords(result.value)
+      })
     }, 1500)
     return () => { clearInterval(timer) }
-  }, [recordTarget, remote])
+  }, [detailTarget, remote])
 
   const submitRun = (): void => {
     if (runTarget === null || selectedBot.length === 0) return
@@ -441,10 +664,32 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
 
   const currentBot = runTarget !== null ? bots.find(bot => bot.id === selectedBot) : undefined
 
+  const typeItems = [
+    { id: 'requirement', label: t('type.requirement') },
+    { id: 'task', label: t('type.task') },
+  ]
+  const statusItems = STATUS_ORDER.map(status => ({ id: status, label: statusLabel(t, status) }))
+  const projectItems = projects.map(project => ({ id: project.id, label: project.name }))
+  const sortItems = [
+    { id: 'newest', label: t('tasks.sort.newest') },
+    { id: 'oldest', label: t('tasks.sort.oldest') },
+    { id: 'due', label: t('tasks.sort.due') },
+  ]
+
   return (
     <div className={css.root}>
       <div className={css.toolbar}>
         <div className={css.toolbarActions}>
+          <SegmentedTabs
+            items={[
+              { value: 'board', label: t('tasks.view.board'), id: 'tasks-view-board', panelId: 'tasks-view-board-panel' },
+              { value: 'list', label: t('tasks.view.list'), id: 'tasks-view-list', panelId: 'tasks-view-list-panel' },
+            ]}
+            value={view}
+            onChange={(next) => { setView(next) }}
+            label={t('tasks.tabs.label')}
+            size="sm"
+          />
           <div className={css.search}>
             <Input
               value={search}
@@ -453,23 +698,53 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
               aria-label={t('tasks.search')}
             />
           </div>
-          <div className={css.columnMenu}>
-            <Button size="sm" variant="outline" onClick={() => { setColumnMenu(!columnMenu) }}>
-              {t('tasks.columns')}
-            </Button>
-            {columnMenu && (
-              <div className={css.columnMenuPanel}>
-                {boardColumns.map(column => (
-                  <Checkbox
-                    key={column.key}
-                    checked={!hiddenColumns.has(column.key)}
-                    onChange={() => { toggleColumn(column.key) }}
-                    label={column.title}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <FilterMenu
+            label={t('tasks.filter.allTypes')}
+            value={typeFilter}
+            items={typeItems}
+            onChange={setTypeFilter}
+          />
+          <FilterMenu
+            label={t('tasks.filter.allProjects')}
+            value={projectFilter}
+            items={projectItems}
+            onChange={setProjectFilter}
+          />
+          {view === 'list' && (
+            <FilterMenu
+              label={t('tasks.filter.allStatuses')}
+              value={statusFilter}
+              items={statusItems}
+              onChange={setStatusFilter}
+            />
+          )}
+          {view === 'list' && (
+            <FilterMenu
+              label={t('tasks.filter.sort')}
+              value={sort}
+              items={sortItems}
+              onChange={(next) => { setSort(next as Sort) }}
+            />
+          )}
+          {view === 'board' && (
+            <div className={css.columnMenu}>
+              <Button size="sm" variant="outline" onClick={() => { setColumnMenu(!columnMenu) }}>
+                {t('tasks.columns')}
+              </Button>
+              {columnMenu && (
+                <div className={css.columnMenuPanel}>
+                  {boardColumns.map(column => (
+                    <Checkbox
+                      key={column.key}
+                      checked={!hiddenColumns.has(column.key)}
+                      onChange={() => { toggleColumn(column.key) }}
+                      label={column.title}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <Button size="sm" variant="outline" onClick={refresh}>{t('tasks.refresh')}</Button>
         </div>
       </div>
@@ -484,77 +759,105 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
           <span>{t('load.failed')}</span>
           <Button variant="ghost" size="sm" onClick={retryLoad}>{t('load.retry')}</Button>
         </div>
-      ) : visibleBoardColumns.length === 0 ? (
-        <div className={css.emptyState}>
-          <p className={css.empty}>{t('tasks.empty')}</p>
-          <Button variant="ghost" size="sm" onClick={refresh}>{t('tasks.refresh')}</Button>
-        </div>
+      ) : view === 'board' ? (
+        visibleBoardColumns.length === 0 ? (
+          <div className={css.emptyState}>
+            <p className={css.empty}>{t('tasks.empty')}</p>
+            <Button variant="ghost" size="sm" onClick={refresh}>{t('tasks.refresh')}</Button>
+          </div>
+        ) : (
+          <div className={css.board}>
+            {visibleBoardColumns.map((column) => {
+              const collapsed = columnCollapsed(column.key, column.tasks.length)
+              return (
+                <section key={column.key} className={collapsed ? `${css.boardColumn} ${css.boardColumnCollapsed}` : css.boardColumn}>
+                  <header className={css.statusHeader}>
+                    <button
+                      type="button"
+                      className={css.columnHeaderButton}
+                      aria-expanded={!collapsed}
+                      aria-label={collapsed ? t('tasks.expandColumn') : t('tasks.collapseColumn')}
+                      onClick={() => { toggleColumnCollapse(column.key, column.tasks.length) }}
+                    >
+                      {collapsed ? <IconChevronRightOutlineRegular /> : <IconChevronDownOutlineRegular />}
+                    </button>
+                    <StateDot state={column.key === 'pool' ? 'idle' : statusDot(column.key)} />
+                    <span className={css.statusTitle}>{column.title}</span>
+                    <Tag tone={column.key === 'pool' ? 'neutral' : statusTone(column.key)}>{column.tasks.length}</Tag>
+                  </header>
+                  {!collapsed && (
+                    <>
+                      <div className={css.boardColumnBody}>
+                        <ul className={css.cards}>
+                          {column.tasks.slice(0, columnLimit(column.key)).map(task => (
+                            <BoardCard
+                              key={task.id}
+                              task={task}
+                              t={t}
+                              botName={botName}
+                              projectName={projectName}
+                              acting={acting}
+                              onDetail={() => { openDetail(task) }}
+                              onRun={() => { openRun(task) }}
+                              onSubmit={() => { submitTask(task) }}
+                              onContinue={() => { continueTask(task) }}
+                            />
+                          ))}
+                        </ul>
+                      </div>
+                      {column.tasks.length > columnLimit(column.key) && (
+                        <Button size="sm" variant="ghost" onClick={() => { showMore(column.key) }}>{t('tasks.more')}</Button>
+                      )}
+                    </>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        )
       ) : (
-        <div className={css.board}>
-          {visibleBoardColumns.map(column => (
-            <section key={column.key} className={css.boardColumn}>
-              <header className={css.statusHeader}>
-                <StateDot state={column.key === 'pool' ? 'idle' : statusDot(column.key)} />
-                <span className={css.statusTitle}>{column.title}</span>
-                <Tag tone={column.key === 'pool' ? 'neutral' : statusTone(column.key)}>{column.tasks.length}</Tag>
-              </header>
-              <div className={css.boardColumnBody}>
-                <ul className={css.cards}>
-                  {column.tasks.slice(0, columnLimit(column.key)).map((task) => {
-                    const danger = task.isBlocked === true || (task.dueAt !== undefined && dueSoon(task.dueAt))
-                    return (
-                      <li key={task.id} className={danger ? `${css.card} ${css.cardDanger}` : css.card}>
-                        <div className={css.cardBody}>
-                          <div className={css.cardTitle}>{task.title || task.id}</div>
-                          <div className={css.cardMeta}>
-                            <Tag tone={typeTone(task.type)}>{typeLabel(t, task.type)}</Tag>
-                            {task.priority !== undefined && <Tag tone={priorityTone(task.priority)}>{priorityLabel(t, task.priority)}</Tag>}
-                            {task.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
-                            {task.status === 'done' && task.resolution !== undefined && (
-                              <Tag tone={task.resolution === 'accepted' ? 'success' : 'danger'}>
-                                {task.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
-                              </Tag>
-                            )}
-                            <span className={css.cardOwner}>{task.executorId.length > 0 ? botName(task.executorId) : t('run.none')}</span>
-                          </div>
-                          <div className={css.cardFacts}>
-                            {task.projectId !== undefined && projectName(task.projectId) !== undefined && (
-                              <span className={css.cardFact}>{projectName(task.projectId)}</span>
-                            )}
-                            {task.dueAt !== undefined && (
-                              <span className={Date.parse(task.dueAt) < Date.now() ? css.overdue : css.cardFact}>
-                                {t('task.due')} {formatDate(task.dueAt)}
-                              </span>
-                            )}
-                            {task.createdAt !== undefined && (
-                              <span className={css.cardFact}>{t('task.created')} {formatDateTime(task.createdAt)}</span>
-                            )}
-                          </div>
-                          {task.description !== '' && <p className={css.cardDesc}>{task.description}</p>}
-                        </div>
-                        <div className={css.cardActions}>
-                          <Button size="sm" variant="ghost" onClick={() => { openRecords(task.id, task.title || task.id, 'current') }}>{t('records.open')}</Button>
-                          {RUNNABLE.has(task.status) && (
-                            <Button size="sm" onClick={() => { openRun(task) }}>{t('tasks.execute')}</Button>
-                          )}
-                          {task.status === 'bot-completed' && task.executorId.length > 0 && (
-                            <Button size="sm" variant="outline" disabled={acting} onClick={() => { submitTask(task) }}>{t('tasks.submit')}</Button>
-                          )}
-                          {task.status === 'awaiting-review' && task.executorId.length > 0 && (
-                            <Button size="sm" variant="outline" disabled={acting} onClick={() => { continueTask(task) }}>{t('tasks.continue')}</Button>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-              {column.tasks.length > columnLimit(column.key) && (
-                <Button size="sm" variant="ghost" onClick={() => { showMore(column.key) }}>{t('tasks.more')}</Button>
-              )}
-            </section>
-          ))}
-        </div>
+        <>
+          <div className={css.listSummary}>
+            <span>{listRows.length} {t('tasks.listCount')}</span>
+          </div>
+          {listRows.length === 0 ? (
+            <div className={css.emptyState}>
+              <p className={css.empty}>{t('tasks.emptyList')}</p>
+            </div>
+          ) : (
+            <AnimatedRows
+              className={css.list as string}
+              role="list"
+              label={t('tasks.listLabel')}
+              rowKeys={pageItems.map(item => item.id)}
+              ready
+              resetKey={`${search}:${typeFilter}:${statusFilter}:${projectFilter}:${sort}`}
+            >
+              {pageItems.map(task => (
+                <div key={task.id} data-row-key={task.id}>
+                  <TaskRow
+                    task={task}
+                    t={t}
+                    botName={botName}
+                    projectName={projectName}
+                    acting={acting}
+                    onDetail={() => { openDetail(task) }}
+                    onRun={() => { openRun(task) }}
+                    onSubmit={() => { submitTask(task) }}
+                    onContinue={() => { continueTask(task) }}
+                  />
+                </div>
+              ))}
+            </AnimatedRows>
+          )}
+          {totalPages > 1 && (
+            <div className={css.listPager}>
+              <Button size="sm" variant="outline" disabled={safePage <= 1} onClick={() => { setPage(safePage - 1) }}>{t('list.prev')}</Button>
+              <span className={css.listPagerMeta}>{safePage} / {totalPages}</span>
+              <Button size="sm" variant="outline" disabled={safePage >= totalPages} onClick={() => { setPage(safePage + 1) }}>{t('list.next')}</Button>
+            </div>
+          )}
+        </>
       )}
 
       {runTarget !== null && (
@@ -602,24 +905,76 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
         </Modal>
       )}
 
-      {recordTarget !== null && (
+      {detailTarget !== null && (
         <Modal
           open
-          onClose={() => { setRecordTarget(null) }}
-          title={t('records.title')}
-          description={recordTarget.title}
+          onClose={() => { setDetailTarget(null) }}
+          title={detailTarget.title || detailTarget.id}
+          description={t('detail.description')}
           closeLabel={t('run.cancel')}
           footer={(
-            <Button variant="ghost" onClick={() => { setRecordTarget(null) }}>{t('run.cancel')}</Button>
+            <Button variant="ghost" onClick={() => { setDetailTarget(null) }}>{t('run.cancel')}</Button>
           )}
         >
-          <div className={css.records}>
+          <div className={css.detail}>
+            <div className={css.detailBadges}>
+              <Tag tone={typeTone(detailTarget.type)}>{typeLabel(t, detailTarget.type)}</Tag>
+              <Tag tone={statusTone(detailTarget.status)}>{statusLabel(t, detailTarget.status)}</Tag>
+              {detailTarget.isBlocked === true && <Tag tone="danger">{t('status.blocked')}</Tag>}
+              {detailTarget.status === 'done' && detailTarget.resolution !== undefined && (
+                <Tag tone={detailTarget.resolution === 'accepted' ? 'success' : 'danger'}>
+                  {detailTarget.resolution === 'accepted' ? t('resolution.accepted') : t('resolution.rejected')}
+                </Tag>
+              )}
+              {detailTarget.priority !== undefined && (
+                <Tag tone={priorityTone(detailTarget.priority)}>{priorityLabel(t, detailTarget.priority)}</Tag>
+              )}
+            </div>
+
+            {detailTarget.description !== '' && <p className={css.detailDesc}>{detailTarget.description}</p>}
+
+            <div className={css.detailFields}>
+              <div className={css.rowField}>
+                <span className={css.cardFieldLabel}>{t('task.project')}</span>
+                <span>{projectName(detailTarget.projectId) ?? t('task.unassigned')}</span>
+              </div>
+              <div className={css.rowField}>
+                <span className={css.cardFieldLabel}>{t('task.executor')}</span>
+                <span>{detailTarget.executorId.length > 0 ? botName(detailTarget.executorId) : t('task.unassigned')}</span>
+              </div>
+              {detailTarget.assignee !== undefined && detailTarget.assignee !== '' && (
+                <div className={css.rowField}>
+                  <span className={css.cardFieldLabel}>{t('task.assignee')}</span>
+                  <span>{t('task.you')}</span>
+                </div>
+              )}
+              {detailTarget.dueAt !== undefined && (
+                <div className={css.rowField}>
+                  <span className={css.cardFieldLabel}>{t('task.due')}</span>
+                  <span>{formatDateTime(detailTarget.dueAt)}</span>
+                </div>
+              )}
+              {detailTarget.createdAt !== undefined && (
+                <div className={css.rowField}>
+                  <span className={css.cardFieldLabel}>{t('task.created')}</span>
+                  <span>{formatDateTime(detailTarget.createdAt)}</span>
+                </div>
+              )}
+              {detailTarget.isBlocked === true && detailTarget.blockReason !== undefined && (
+                <div className={css.rowField}>
+                  <span className={css.cardFieldLabel}>{t('task.blockReason')}</span>
+                  <span>{detailTarget.blockReason}</span>
+                </div>
+              )}
+            </div>
+
+            <h3 className={css.recordsHeading}>{t('records.title')}</h3>
             {recordsLoading ? (
               <p className={css.empty}>{t('records.loading')}</p>
             ) : recordsFailed ? (
               <div className={css.loadError} role="alert">
                 <span>{t('records.loadFailed')}</span>
-                <Button variant="ghost" size="sm" onClick={() => { openRecords(recordTarget.id, recordTarget.title, recordTarget.kind) }}>{t('load.retry')}</Button>
+                <Button variant="ghost" size="sm" onClick={() => { openDetail(detailTarget) }}>{t('load.retry')}</Button>
               </div>
             ) : records.length === 0 ? (
               <p className={css.empty}>{t('records.empty')}</p>
