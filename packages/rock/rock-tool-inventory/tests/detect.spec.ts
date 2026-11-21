@@ -98,16 +98,15 @@ describe('debugPrompt', () => {
     expect(prompt).toContain('不是一次性 CLI 子进程')
   })
 
-  it('includes the service hint when present', () => {
-    expect(debugPrompt(TOOLS[0])).toContain('通过 daemon socket 委派')
+  it('instructs the assistant to retrieve the runner skill', () => {
+    const prompt = debugPrompt(TOOLS[0])
+    expect(prompt).toContain('rock-runner-<tool>')
   })
 
-  it('omits the service-hint line when absent', () => {
-    expect(debugPrompt(TOOLS[1])).not.toContain('服务通信方式')
-  })
-
-  it('includes the install doc url when present', () => {
-    expect(debugPrompt(TOOLS[0])).toContain('https://docs/codex')
+  it('does not embed the service hint or install doc url inline', () => {
+    const prompt = debugPrompt(TOOLS[0])
+    expect(prompt).not.toContain('通过 daemon socket 委派')
+    expect(prompt).not.toContain('https://docs/codex')
   })
 
   it('injects the configured url and token', () => {

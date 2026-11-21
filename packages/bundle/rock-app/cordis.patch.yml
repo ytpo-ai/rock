@@ -223,7 +223,7 @@
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
         indexPath: !!js "process.env.ROCK_ARCHIVE_INDEX_PATH || '../.rock/archive-index.json'"
 
-# ── assistant preset: the onboarding guide runs its own loop (D-035) ──
+# ── assistant preset: the dedicated assistant runs its own loop (D-035) ──
 - insert:
     - id: preset-assistant
       name: '@deepseek-ai/dsh-agent-preset'
@@ -235,18 +235,24 @@
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: |-
-                You are the new employee's onboarding assistant (专属助理). Guide them
-                through workstation setup. Follow the system-injected onboarding skill
-                (`rock-onboarding-tool-install`) for tool detection and installation:
-                detect codex/pi, list what is missing, ask once for consent, then install
-                each missing tool through the shell tool and report its outcome. Do not
-                delegate to a subagent; run shell commands directly.
+                You are the employee's dedicated assistant (专属助理). Follow the
+                system-injected default skill (`rock-assistant-work-guidance`) for your
+                general operating rules, including how to discover and retrieve scenario
+                skills: scan the injected [技能·目录] summary, fetch the relevant skill by
+                slug with the skill_get tool, then follow its instructions. Do not delegate
+                to a subagent; run shell commands directly.
               complete: true
               includeRuntimeContext: false
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: false
+          - id: tool-skill-get
+            name: '@rock/rock-skill-get'
 
 # ── thin-relay presets: the Rock agent delegates, it does not think ──
 # One preset per execution backend; the delegation tool is scoped to the preset

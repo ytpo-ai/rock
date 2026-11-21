@@ -19,12 +19,10 @@ export function detectPrompt(tools: readonly ToolDescriptor[]): string {
   return [
     '执行器检测',
     '',
-    '你是员工工作台的专属助理。请探测以下执行器是否已安装、以及是否有长驻服务/daemon 或监听端口正在运行：',
+    '你是员工工作台的专属助理。请检测以下执行器是否已安装、以及是否有长驻服务/daemon 或监听端口正在运行：',
     ids,
     '',
-    '对每个执行器：',
-    '- installed：运行 `which <command>` 或 `<command> --version` 判断是否已安装；',
-    '- running：判断是否有长驻服务/daemon 或监听端口在运行（如 `pgrep -f`、`lsof -i`、端口健康检查等）。',
+    '先在你的技能目录中检索工具检测相关 skill（`rock-tool-detect` 与对应 `rock-runner-<tool>`），取回全文后按其方法执行。',
     '',
     '完成后输出两部分：',
     '1. 一个 Markdown 表格，列：执行器 | 是否安装 | 是否运行 | 版本；',
@@ -78,34 +76,21 @@ export function debugPrompt(tool: ToolDescriptor, connection?: ToolConnectionCon
     `你是员工工作台的专属助理。请调试执行器「${tool.id}」的「服务通信」通道——即 Rock 委派任务给它的常驻服务/daemon，而不是一次性 CLI 子进程。`,
     '',
   ]
-  if (tool.serviceHint !== undefined && tool.serviceHint !== '') {
-    lines.push(`服务通信方式：${tool.serviceHint}`, '')
-  }
   if (connection !== undefined && connection.url !== undefined) {
     lines.push(`连接地址（已配置）：${connection.url}`)
   } else {
-    lines.push('连接地址未配置，请自行检测（探测监听端口、读发现文件如 ~/.local/state/opencode/service.json 等）。')
+    lines.push('连接地址未配置，请自行检测（探测监听端口、读发现文件）。')
   }
   if (connection !== undefined && connection.token !== undefined) {
     lines.push(`连接凭据（已配置）：${connection.token}`)
   } else if (tool.requiresToken === true) {
     lines.push('连接凭据（token）未配置，请用 ask-user 请求用户提供 token 后再继续。')
   } else {
-    lines.push('连接凭据未配置，请自行从发现文件读取（如 service.json 的 password）。')
+    lines.push('连接凭据未配置，请自行从发现文件读取。')
   }
   lines.push(
-    '步骤：',
-    '1. 冒烟测试：走上述服务通道实际派发一个最小任务并收回结果（用 curl/HTTP 或对应 socket/端口探测，验证「建会话 → 派发 → 收结果」全链路）；',
-    '2. 诊断：若失败，定位原因（服务未启动、端口/socket 不可达、token/凭据缺失或过期、配置错误等）；',
-    '3. 修复：尝试可行的修复（启动常驻服务、补齐凭据、修正配置等）；需要人工操作（如粘贴 token/key）时用 ask-user 明确请求；',
-    '4. 复测：修复后重新走服务通道冒烟，确认真正跑通。',
     '',
-    '注意：不要用「' + tool.command + ' …」拉起全新的一次性子进程冒烟；目标是与外部工具的服务通信通道本身。',
-  )
-  if (tool.installDocUrl !== undefined && tool.installDocUrl !== '') {
-    lines.push(`安装文档：${tool.installDocUrl}`)
-  }
-  lines.push(
+    '先在你的技能目录中检索该执行器的调试 skill（`rock-runner-<tool>`），取回全文后按其协议与步骤执行。',
     '',
     '最后输出一个 ```json 代码块，内含单个 JSON 对象：',
     '{"ok": true/false, "summary": "<一句话结论>", "diagnostic": "<失败原因或下一步，成功时省略>"}',
