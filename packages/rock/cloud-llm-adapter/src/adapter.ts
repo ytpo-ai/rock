@@ -302,6 +302,7 @@ export class CloudLlmAdapter extends LlmAdapter {
 
     const body = {
       model: options.model,
+      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
       messages: [
         ...options.system === undefined ? [] : [{ role: 'system', content: options.system }],
         ...options.messages.map(messageToOpenAi),

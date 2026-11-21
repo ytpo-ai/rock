@@ -112,4 +112,16 @@ describe('CloudLlmAdapter', () => {
       for await (const _ of stream) { /* drain */ }
     })()).rejects.toMatchObject({ code: 'NO_ADAPTER' })
   })
+
+  it('relays the harness sessionId through the request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    for await (const _ of adapter().stream(options({ sessionId: 'bot-test-123' as never }))) { /* drain */ }
+
+    const [, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(JSON.parse(String(init.body)).sessionId).toBe('bot-test-123')
+  })
 })
