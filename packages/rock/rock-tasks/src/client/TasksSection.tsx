@@ -356,7 +356,6 @@ function BoardCard({ task, t, botName, projectName, onDetail, onRun, onSubmit, o
       <div className={css.cardFooter}>
         <span className={css.cardCreated}>{task.createdAt !== undefined ? formatDateTime(task.createdAt) : ''}</span>
         <div className={css.cardActions}>
-          <Button size="sm" variant="ghost" onClick={onDetail}>{t('detail.open')}</Button>
           {RUNNABLE.has(task.status) && (
             <Button size="sm" onClick={onRun}>{t('tasks.execute')}</Button>
           )}
@@ -767,6 +766,7 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                       checked={!hiddenColumns.has(column.key)}
                       onChange={() => { toggleColumn(column.key) }}
                       label={column.title}
+                      className={css.columnCheckbox}
                     />
                   ))}
                 </div>

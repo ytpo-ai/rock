@@ -3,6 +3,8 @@
   flex-direction: column;
   gap: 12px;
   padding: 24px;
+  flex: 1;
+  min-height: 0;
 }
 
 .page {
@@ -86,6 +88,7 @@
 }
 
 .statusTitle {
+  font-size: 0.85em;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
@@ -123,7 +126,6 @@
 }
 
 .cardTitle {
-  font-weight: 600;
   color: var(--dsw-alias-label-primary);
   overflow-wrap: anywhere;
   text-align: left;
@@ -133,6 +135,8 @@
   margin: 0;
   cursor: pointer;
   font: inherit;
+  font-size: 0.85em;
+  font-weight: 500;
   line-height: inherit;
 }
 
@@ -187,15 +191,18 @@
   gap: 16px;
   overflow-x: auto;
   padding-bottom: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .boardColumn {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 0 0 256px;
-  min-width: 256px;
-  max-height: calc(100vh - 220px);
+  flex: 0 0 300px;
+  min-width: 300px;
+  height: 100%;
+  min-height: 0;
 }
 
 .boardColumnBody {
@@ -204,6 +211,8 @@
   gap: 8px;
   overflow-y: auto;
   padding-right: 4px;
+  flex: 1;
+  min-height: 0;
 }
 
 .cardDanger {
@@ -227,6 +236,12 @@
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: var(--dsw-alias-bg-base);
+  width: max-content;
+  min-width: 160px;
+}
+
+.columnCheckbox {
+  white-space: nowrap;
 }
 
 .runDialog {
@@ -411,7 +426,7 @@
 .cardField {
   display: flex;
   gap: 6px;
-  font-size: 0.85em;
+  font-size: 0.75em;
   min-width: 0;
 }
 
@@ -466,6 +481,7 @@
 .boardColumnCollapsed {
   flex-basis: 128px;
   min-width: 128px;
+  height: auto;
 }
 
 .columnHeaderButton {
