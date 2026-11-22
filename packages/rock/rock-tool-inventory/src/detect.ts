@@ -26,7 +26,7 @@ export function detectPrompt(tools: readonly ToolDescriptor[]): string {
     '',
     '完成后输出两部分：',
     '1. 一个 Markdown 表格，列：执行器 | 是否安装 | 是否运行 | 版本 | 客户端类型；',
-    '2. 一个 ```json 代码块，内含 JSON 数组，每个元素为 {"id":"<执行器id>","installed":true/false,"running":true/false,"version":"<版本或省略>","clientType":"gui|tui（能确定才填）","rootDir":"<根目录或省略>","startupCommand":"<启动命令或省略>"}。clientType/rootDir/startupCommand 若能确定就填，不能确定则省略。',
+    '2. 一个 ```json 代码块，内含 JSON 数组，每个元素为 {"id":"<执行器id>","installed":true/false,"running":true/false,"version":"<版本或省略>","clientType":"gui|tui（能确定才填）","rootDir":"<根目录或省略>","configRootDir":"<配置根目录或省略>","startupCommand":"<启动命令或省略>"}。clientType/rootDir/configRootDir/startupCommand 若能确定就填，不能确定则省略。',
   ].join('\n')
 }
 
@@ -93,6 +93,9 @@ export function debugPrompt(tool: ToolDescriptor, connection?: ToolConnectionCon
   }
   if (connection !== undefined && connection.rootDir !== undefined) {
     lines.push(`根目录（已配置）：${connection.rootDir}`)
+  }
+  if (connection !== undefined && connection.configRootDir !== undefined) {
+    lines.push(`配置根目录（已配置）：${connection.configRootDir}`)
   }
   if (connection !== undefined && connection.startupCommand !== undefined) {
     lines.push(`启动命令（已配置）：${connection.startupCommand}`)
@@ -187,12 +190,14 @@ export function parseDetectConnectionPatches(text: string, tools: readonly ToolD
     if (typeof id !== 'string' || !known.has(id)) continue
     const clientType = parseClientType((item as { clientType?: unknown }).clientType)
     const rootDir = nonEmptyString((item as { rootDir?: unknown }).rootDir)
+    const configRootDir = nonEmptyString((item as { configRootDir?: unknown }).configRootDir)
     const startupCommand = nonEmptyString((item as { startupCommand?: unknown }).startupCommand)
-    if (clientType === undefined && rootDir === undefined && startupCommand === undefined) continue
+    if (clientType === undefined && rootDir === undefined && configRootDir === undefined && startupCommand === undefined) continue
     out.push({
       id,
       ...(clientType === undefined ? {} : { clientType }),
       ...(rootDir === undefined ? {} : { rootDir }),
+      ...(configRootDir === undefined ? {} : { configRootDir }),
       ...(startupCommand === undefined ? {} : { startupCommand }),
     })
   }

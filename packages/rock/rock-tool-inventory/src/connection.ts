@@ -14,6 +14,7 @@ export function normalizeConnectionConfig(config: ToolConnectionConfig): ToolCon
     ...(nonEmpty(config.token) ? { token: config.token } : {}),
     ...(clientType === undefined ? {} : { clientType }),
     ...(nonEmpty(config.rootDir) ? { rootDir: config.rootDir } : {}),
+    ...(nonEmpty(config.configRootDir) ? { configRootDir: config.configRootDir } : {}),
     ...(nonEmpty(config.startupCommand) ? { startupCommand: config.startupCommand } : {}),
   }
 }
@@ -27,6 +28,7 @@ export function normalizeConnection(value: unknown): ToolConnectionConfig | unde
     ...(typeof record.token === 'string' ? { token: record.token } : {}),
     ...(record.clientType === 'gui' || record.clientType === 'tui' ? { clientType: record.clientType } : {}),
     ...(typeof record.rootDir === 'string' ? { rootDir: record.rootDir } : {}),
+    ...(typeof record.configRootDir === 'string' ? { configRootDir: record.configRootDir } : {}),
     ...(typeof record.startupCommand === 'string' ? { startupCommand: record.startupCommand } : {}),
   }
   const normalized = normalizeConnectionConfig(candidate)
@@ -52,6 +54,10 @@ export function backfillConnectionPatch(
   }
   if (existing?.rootDir === undefined && patch.rootDir !== undefined) {
     next.rootDir = patch.rootDir
+    changed = true
+  }
+  if (existing?.configRootDir === undefined && patch.configRootDir !== undefined) {
+    next.configRootDir = patch.configRootDir
     changed = true
   }
   if (existing?.startupCommand === undefined && patch.startupCommand !== undefined) {

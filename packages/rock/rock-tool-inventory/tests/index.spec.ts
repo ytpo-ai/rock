@@ -64,17 +64,19 @@ describe('connection config', () => {
 
     controller.setConnectionConfig('opencode', {
       clientType: 'gui',
-      rootDir: '~/.local/state/opencode',
+      rootDir: '/work/opencode',
+      configRootDir: '~/.local/state/opencode',
       startupCommand: 'opencode serve',
     })
 
     expect(controller.connectionConfig('opencode')).toEqual({
       clientType: 'gui',
-      rootDir: '~/.local/state/opencode',
+      rootDir: '/work/opencode',
+      configRootDir: '~/.local/state/opencode',
       startupCommand: 'opencode serve',
     })
     expect(JSON.parse(await readFile(connectionsPath, 'utf8'))).toEqual({
-      opencode: { clientType: 'gui', rootDir: '~/.local/state/opencode', startupCommand: 'opencode serve' },
+      opencode: { clientType: 'gui', rootDir: '/work/opencode', configRootDir: '~/.local/state/opencode', startupCommand: 'opencode serve' },
     })
   })
 
@@ -88,10 +90,10 @@ describe('connection config', () => {
   it('clears an empty field on set', async () => {
     const dir = await tempDir()
     const connectionsPath = join(dir, 'tool-connections.json')
-    await writeFile(connectionsPath, JSON.stringify({ opencode: { url: 'http://x', token: 't', clientType: 'gui' } }))
+    await writeFile(connectionsPath, JSON.stringify({ opencode: { url: 'http://x', token: 't', clientType: 'gui', configRootDir: '~/.dsh' } }))
     const { controller } = await boot(connectionsPath)
 
-    controller.setConnectionConfig('opencode', { url: 'http://x', token: '', clientType: undefined, rootDir: '' })
+    controller.setConnectionConfig('opencode', { url: 'http://x', token: '', clientType: undefined, rootDir: '', configRootDir: '' })
 
     expect(controller.connectionConfig('opencode')).toEqual({ url: 'http://x' })
   })

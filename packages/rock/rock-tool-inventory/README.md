@@ -6,9 +6,9 @@ Rock tool inventory for the `rock` profile's web surface. Probes the machine for
 
 - Host half: probes each configured `{ id, command }` with a bounded `--version` run; `ENOENT` means "not installed", any other error means "installed but no version".
 - Browser half: registers the "Runners" sidebar entry and a table of tool id / status / version, with per-tool "detect" and "debug" runs through the dedicated assistant.
-- Connection config: persists user-supplied per-tool `{ url, token, clientType, rootDir, startupCommand }` to `.rock/tool-connections.json` (empty fields are cleared). `url`/`token` feed the debug prompt and the `dsh`/`opencode` subagent providers; `clientType` (`gui`/`tui`), `rootDir`, and `startupCommand` feed detection and debug guidance.
+- Connection config: persists user-supplied per-tool `{ url, token, clientType, rootDir, configRootDir, startupCommand }` to `.rock/tool-connections.json` (empty fields are cleared). `url`/`token` feed the debug prompt and the `dsh`/`opencode` subagent providers; `clientType` (`gui`/`tui`), `rootDir`, `configRootDir` (for example `~/.dsh`), and `startupCommand` feed detection and debug guidance.
 - Hot reload: the connections file is watched; an external write (for example the assistant editing it through a shell) reloads the in-memory config without restarting Rock.
-- Detection backfill: fields the assistant reports during `detect()` (clientType / rootDir / startupCommand) are backfilled into the connection config only where empty, never overwriting a user-supplied value.
+- Detection backfill: fields the assistant reports during `detect()` (clientType / rootDir / configRootDir / startupCommand) are backfilled into the connection config only where empty, never overwriting a user-supplied value.
 
 ## Model Experience
 

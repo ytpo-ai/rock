@@ -60,6 +60,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
   const [configToken, setConfigToken] = useState('')
   const [configClientType, setConfigClientType] = useState<ToolClientType | undefined>(undefined)
   const [configRootDir, setConfigRootDir] = useState('')
+  const [configConfigRootDir, setConfigConfigRootDir] = useState('')
   const [configStartupCommand, setConfigStartupCommand] = useState('')
 
   useEffect(() => {
@@ -127,6 +128,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     setConfigToken(existing?.token ?? '')
     setConfigClientType(existing?.clientType)
     setConfigRootDir(existing?.rootDir ?? '')
+    setConfigConfigRootDir(existing?.configRootDir ?? '')
     setConfigStartupCommand(existing?.startupCommand ?? '')
     setConfiguring(id)
   }
@@ -137,6 +139,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     setConfigToken('')
     setConfigClientType(undefined)
     setConfigRootDir('')
+    setConfigConfigRootDir('')
     setConfigStartupCommand('')
   }
 
@@ -147,6 +150,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
       ...(configToken.length > 0 ? { token: configToken } : {}),
       ...(configClientType === undefined ? {} : { clientType: configClientType }),
       ...(configRootDir.length > 0 ? { rootDir: configRootDir } : {}),
+      ...(configConfigRootDir.length > 0 ? { configRootDir: configConfigRootDir } : {}),
       ...(configStartupCommand.length > 0 ? { startupCommand: configStartupCommand } : {}),
     }
     void remote.setConnectionConfig(configuring, next).then((result) => {
@@ -262,11 +266,13 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         token={configToken}
         clientType={configClientType}
         rootDir={configRootDir}
+        configRootDir={configConfigRootDir}
         startupCommand={configStartupCommand}
         onUrl={setConfigUrl}
         onToken={setConfigToken}
         onClientType={setConfigClientType}
         onRootDir={setConfigRootDir}
+        onConfigRootDir={setConfigConfigRootDir}
         onStartupCommand={setConfigStartupCommand}
         onClose={closeConfig}
         onSave={saveConfig}
@@ -331,7 +337,7 @@ function DebugResultRow(props: {
   )
 }
 
-/** Connection configuration dialog: url + token + clientType + rootDir + startupCommand. */
+/** Connection configuration dialog: url + token + clientType + rootDir + configRootDir + startupCommand. */
 function ConfigModal(props: {
   toolId: string | null
   requiresToken: boolean
@@ -339,19 +345,22 @@ function ConfigModal(props: {
   token: string
   clientType: ToolClientType | undefined
   rootDir: string
+  configRootDir: string
   startupCommand: string
   onUrl: (value: string) => void
   onToken: (value: string) => void
   onClientType: (value: ToolClientType | undefined) => void
   onRootDir: (value: string) => void
+  onConfigRootDir: (value: string) => void
   onStartupCommand: (value: string) => void
   onClose: () => void
   onSave: () => void
   t: ToolInventorySectionProps['t']
 }): ReactElement {
   const {
-    toolId, requiresToken, url, token, clientType, rootDir, startupCommand,
-    onUrl, onToken, onClientType, onRootDir, onStartupCommand, onClose, onSave, t,
+    toolId, requiresToken, url, token, clientType, rootDir, configRootDir, startupCommand,
+    onUrl, onToken, onClientType, onRootDir, onConfigRootDir, onStartupCommand,
+    onClose, onSave, t,
   } = props
   const missingToken = requiresToken && token.trim().length === 0
   return (
@@ -390,6 +399,10 @@ function ConfigModal(props: {
         <label className={css.configField}>
           <span className={css.configLabel}>{t('config.rootDir')}</span>
           <Input value={rootDir} onChange={(event) => { onRootDir(event.target.value) }} placeholder={t('config.rootDirPlaceholder')} />
+        </label>
+        <label className={css.configField}>
+          <span className={css.configLabel}>{t('config.configRootDir')}</span>
+          <Input value={configRootDir} onChange={(event) => { onConfigRootDir(event.target.value) }} placeholder={t('config.configRootDirPlaceholder')} />
         </label>
         <label className={css.configField}>
           <span className={css.configLabel}>{t('config.startupCommand')}</span>

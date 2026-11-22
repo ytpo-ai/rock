@@ -61,13 +61,13 @@ describe('parseDetectStatuses', () => {
 })
 
 describe('parseDetectConnectionPatches', () => {
-  it('maps clientType, rootDir, and startupCommand', () => {
+  it('maps clientType, rootDir, configRootDir, and startupCommand', () => {
     const patches = parseDetectConnectionPatches(
-      '[{"id":"codex","installed":true,"clientType":"tui","rootDir":"~/.codex","startupCommand":"codex app-server start"}]',
+      '[{"id":"codex","installed":true,"clientType":"tui","rootDir":"/work","configRootDir":"~/.codex","startupCommand":"codex app-server start"}]',
       TOOLS,
     )
     expect(patches).toEqual([
-      { id: 'codex', clientType: 'tui', rootDir: '~/.codex', startupCommand: 'codex app-server start' },
+      { id: 'codex', clientType: 'tui', rootDir: '/work', configRootDir: '~/.codex', startupCommand: 'codex app-server start' },
     ])
   })
 
@@ -89,10 +89,10 @@ describe('parseDetectConnectionPatches', () => {
 
   it('keeps only the non-empty fields of one patch', () => {
     const patches = parseDetectConnectionPatches(
-      '[{"id":"codex","rootDir":"~/.codex","startupCommand":""}]',
+      '[{"id":"codex","rootDir":"~/.codex","configRootDir":"~/.codex","startupCommand":""}]',
       TOOLS,
     )
-    expect(patches).toEqual([{ id: 'codex', rootDir: '~/.codex' }])
+    expect(patches).toEqual([{ id: 'codex', rootDir: '~/.codex', configRootDir: '~/.codex' }])
   })
 })
 
@@ -151,10 +151,11 @@ describe('debugPrompt', () => {
     expect(prompt).toContain('SECRET')
   })
 
-  it('injects the configured clientType, rootDir, and startupCommand', () => {
-    const prompt = debugPrompt(TOOLS[0], { clientType: 'tui', rootDir: '~/.codex', startupCommand: 'codex app-server start' })
+  it('injects the configured clientType, rootDir, configRootDir, and startupCommand', () => {
+    const prompt = debugPrompt(TOOLS[0], { clientType: 'tui', rootDir: '/work', configRootDir: '~/.dsh', startupCommand: 'codex app-server start' })
     expect(prompt).toContain('客户端类型（已配置）：TUI')
-    expect(prompt).toContain('根目录（已配置）：~/.codex')
+    expect(prompt).toContain('根目录（已配置）：/work')
+    expect(prompt).toContain('配置根目录（已配置）：~/.dsh')
     expect(prompt).toContain('启动命令（已配置）：codex app-server start')
   })
 

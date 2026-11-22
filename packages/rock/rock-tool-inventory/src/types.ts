@@ -37,8 +37,10 @@ export interface ToolConnectionConfig {
   token?: string
   /** Client form the tool currently runs as (GUI app vs terminal UI). */
   clientType?: ToolClientType
-  /** The tool's own root directory (discovery files, config), reused by detection and debug. */
+  /** The tool's own root directory (install/working directory), reused by detection and debug. */
   rootDir?: string
+  /** The tool's config home directory (for example `~/.dsh`), reused by detection and debug. */
+  configRootDir?: string
   /** Command that starts the tool's resident service/daemon. */
   startupCommand?: string
 }
@@ -51,6 +53,8 @@ export interface ToolConnectionPatch {
   clientType?: ToolClientType
   /** Detected tool root directory, when the assistant reported one. */
   rootDir?: string
+  /** Detected tool config home directory, when the assistant reported one. */
+  configRootDir?: string
   /** Detected resident-service startup command, when the assistant reported one. */
   startupCommand?: string
 }
