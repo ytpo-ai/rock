@@ -4,7 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { Button, Input, Modal, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DebugResult, DebugState, DetectState, ToolConnectionConfig, ToolDescriptor, ToolStatus } from '@rock/rock-tool-inventory/types'
+import type { DebugResult, DebugState, DetectState, ToolClientType, ToolConnectionConfig, ToolDescriptor, ToolStatus } from '@rock/rock-tool-inventory/types'
 import css from './rock-tool-inventory.module.css'
 
 /** Poll interval while a detection run is in flight. */
@@ -58,6 +58,9 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
   const [configuring, setConfiguring] = useState<string | null>(null)
   const [configUrl, setConfigUrl] = useState('')
   const [configToken, setConfigToken] = useState('')
+  const [configClientType, setConfigClientType] = useState<ToolClientType | undefined>(undefined)
+  const [configRootDir, setConfigRootDir] = useState('')
+  const [configStartupCommand, setConfigStartupCommand] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -122,6 +125,9 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     const existing = connections[id]
     setConfigUrl(existing?.url ?? '')
     setConfigToken(existing?.token ?? '')
+    setConfigClientType(existing?.clientType)
+    setConfigRootDir(existing?.rootDir ?? '')
+    setConfigStartupCommand(existing?.startupCommand ?? '')
     setConfiguring(id)
   }
 
@@ -129,13 +135,23 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     setConfiguring(null)
     setConfigUrl('')
     setConfigToken('')
+    setConfigClientType(undefined)
+    setConfigRootDir('')
+    setConfigStartupCommand('')
   }
 
   const saveConfig = (): void => {
     if (configuring === null) return
-    void remote.setConnectionConfig(configuring, { url: configUrl, token: configToken }).then((result) => {
+    const next: ToolConnectionConfig = {
+      ...(configUrl.length > 0 ? { url: configUrl } : {}),
+      ...(configToken.length > 0 ? { token: configToken } : {}),
+      ...(configClientType === undefined ? {} : { clientType: configClientType }),
+      ...(configRootDir.length > 0 ? { rootDir: configRootDir } : {}),
+      ...(configStartupCommand.length > 0 ? { startupCommand: configStartupCommand } : {}),
+    }
+    void remote.setConnectionConfig(configuring, next).then((result) => {
       if (result.ok) {
-        setConnections(prev => ({ ...prev, [configuring]: { url: configUrl, token: configToken } }))
+        setConnections(prev => ({ ...prev, [configuring]: next }))
         closeConfig()
       } else {
         setLoadFailed(true)
@@ -244,8 +260,14 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
         requiresToken={configuring !== null && descriptorById.get(configuring)?.requiresToken === true}
         url={configUrl}
         token={configToken}
+        clientType={configClientType}
+        rootDir={configRootDir}
+        startupCommand={configStartupCommand}
         onUrl={setConfigUrl}
         onToken={setConfigToken}
+        onClientType={setConfigClientType}
+        onRootDir={setConfigRootDir}
+        onStartupCommand={setConfigStartupCommand}
         onClose={closeConfig}
         onSave={saveConfig}
         t={t}
@@ -309,19 +331,28 @@ function DebugResultRow(props: {
   )
 }
 
-/** Connection configuration dialog: url + token; the token is required for dsh. */
+/** Connection configuration dialog: url + token + clientType + rootDir + startupCommand. */
 function ConfigModal(props: {
   toolId: string | null
   requiresToken: boolean
   url: string
   token: string
+  clientType: ToolClientType | undefined
+  rootDir: string
+  startupCommand: string
   onUrl: (value: string) => void
   onToken: (value: string) => void
+  onClientType: (value: ToolClientType | undefined) => void
+  onRootDir: (value: string) => void
+  onStartupCommand: (value: string) => void
   onClose: () => void
   onSave: () => void
   t: ToolInventorySectionProps['t']
 }): ReactElement {
-  const { toolId, requiresToken, url, token, onUrl, onToken, onClose, onSave, t } = props
+  const {
+    toolId, requiresToken, url, token, clientType, rootDir, startupCommand,
+    onUrl, onToken, onClientType, onRootDir, onStartupCommand, onClose, onSave, t,
+  } = props
   const missingToken = requiresToken && token.trim().length === 0
   return (
     <Modal
@@ -344,6 +375,25 @@ function ConfigModal(props: {
         <label className={css.configField}>
           <span className={css.configLabel}>{t('config.token')}{requiresToken ? ' *' : ''}</span>
           <Input type="password" value={token} onChange={(event) => { onToken(event.target.value) }} placeholder={t('config.tokenPlaceholder')} />
+        </label>
+        <div className={css.configField}>
+          <span className={css.configLabel}>{t('config.clientType')}</span>
+          <div className={css.clientTypeOptions}>
+            <Button size="sm" variant={clientType === 'gui' ? 'primary' : 'ghost'} onClick={() => { onClientType(clientType === 'gui' ? undefined : 'gui') }}>
+              {t('config.clientType.gui')}
+            </Button>
+            <Button size="sm" variant={clientType === 'tui' ? 'primary' : 'ghost'} onClick={() => { onClientType(clientType === 'tui' ? undefined : 'tui') }}>
+              {t('config.clientType.tui')}
+            </Button>
+          </div>
+        </div>
+        <label className={css.configField}>
+          <span className={css.configLabel}>{t('config.rootDir')}</span>
+          <Input value={rootDir} onChange={(event) => { onRootDir(event.target.value) }} placeholder={t('config.rootDirPlaceholder')} />
+        </label>
+        <label className={css.configField}>
+          <span className={css.configLabel}>{t('config.startupCommand')}</span>
+          <Input value={startupCommand} onChange={(event) => { onStartupCommand(event.target.value) }} placeholder={t('config.startupCommandPlaceholder')} />
         </label>
         {missingToken
           ? <span className={css.configError}>{t('config.tokenRequired')}</span>

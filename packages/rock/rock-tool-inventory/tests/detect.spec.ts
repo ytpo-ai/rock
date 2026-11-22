@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandOf, debugPrompt, detectPrompt, extractJsonArray, mergeStatuses, parseDebugResult, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
+import { commandOf, debugPrompt, detectPrompt, extractJsonArray, mergeStatuses, parseDebugResult, parseDetectConnectionPatches, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
 const TOOLS: readonly ToolDescriptor[] = [
@@ -60,6 +60,42 @@ describe('parseDetectStatuses', () => {
   })
 })
 
+describe('parseDetectConnectionPatches', () => {
+  it('maps clientType, rootDir, and startupCommand', () => {
+    const patches = parseDetectConnectionPatches(
+      '[{"id":"codex","installed":true,"clientType":"tui","rootDir":"~/.codex","startupCommand":"codex app-server start"}]',
+      TOOLS,
+    )
+    expect(patches).toEqual([
+      { id: 'codex', clientType: 'tui', rootDir: '~/.codex', startupCommand: 'codex app-server start' },
+    ])
+  })
+
+  it('drops unknown ids and unknown clientType values', () => {
+    const patches = parseDetectConnectionPatches(
+      '[{"id":"unknown","clientType":"gui"},{"id":"codex","clientType":"web"}]',
+      TOOLS,
+    )
+    expect(patches).toEqual([])
+  })
+
+  it('drops a patch whose fields are all empty', () => {
+    const patches = parseDetectConnectionPatches(
+      '[{"id":"codex","rootDir":""},{"id":"pi","startupCommand":""}]',
+      TOOLS,
+    )
+    expect(patches).toEqual([])
+  })
+
+  it('keeps only the non-empty fields of one patch', () => {
+    const patches = parseDetectConnectionPatches(
+      '[{"id":"codex","rootDir":"~/.codex","startupCommand":""}]',
+      TOOLS,
+    )
+    expect(patches).toEqual([{ id: 'codex', rootDir: '~/.codex' }])
+  })
+})
+
 describe('mergeStatuses', () => {
   it('prefers the assistant result and keeps the fast probe for gaps', () => {
     const fast: ToolStatus[] = [
@@ -113,6 +149,13 @@ describe('debugPrompt', () => {
     const prompt = debugPrompt(TOOLS[0], { url: 'http://127.0.0.1:3087', token: 'SECRET' })
     expect(prompt).toContain('http://127.0.0.1:3087')
     expect(prompt).toContain('SECRET')
+  })
+
+  it('injects the configured clientType, rootDir, and startupCommand', () => {
+    const prompt = debugPrompt(TOOLS[0], { clientType: 'tui', rootDir: '~/.codex', startupCommand: 'codex app-server start' })
+    expect(prompt).toContain('客户端类型（已配置）：TUI')
+    expect(prompt).toContain('根目录（已配置）：~/.codex')
+    expect(prompt).toContain('启动命令（已配置）：codex app-server start')
   })
 
   it('asks to auto-detect the url and read the token when neither is configured', () => {

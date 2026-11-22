@@ -166,6 +166,11 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.clientTypeOptions {
+  display: inline-flex;
+  gap: 8px;
+}
+
 .configError {
   font-size: 13px;
   line-height: 18px;

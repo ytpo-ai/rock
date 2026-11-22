@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
+import { watch as chokidarWatch } from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -31,9 +32,10 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { assistantMessageText, commandOf, debugPrompt, detectPrompt, mergeStatuses, parseDebugResult, parseDetectStatuses, touchedToolIds } from './detect.ts'
+import { assistantMessageText, commandOf, debugPrompt, detectPrompt, mergeStatuses, parseDebugResult, parseDetectConnectionPatches, parseDetectStatuses, touchedToolIds } from './detect.ts'
+import { backfillConnectionPatch, normalizeConnection, normalizeConnectionConfig } from './connection.ts'
 import { toolStatusFrom } from './probe.ts'
-import type { DebugState, DetectState, ToolConnectionConfig, ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugState, DetectState, ToolConnectionConfig, ToolConnectionPatch, ToolDescriptor, ToolStatus } from './types.ts'
 
 export type * from './types.ts'
 
@@ -131,6 +133,18 @@ export default class RockToolInventoryController extends TypertRemoteService {
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.recordDetectEvent(session, event)
     })
+    ctx.effect(() => {
+      const watcher = chokidarWatch(this.connectionsPath, {
+        ignoreInitial: true,
+        awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+      })
+      watcher.on('all', () => { this.reloadConnections() })
+      watcher.on('ready', () => { this.reloadConnections() })
+      watcher.on('error', (error) => {
+        this.ctx.logger.warn(`rock-tool-inventory: connection watcher error: ${messageOf(error)}`)
+      })
+      return () => { void watcher.close() }
+    }, 'rock-tool-inventory: connection watcher')
   }
 
   /** Detected state of every probe target, in declaration order (fast `--version` probe). */
@@ -173,10 +187,7 @@ export default class RockToolInventoryController extends TypertRemoteService {
   setConnectionConfig(id: string, config: ToolConnectionConfig): void {
     const tool = this.tools.find(candidate => candidate.id === id)
     if (tool === undefined) throw new Error(`unknown tool "${id}"`)
-    const normalized: ToolConnectionConfig = {
-      ...(config.url !== undefined && config.url.length > 0 ? { url: config.url } : {}),
-      ...(config.token !== undefined && config.token.length > 0 ? { token: config.token } : {}),
-    }
+    const normalized = normalizeConnectionConfig(config)
     if (tool.requiresToken === true && normalized.token === undefined) {
       throw new Error(`tool "${id}" requires a token`)
     }
@@ -397,6 +408,10 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
     this.detectSessionId = undefined
     this.persistState(statuses, lastDetectedAt)
+    const patches = parseDetectConnectionPatches(this.assistantText, this.tools)
+    if (this.backfillConnections(patches)) {
+      this.persistConnections()
+    }
     try {
       this.ctx.emit('rock-tool-inventory/detected')
     } catch (error) {
@@ -455,17 +470,26 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }
   }
 
-  /** Read the persisted service connections, or an empty map on absence/failure. */
+  /** Read the persisted service connections, or an empty map on absence/failure (constructor path). */
   private loadConnections(): Record<string, ToolConnectionConfig> {
+    return this.readConnectionsFile() ?? {}
+  }
+
+  /**
+   * Read and parse the connections file. Returns undefined on any read or parse
+   * failure so a hot-reload keeps the previous in-memory value instead of
+   * clearing it on a half-written or missing file.
+   */
+  private readConnectionsFile(): Record<string, ToolConnectionConfig> | undefined {
     let raw: string
     try {
       raw = readFileSync(this.connectionsPath, 'utf8')
     } catch {
-      return {}
+      return undefined
     }
     try {
       const parsed: unknown = JSON.parse(raw)
-      if (typeof parsed !== 'object' || parsed === null) return {}
+      if (typeof parsed !== 'object' || parsed === null) return undefined
       const out: Record<string, ToolConnectionConfig> = {}
       for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
         const config = normalizeConnection(value)
@@ -473,8 +497,32 @@ export default class RockToolInventoryController extends TypertRemoteService {
       }
       return out
     } catch {
-      return {}
+      return undefined
     }
+  }
+
+  /** Reload the connections from disk after a file change; keep the current value on any failure. */
+  private reloadConnections(): void {
+    const next = this.readConnectionsFile()
+    if (next !== undefined) this.connections = next
+  }
+
+  /**
+   * Backfill detected connection fields into the persisted config, only where
+   * the existing value is empty (never overwrite a user-supplied value).
+   * @param patches - detection-derived patches.
+   * @returns whether any connection changed, so the caller can persist once.
+   */
+  private backfillConnections(patches: readonly ToolConnectionPatch[]): boolean {
+    let changed = false
+    for (const patch of patches) {
+      const merged = backfillConnectionPatch(this.connections[patch.id], patch)
+      if (merged !== undefined) {
+        this.connections = { ...this.connections, [patch.id]: merged }
+        changed = true
+      }
+    }
+    return changed
   }
 
   /** Persist the service connections so a restart keeps them. */
@@ -528,16 +576,6 @@ function isToolStatus(value: unknown): value is ToolStatus {
   const record = value as Record<string, unknown>
   return typeof record.id === 'string' && record.id.length > 0
     && typeof record.installed === 'boolean'
-}
-
-/** Normalize an unknown value into a connection config with only non-empty url/token fields, or undefined. */
-function normalizeConnection(value: unknown): ToolConnectionConfig | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const record = value as Record<string, unknown>
-  const url = typeof record.url === 'string' && record.url.length > 0 ? record.url : undefined
-  const token = typeof record.token === 'string' && record.token.length > 0 ? record.token : undefined
-  if (url === undefined && token === undefined) return undefined
-  return { ...(url === undefined ? {} : { url }), ...(token === undefined ? {} : { token }) }
 }
 
 declare module '@deepseek-ai/cordis' {

@@ -7,7 +7,7 @@
  *
  * @module @rock/rock-tool-inventory/detect
  */
-import type { DebugResult, ToolConnectionConfig, ToolDescriptor, ToolStatus } from './types.ts'
+import type { DebugResult, ToolClientType, ToolConnectionConfig, ToolConnectionPatch, ToolDescriptor, ToolStatus } from './types.ts'
 
 /**
  * Build the dedicated-assistant probe prompt for the given tools.
@@ -25,8 +25,8 @@ export function detectPrompt(tools: readonly ToolDescriptor[]): string {
     '先在你的技能目录中检索工具检测相关 skill（`rock-tool-detect` 与对应 `rock-runner-<tool>`），取回全文后按其方法执行。',
     '',
     '完成后输出两部分：',
-    '1. 一个 Markdown 表格，列：执行器 | 是否安装 | 是否运行 | 版本；',
-    '2. 一个 ```json 代码块，内含 JSON 数组，每个元素为 {"id":"<执行器id>","installed":true/false,"running":true/false,"version":"<版本或省略>"}。',
+    '1. 一个 Markdown 表格，列：执行器 | 是否安装 | 是否运行 | 版本 | 客户端类型；',
+    '2. 一个 ```json 代码块，内含 JSON 数组，每个元素为 {"id":"<执行器id>","installed":true/false,"running":true/false,"version":"<版本或省略>","clientType":"gui|tui（能确定才填）","rootDir":"<根目录或省略>","startupCommand":"<启动命令或省略>"}。clientType/rootDir/startupCommand 若能确定就填，不能确定则省略。',
   ].join('\n')
 }
 
@@ -87,6 +87,15 @@ export function debugPrompt(tool: ToolDescriptor, connection?: ToolConnectionCon
     lines.push('连接凭据（token）未配置，请用 ask-user 请求用户提供 token 后再继续。')
   } else {
     lines.push('连接凭据未配置，请自行从发现文件读取。')
+  }
+  if (connection !== undefined && connection.clientType !== undefined) {
+    lines.push(`客户端类型（已配置）：${connection.clientType === 'gui' ? '界面客户端' : 'TUI'}`)
+  }
+  if (connection !== undefined && connection.rootDir !== undefined) {
+    lines.push(`根目录（已配置）：${connection.rootDir}`)
+  }
+  if (connection !== undefined && connection.startupCommand !== undefined) {
+    lines.push(`启动命令（已配置）：${connection.startupCommand}`)
   }
   lines.push(
     '',
@@ -156,6 +165,48 @@ export function parseDetectStatuses(text: string, tools: readonly ToolDescriptor
     })
   }
   return out
+}
+
+/**
+ * Parse the assistant's JSON array into connection patches (clientType /
+ * rootDir / startupCommand) for the known tools. Unknown ids and entries with
+ * no patch fields are dropped; a reported clientType must be a known value and
+ * the string fields must be non-empty.
+ * @param text - assistant message text.
+ * @param tools - probe targets (determines the accepted id set).
+ * @returns connection patches, possibly empty.
+ */
+export function parseDetectConnectionPatches(text: string, tools: readonly ToolDescriptor[]): ToolConnectionPatch[] {
+  const raw = extractJsonArray(text)
+  if (!Array.isArray(raw)) return []
+  const known = new Set(tools.map(tool => tool.id))
+  const out: ToolConnectionPatch[] = []
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue
+    const id = (item as { id?: unknown }).id
+    if (typeof id !== 'string' || !known.has(id)) continue
+    const clientType = parseClientType((item as { clientType?: unknown }).clientType)
+    const rootDir = nonEmptyString((item as { rootDir?: unknown }).rootDir)
+    const startupCommand = nonEmptyString((item as { startupCommand?: unknown }).startupCommand)
+    if (clientType === undefined && rootDir === undefined && startupCommand === undefined) continue
+    out.push({
+      id,
+      ...(clientType === undefined ? {} : { clientType }),
+      ...(rootDir === undefined ? {} : { rootDir }),
+      ...(startupCommand === undefined ? {} : { startupCommand }),
+    })
+  }
+  return out
+}
+
+/** A known client-type value, or undefined for anything else. */
+function parseClientType(value: unknown): ToolClientType | undefined {
+  return value === 'gui' || value === 'tui' ? value : undefined
+}
+
+/** A non-empty string value, or undefined. */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 /** Merge assistant results over the fast probe, keeping declaration order. */

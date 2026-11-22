@@ -26,12 +26,33 @@ export interface ToolDescriptor {
   requiresToken?: boolean
 }
 
-/** A user-supplied service connection for one tool: its URL and secret token. */
+/** The tool's client form, used to guide detection and install guidance. */
+export type ToolClientType = 'gui' | 'tui'
+
+/** A user-supplied service connection for one tool, plus the detection/debug hints Rock persists. */
 export interface ToolConnectionConfig {
   /** Service base URL; empty means "detect it" (the assistant or provider discovery fills it). */
   url?: string
   /** Secret token/password; required for `dsh`, optional for `opencode`. */
   token?: string
+  /** Client form the tool currently runs as (GUI app vs terminal UI). */
+  clientType?: ToolClientType
+  /** The tool's own root directory (discovery files, config), reused by detection and debug. */
+  rootDir?: string
+  /** Command that starts the tool's resident service/daemon. */
+  startupCommand?: string
+}
+
+/** A detection-derived connection patch for one tool: fields to backfill when the persisted value is empty. */
+export interface ToolConnectionPatch {
+  /** Tool type id the patch applies to. */
+  id: string
+  /** Detected client form, when the assistant reported one. */
+  clientType?: ToolClientType
+  /** Detected tool root directory, when the assistant reported one. */
+  rootDir?: string
+  /** Detected resident-service startup command, when the assistant reported one. */
+  startupCommand?: string
 }
 
 /** Which detection path produced a status. */
