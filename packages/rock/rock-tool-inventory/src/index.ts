@@ -53,8 +53,9 @@ const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
     command: 'codex',
     installDocUrl: 'https://developers.openai.com/codex/cli',
     serviceHint: '通过 codex app-server daemon 的控制 unix socket 委派（默认 ~/.codex/app-server-control/app-server-control.sock，JSON-RPC）。',
+    configurable: true,
   },
-  { id: 'pi', command: 'pi', installDocUrl: 'https://github.com/badlogic/pi-mono' },
+  { id: 'pi', command: 'pi', installDocUrl: 'https://github.com/badlogic/pi-mono', configurable: true },
   {
     id: 'opencode',
     command: 'opencode',
@@ -68,7 +69,7 @@ const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
     configurable: true,
     requiresToken: true,
   },
-  { id: 'claude-code', command: 'claude' },
+  { id: 'claude-code', command: 'claude', configurable: true },
 ]
 
 /** JSON file persisting the last detection result across restarts. */

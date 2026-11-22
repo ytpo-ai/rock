@@ -97,6 +97,16 @@ describe('connection config', () => {
 
     expect(controller.connectionConfig('opencode')).toEqual({ url: 'http://x' })
   })
+
+  it('marks every shipped tool as configurable', async () => {
+    const dir = await tempDir()
+    const { controller } = await boot(join(dir, 'tool-connections.json'))
+    const descriptors = controller.toolDescriptors()
+    expect(descriptors.map(descriptor => descriptor.id).sort()).toEqual(['claude-code', 'codex', 'dsh', 'opencode', 'pi'])
+    for (const descriptor of descriptors) {
+      expect(descriptor.configurable).toBe(true)
+    }
+  })
 })
 
 describe('connection hot reload', () => {
