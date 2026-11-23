@@ -111,9 +111,24 @@
 
 .cardHeader {
   display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Name and the source/run state share one line; the state centers against the name row. */
+.cardTitleRow {
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.cardHeaderMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* Name cell mirrors the Seagull card's avatar + name + role block. */
@@ -128,6 +143,7 @@
 .cardAvatar {
   display: grid;
   place-items: center;
+  align-self: center;
   flex: 0 0 36px;
   width: 36px;
   height: 36px;
@@ -137,6 +153,7 @@
 }
 
 .cardNameButton {
+  flex: 1;
   justify-content: flex-start;
   min-width: 0;
   max-width: 100%;
@@ -329,6 +346,15 @@
   line-height: 18px;
   color: var(--dsw-alias-label-primary);
   overflow-wrap: anywhere;
+}
+
+/* A field value paired with its inline action (the execution tool and its bind control). */
+.detailFieldInline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
 }
 
 .detailHint {

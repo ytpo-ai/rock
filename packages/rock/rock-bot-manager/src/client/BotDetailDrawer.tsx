@@ -1,7 +1,9 @@
 /** Bot detail drawer: read-only basics plus every action the card does not carry. */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import {
-  Button, Modal, SegmentedTabs, StateDot, Tag, type TagTone,
+  Button, IconCloseOutlineRegular, IconEditOutlineRegular, IconLinkOutlineRegular, IconPlayOutlineRegular,
+  IconRefreshOutlineRegular, IconTrashOutlineRegular, IconUploadOutlineRegular,
+  Modal, SegmentedTabs, StateDot, Tag, type TagTone,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { BotDebugState, BotDeploymentRow, BotRow, BotSource, LlmProxyChecklist } from '@rock/rock-bot-manager/types'
 import { bindLockedReason, boundToolType, detailActions, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
@@ -145,7 +147,15 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
             </span>
           </span>
         </div>
-        <Button size="sm" variant="ghost" onClick={onClose} aria-label={t('detail.close')}>{t('detail.close')}</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<IconCloseOutlineRegular size={14} />}
+          onClick={onClose}
+          aria-label={t('detail.close')}
+        >
+          {t('detail.close')}
+        </Button>
       </header>
 
       {hasProxyTab && <div className={css.drawerTabs}>{tabs}</div>}
@@ -189,7 +199,25 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
               <section className={css.detailSection}>
                 <h3 className={css.detailSectionTitle}>{t('detail.section.execution')}</h3>
                 <div className={css.detailGrid}>
-                  <Field label={t('detail.tool')}>{bound ?? t('bind.pending')}</Field>
+                  <Field label={t('detail.tool')}>
+                    <span className={css.detailFieldInline}>
+                      <span className={bound === undefined ? css.cardChipMuted : undefined}>
+                        {bound ?? t('bind.pending')}
+                      </span>
+                      {actions.includes('bind') && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={<IconLinkOutlineRegular size={14} />}
+                          disabled={rebindReason !== undefined}
+                          title={rebindReason}
+                          onClick={onBind}
+                        >
+                          {bound === undefined ? t('bind.action') : t('detail.rebind')}
+                        </Button>
+                      )}
+                    </span>
+                  </Field>
                   <Field label={t('detail.deployStatus')}>
                     <Tag tone={deploymentTone(status)}>{t(`deploy.status.${status}`)}</Tag>
                   </Field>
@@ -223,7 +251,9 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
             {!proxyLoading && proxyFailed && (
               <div className={css.testError} role="alert">
                 <span>{t('proxy.loadFailed')}</span>
-                <Button variant="ghost" size="sm" onClick={loadChecklist}>{t('load.retry')}</Button>
+                <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={14} />} onClick={loadChecklist}>
+                  {t('load.retry')}
+                </Button>
               </div>
             )}
             {!proxyLoading && !proxyFailed && checklist !== null && (
@@ -235,22 +265,13 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
 
       {actions.length > 0 && (
         <footer className={css.drawerFooter}>
-          {actions.includes('bind') && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={rebindReason !== undefined}
-              title={rebindReason}
-              onClick={onBind}
-            >
-              {bound === undefined ? t('bind.pending') : t('detail.rebind')}
-            </Button>
-          )}
           {actions.includes('deploy') && (
             <Button
               size="sm"
               variant="primary"
-              icon={status === 'deploying' || deployBusy ? <StateDot state="ongoing" /> : undefined}
+              icon={status === 'deploying' || deployBusy
+                ? <StateDot state="ongoing" />
+                : <IconUploadOutlineRegular size={14} />}
               disabled={deployLocked || status === 'deploying' || deployBusy}
               title={deployLocked && status !== 'deploying' ? t('deploy.running') : undefined}
               onClick={onDeploy}
@@ -264,7 +285,9 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
             <Button
               size="sm"
               variant="outline"
-              icon={<StateDot state={debugState?.running === true ? 'ongoing' : 'idle'} />}
+              icon={debugState?.running === true
+                ? <StateDot state="ongoing" />
+                : <IconPlayOutlineRegular size={14} />}
               disabled={debugBusy || debug?.running === true}
               title={bound === undefined ? t('debug.unbound') : undefined}
               onClick={onDebug}
@@ -273,13 +296,14 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
             </Button>
           )}
           {actions.includes('edit') && (
-            <Button size="sm" variant="outline" onClick={onEdit}>{t('edit')}</Button>
+            <Button size="sm" variant="outline" icon={<IconEditOutlineRegular size={14} />} onClick={onEdit}>{t('edit')}</Button>
           )}
           {actions.includes('delete') && (
             <Button
               className={css.deleteAction}
               size="sm"
               variant="outline"
+              icon={<IconTrashOutlineRegular size={14} />}
               disabled={bot.active}
               title={bot.active ? t('status.active') : undefined}
               onClick={onDelete}

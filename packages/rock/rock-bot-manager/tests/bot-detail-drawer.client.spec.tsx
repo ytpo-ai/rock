@@ -91,9 +91,20 @@ describe('BotDetailDrawer', () => {
   it('offers the bind action while the bot is unbound', () => {
     const { tool: _tool, ...unbound } = CLAIMED
     renderDrawer(unbound)
-    // The unbound tool field and the bind action both read as pending.
-    expect(screen.getAllByText('bind.pending').length).toBeGreaterThan(1)
+    expect(screen.getByText('bind.pending')).toBeTruthy()
+    expect(screen.getByText('bind.action')).toBeTruthy()
     expect(screen.getByText('detail.section.execution')).toBeTruthy()
+  })
+
+  it('puts the rebind control beside the execution-tool value rather than in the footer', () => {
+    renderDrawer(CLAIMED)
+    const toolField = screen.getByText('detail.tool').closest('div')
+    expect(toolField).not.toBeNull()
+    expect(toolField?.querySelector('button')?.textContent).toBe('detail.rebind')
+
+    const footer = document.querySelector('footer')
+    expect(footer).not.toBeNull()
+    expect(footer?.textContent).not.toContain('detail.rebind')
   })
 
   it('hides execution and every action for the dedicated assistant', () => {

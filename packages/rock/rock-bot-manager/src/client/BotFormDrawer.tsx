@@ -1,6 +1,8 @@
 /** Right-side drawer hosting the add/edit-bot form, split into basics, provider, single-model, and backend sections. */
 import { useState, type FormEvent, type ReactElement } from 'react'
-import { Button, Checkbox, Input, Menu, Modal, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, Checkbox, IconPlusOutlineRegular, IconSaveOutlineRegular, Input, Menu, Modal, Switch,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ApiProtocol, BotInput, BotInputType, BotLlm, BotReasoningLevel } from '@rock/rock-bot-manager/types'
 import type { RockBotManagerKey } from './locales.ts'
 import css from './rock-bot-manager.module.css'
@@ -312,7 +314,13 @@ export function BotFormDrawer({
 
       <footer className={css.drawerFooter}>
         <Button variant="ghost" onClick={onCancel}>{t('form.cancel')}</Button>
-        <Button variant="primary" type="submit" form={FORM_ID} disabled={submitting}>
+        <Button
+          variant="primary"
+          type="submit"
+          form={FORM_ID}
+          icon={mode === 'add' ? <IconPlusOutlineRegular size={14} /> : <IconSaveOutlineRegular size={14} />}
+          disabled={submitting}
+        >
           {mode === 'add' ? t('form.submit') : t('form.save')}
         </Button>
       </footer>

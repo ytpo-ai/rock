@@ -1,6 +1,6 @@
 /** Bind-execution-tool dialog: pick the backend one bot delegates to and confirm the change. */
 import { useState, type ReactElement } from 'react'
-import { Button, Modal, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconLinkOutlineRegular, Modal, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RockBotManagerKey } from './locales.ts'
 import css from './rock-bot-manager.module.css'
 
@@ -41,7 +41,12 @@ export function BindToolDialog({ t, botName, toolTypes, installed, current, onCo
       footer={(
         <>
           <Button variant="ghost" onClick={onClose}>{t('bind.cancel')}</Button>
-          <Button variant="primary" disabled={!canConfirm} onClick={() => { if (selected !== undefined) onConfirm(selected) }}>
+          <Button
+            variant="primary"
+            icon={<IconLinkOutlineRegular size={14} />}
+            disabled={!canConfirm}
+            onClick={() => { if (selected !== undefined) onConfirm(selected) }}
+          >
             {t('bind.confirm')}
           </Button>
         </>

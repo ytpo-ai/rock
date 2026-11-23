@@ -4,8 +4,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  Button, IconAgentPresetOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular,
-  IconUploadOutlineRegular, Input, Menu, MenuItemButton, Modal, Pill, StateDot, Tag, Toast,
+  Button, IconAgentPresetOutlineRegular, IconCloseOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
+  IconInspectOutlineRegular, IconLinkOutlineRegular, IconPlayOutlineRegular, IconPlusOutlineRegular,
+  IconRefreshOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, IconTrashOutlineRegular,
+  IconUploadOutlineRegular,
+  Input, Menu, MenuItemButton, Modal, Pill, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -479,9 +482,14 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
               detail={`[${debug.botName ?? ''}] ${debug.result?.error ?? ''}`}
               onDismiss={() => { setDebugDismissed(true) }}
               dismissLabel={t('alert.dismiss')}
+              onDismissIcon={<IconCloseOutlineRegular size={14} />}
               action={debug.sessionId === undefined
                 ? undefined
-                : { label: t('progress.viewSession'), onClick: () => { openSession(debug.sessionId as string) } }}
+                : {
+                  label: t('progress.viewSession'),
+                  icon: <IconRightUpOutlineRegular size={14} />,
+                  onClick: () => { openSession(debug.sessionId as string) },
+                }}
             />
           )}
           {deployFailures.map(row => (
@@ -491,6 +499,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
               detail={`${row.name}${row.toolType === undefined ? '' : ` · ${row.toolType}`} — ${row.error ?? ''}`}
               action={{
                 label: t('alert.deploy.retry'),
+                icon: <IconRefreshOutlineRegular size={14} />,
                 onClick: () => {
                   const bot = bots.find(candidate => candidate.id === row.id)
                   if (bot !== undefined) setDeployConfirm(bot)
@@ -540,7 +549,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
       ) : loadFailed ? (
         <div className={css.testError} role="alert">
           <span>{t('load.failed')}</span>
-          <Button variant="ghost" size="sm" onClick={retryLoad}>{t('load.retry')}</Button>
+          <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={14} />} onClick={retryLoad}>{t('load.retry')}</Button>
         </div>
       ) : visibleBots.length === 0 ? (
         <p className={css.empty}>{bots.length === 0 ? t('empty') : t('empty.filtered')}</p>
@@ -560,22 +569,26 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                     <IconAgentPresetOutlineRegular size={20} />
                   </span>
                   <div className={css.cardIdentity}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={css.cardNameButton}
-                      title={t('detail.open')}
-                      onClick={() => { setDetailId(bot.id) }}
-                    >
-                      {bot.name}
-                    </Button>
+                    <span className={css.cardTitleRow}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={css.cardNameButton}
+                        title={t('detail.open')}
+                        onClick={() => { setDetailId(bot.id) }}
+                      >
+                        {bot.name}
+                      </Button>
+                      <span className={css.cardHeaderMeta}>
+                        <Tag tone={sourceTone(bot.source)}>{sourceLabel(bot.source)}</Tag>
+                        <span className={css.status}>
+                          <StateDot state={bot.active ? 'ongoing' : 'idle'} />
+                          {bot.active ? t('status.active') : t('status.idle')}
+                        </span>
+                      </span>
+                    </span>
                     <span className={css.cardRole}>{bot.role === undefined || bot.role === '' ? t('role.none') : bot.role}</span>
                   </div>
-                  <Tag tone={sourceTone(bot.source)}>{sourceLabel(bot.source)}</Tag>
-                  <span className={css.status}>
-                    <StateDot state={bot.active ? 'ongoing' : 'idle'} />
-                    {bot.active ? t('status.active') : t('status.idle')}
-                  </span>
                 </div>
 
                 <div className={css.cardChips}>
@@ -597,6 +610,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                       <Button
                         size="sm"
                         variant="primary"
+                        icon={<IconLinkOutlineRegular size={14} />}
                         disabled={rebindDisabled}
                         title={bot.active ? t('status.active') : (!bot.canRebind ? t('rebind.locked') : undefined)}
                         onClick={() => { setBindTarget(bot) }}
@@ -622,6 +636,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                       <Button
                         size="sm"
                         variant="outline"
+                        icon={<IconPlayOutlineRegular size={14} />}
                         disabled={debug?.running === true || debugStarting === bot.id}
                         onClick={() => { runDebug(bot.id) }}
                       >
@@ -644,13 +659,24 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                       )}
                       onClose={() => { setCardMenu(null) }}
                     >
-                      <MenuItemButton onSelect={() => { setCardMenu(null); setDetailId(bot.id) }}>{t('detail.open')}</MenuItemButton>
+                      <MenuItemButton
+                        icon={<IconInspectOutlineRegular size={14} />}
+                        onSelect={() => { setCardMenu(null); setDetailId(bot.id) }}
+                      >
+                        {t('detail.open')}
+                      </MenuItemButton>
                       {bot.source === 'local' && (
-                        <MenuItemButton onSelect={() => { setCardMenu(null); openEdit(bot) }}>{t('edit')}</MenuItemButton>
+                        <MenuItemButton
+                          icon={<IconEditOutlineRegular size={14} />}
+                          onSelect={() => { setCardMenu(null); openEdit(bot) }}
+                        >
+                          {t('edit')}
+                        </MenuItemButton>
                       )}
                       {bot.canDelete && (
                         <MenuItemButton
                           danger
+                          icon={<IconTrashOutlineRegular size={14} />}
                           disabled={bot.active}
                           disabledReason={bot.active ? t('status.active') : undefined}
                           onSelect={() => { setCardMenu(null); setDeleteTarget(bot) }}
@@ -710,7 +736,9 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           footer={(
             <>
               <Button variant="ghost" onClick={() => { setDeployConfirm(null) }}>{t('deploy.confirm.cancel')}</Button>
-              <Button variant="primary" onClick={() => { deployOne(deployConfirm) }}>{t('deploy.confirm.confirm')}</Button>
+              <Button variant="primary" icon={<IconUploadOutlineRegular size={14} />} onClick={() => { deployOne(deployConfirm) }}>
+                {t('deploy.confirm.confirm')}
+              </Button>
             </>
           )}
         >
@@ -750,7 +778,9 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           footer={(
             <>
               <Button variant="ghost" onClick={() => { setDeleteTarget(null) }}>{t('deleteConfirm.cancel')}</Button>
-              <Button variant="primary" onClick={confirmDelete}>{t('deleteConfirm.confirm')}</Button>
+              <Button variant="primary" icon={<IconTrashOutlineRegular size={14} />} onClick={confirmDelete}>
+                {t('deleteConfirm.confirm')}
+              </Button>
             </>
           )}
         >
@@ -770,7 +800,12 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           footer={(
             <>
               <Button variant="ghost" onClick={closeDeployDialog}>{t('deploy.dialog.close')}</Button>
-              <Button variant="primary" disabled={deploymentsFailed || !deployAllAvailable || deployLocked} onClick={deployAllBots}>
+              <Button
+                variant="primary"
+                icon={<IconUploadOutlineRegular size={14} />}
+                disabled={deploymentsFailed || !deployAllAvailable || deployLocked}
+                onClick={deployAllBots}
+              >
                 {pendingDeploy?.kind === 'all' ? t('deploy.all.starting') : t('deploy.all')}
               </Button>
             </>
@@ -787,7 +822,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
             {deploymentsFailed ? (
               <div className={css.testError} role="alert">
                 <span>{t('deploy.loadFailed')}</span>
-                <Button variant="ghost" size="sm" onClick={refreshDeployments}>{t('load.retry')}</Button>
+                <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={14} />} onClick={refreshDeployments}>{t('load.retry')}</Button>
               </div>
             ) : deployDialogRows.length === 0 ? (
               <p className={css.empty}>{t('deploy.dialog.empty')}</p>
@@ -822,22 +857,23 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
 function PageAlert(props: {
   title: string
   detail: string
-  action?: { label: string; onClick: () => void } | undefined
+  action?: { label: string; icon?: ReactNode; onClick: () => void } | undefined
   onDismiss?: (() => void) | undefined
   dismissLabel?: string | undefined
+  onDismissIcon?: ReactNode
   children?: ReactNode
 }): ReactElement {
-  const { title, detail, action, onDismiss, dismissLabel, children } = props
+  const { title, detail, action, onDismiss, dismissLabel, onDismissIcon, children } = props
   return (
     <div className={css.pageAlert} role="alert">
       <span className={css.pageAlertTitle}>{title}</span>
       <span className={css.pageAlertDetail}>{detail}</span>
       {children}
       {action !== undefined && (
-        <Button size="sm" variant="ghost" onClick={action.onClick}>{action.label}</Button>
+        <Button size="sm" variant="ghost" icon={action.icon} onClick={action.onClick}>{action.label}</Button>
       )}
       {onDismiss !== undefined && dismissLabel !== undefined && (
-        <Button size="sm" variant="ghost" onClick={onDismiss}>{dismissLabel}</Button>
+        <Button size="sm" variant="ghost" icon={onDismissIcon} onClick={onDismiss}>{dismissLabel}</Button>
       )}
     </div>
   )
@@ -889,7 +925,7 @@ function DebugProgressRow(props: {
       <span className={css.progressCurrent}>{text}</span>
       {sessionId !== undefined
         ? (
-          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+          <Button size="sm" variant="ghost" icon={<IconRightUpOutlineRegular size={14} />} onClick={() => { openSession(sessionId) }}>
             {t('progress.viewSession')}
           </Button>
         )
@@ -915,7 +951,7 @@ function DebugResultRow(props: {
       <span className={css.debugDetail}>{detail}</span>
       {sessionId !== undefined
         ? (
-          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+          <Button size="sm" variant="ghost" icon={<IconRightUpOutlineRegular size={14} />} onClick={() => { openSession(sessionId) }}>
             {t('progress.viewSession')}
           </Button>
         )
