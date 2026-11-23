@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelayLogTable, SessionsTable } from '../src/client/RockObservabilitySection.tsx'
 import type { RockObservabilityKey } from '../src/client/locales.ts'
@@ -52,6 +52,23 @@ describe('RelayLogTable', () => {
     render(<RelayLogTable t={t} remote={remote} />)
 
     expect(await screen.findByText('relay.empty')).toBeTruthy()
+  })
+
+  it('renders relay rows newest-first', async () => {
+    const newer: RelayForwardLog = { timestamp: '2026-11-23T06:12:00.000Z', agentBotId: 'bot-new', botName: 'New Bot', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay', status: 200 }
+    const older: RelayForwardLog = { timestamp: '2026-11-23T06:10:00.000Z', agentBotId: 'bot-old', botName: 'Old Bot', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay', status: 200 }
+    const remote = {
+      rows: vi.fn(),
+      relayLogs: vi.fn(async () => ok([newer, older])),
+      relayLogCount: vi.fn(async () => ok(2)),
+    }
+    render(<RelayLogTable t={t} remote={remote} />)
+
+    await screen.findByText('New Bot')
+    const rows = screen.getAllByRole('row')
+    expect(rows).toHaveLength(3) // header + 2 data rows
+    expect(within(rows[1]!).getByText('New Bot')).toBeTruthy()
+    expect(within(rows[2]!).getByText('Old Bot')).toBeTruthy()
   })
 })
 

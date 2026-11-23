@@ -1,7 +1,6 @@
 /** Rock observability panel: tabbed relay-forward log and local session rows. */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type UIEvent } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservabilityRow, RelayForwardLog } from '@rock/rock-observability/types'
@@ -26,7 +25,7 @@ type RelayTranslate = (key: RockObservabilityKey) => string
 
 /** Entries fetched per older-page request. */
 const PAGE_SIZE = 50
-/** Distance from the scroll top, in pixels, that requests one older page. */
+/** Distance from the scroll bottom, in pixels, that requests one older page. */
 const LOAD_OLDER_THRESHOLD = 64
 
 /** One tab value. */
@@ -74,7 +73,7 @@ function barClass(log: RelayForwardLog): string | undefined {
   return log.error !== undefined || (log.status !== undefined && log.status >= 400) ? css.barFail : css.barOk
 }
 
-/** Relay-forward table: newest at the bottom, scroll up to page older entries. */
+/** Relay-forward table: newest at the top, scroll down to page older entries. */
 export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockObservabilitySectionInjected['remote'] }): ReactElement {
   const [logs, setLogs] = useState<RelayForwardLog[]>([])
   const [total, setTotal] = useState<number | null>(null)
@@ -96,7 +95,7 @@ export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockOb
       const value = page.ok ? page.value : []
       const totalValue = count.ok ? count.value : value.length
       offsetRef.current = value.length
-      setLogs(value.slice().reverse())
+      setLogs(value)
       setTotal(totalValue)
       setExhausted(value.length >= totalValue)
       setLoadFailed(!page.ok || !count.ok)
@@ -105,20 +104,8 @@ export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockOb
     return () => { cancelled = true }
   }, [remote])
 
-  // Pin to the newest entries on the first render.
-  useEffect(() => {
-    const element = scrollRef.current
-    /* v8 ignore next -- the scrollport mounts with the first page. */
-    if (element === null) return
-    element.scrollTop = element.scrollHeight
-  }, [])
-
   const loadOlder = useCallback(async (): Promise<void> => {
     if (loadingRef.current || exhausted || total === null) return
-    const element = scrollRef.current
-    /* v8 ignore next -- a request never runs without the mounted scrollport. */
-    if (element === null) return
-    const bottomDistance = element.scrollHeight - element.scrollTop
     loadingRef.current = true
     setLoading(true)
     setLoadFailed(false)
@@ -126,22 +113,18 @@ export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockOb
     const value = result.ok ? result.value : []
     offsetRef.current += value.length
     if (result.ok) {
-      setLogs(previous => [...value.slice().reverse(), ...previous])
+      setLogs(previous => [...previous, ...value])
       setExhausted(offsetRef.current >= total)
     } else {
       setLoadFailed(true)
     }
     setLoading(false)
     loadingRef.current = false
-    // Keep the same content pinned after the prepend restores the scroll height.
-    requestAnimationFrame(() => {
-      const port = scrollRef.current
-      if (port !== null) port.scrollTop = port.scrollHeight - bottomDistance
-    })
   }, [remote, exhausted, total])
 
   const onScroll = (event: UIEvent<HTMLDivElement>): void => {
-    if (event.currentTarget.scrollTop <= LOAD_OLDER_THRESHOLD) void loadOlder()
+    const element = event.currentTarget
+    if (element.scrollTop + element.clientHeight >= element.scrollHeight - LOAD_OLDER_THRESHOLD) void loadOlder()
   }
 
   const scale = logs.reduce((max, log) => {
@@ -151,19 +134,6 @@ export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockOb
 
   return (
     <div ref={scrollRef} className={css.scroll} onScroll={onScroll}>
-      <div className={css.older} role="status">
-        {loading
-          ? <span className={css.olderStatus}>{t('loadOlder.loading')}</span>
-          : loadFailed
-            ? (
-              <button type="button" className={css.retry} onClick={() => { void loadOlder() }}>
-                {t('loadOlder.failed')} · {t('loadOlder.retry')}
-              </button>
-            )
-            : exhausted
-              ? <span className={css.olderStatus}>{t('loadOlder.done')}</span>
-              : null}
-      </div>
       {logs.length === 0 && !loading
         ? <p className={css.empty}>{t('relay.empty')}</p>
         : (
@@ -220,6 +190,19 @@ export function RelayLogTable({ t, remote }: { t: RelayTranslate; remote: RockOb
             </tbody>
           </table>
         )}
+      <div className={css.older} role="status">
+        {loading
+          ? <span className={css.olderStatus}>{t('loadOlder.loading')}</span>
+          : loadFailed
+            ? (
+              <button type="button" className={css.retry} onClick={() => { void loadOlder() }}>
+                {t('loadOlder.failed')} · {t('loadOlder.retry')}
+              </button>
+            )
+            : exhausted
+              ? <span className={css.olderStatus}>{t('loadOlder.done')}</span>
+              : null}
+      </div>
     </div>
   )
 }
@@ -270,19 +253,27 @@ export function SessionsTable({ t, remote }: { t: RelayTranslate; remote: RockOb
 /** The tab-selected Logs panel. */
 export function RockObservabilitySection({ t, remote }: RockObservabilitySectionProps): ReactElement {
   const [tab, setTab] = useState<LogTab>('relay')
+  const tabs: readonly { value: LogTab; label: string }[] = [
+    { value: 'relay', label: t('tab.relay') },
+    { value: 'sessions', label: t('tab.sessions') },
+  ]
 
   return (
     <div className={css.root}>
-      <SegmentedTabs
-        className={css.tabs}
-        label={t('tab.label')}
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: 'relay', label: t('tab.relay'), id: 'rock-log-tab-relay', panelId: 'rock-log-panel-relay' },
-          { value: 'sessions', label: t('tab.sessions'), id: 'rock-log-tab-sessions', panelId: 'rock-log-panel-sessions' },
-        ]}
-      />
+      <div className={css.tabs} role="tablist" aria-label={t('tab.label')}>
+        {tabs.map(item => (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.value}
+            className={tab === item.value ? css.tabActive : css.tab}
+            onClick={() => { setTab(item.value) }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       {tab === 'relay'
         ? <RelayLogTable t={t} remote={remote} />
         : <div className={css.scroll}><SessionsTable t={t} remote={remote} /></div>}
