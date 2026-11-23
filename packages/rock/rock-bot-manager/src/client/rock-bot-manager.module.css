@@ -189,14 +189,6 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.cardError {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-error);
-  overflow-wrap: anywhere;
-}
-
 /* Card footer: project line plus the overflow menu, mirroring the Seagull card. */
 .cardFooter {
   display: flex;
@@ -206,6 +198,14 @@
   margin-top: 2px;
   padding-top: 8px;
   border-top: 0.5px solid var(--dsw-alias-settings-card-stroke);
+}
+
+.cardFooterActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .cardProject {
@@ -227,22 +227,6 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-.deployStatusRow {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-}
-
-.deployError {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-error);
-  overflow-wrap: anywhere;
-}
-
 .cardRole {
   font-size: 13px;
   line-height: 18px;
@@ -252,28 +236,37 @@
   white-space: nowrap;
 }
 
-.cardMeta {
+/* Page-level failure strip: deployment and debug failures that must not live on a card. */
+.alertStack {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  flex-direction: column;
+  gap: 6px;
 }
 
-.cardMetaRow {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cardActions {
+.pageAlert {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 2px;
+  padding: 8px 12px;
+  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 32%, transparent);
+  border-radius: var(--dsw-radius-md);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pageAlertTitle {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.pageAlertDetail {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
 }
 
 /* Detail drawer sections. */
@@ -478,7 +471,7 @@
   flex-basis: 100%;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-error);
+  color: var(--dsw-alias-state-error-primary);
   overflow-wrap: anywhere;
 }
 
@@ -509,7 +502,7 @@
   gap: 8px;
   font-size: 13px;
   line-height: 18px;
-  color: var(--dsw-alias-label-error);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .empty {
@@ -551,6 +544,118 @@
   height: 120px;
   border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-skeleton);
+}
+
+/* Bot detail drawer: wider than the form drawer so the field grid and proxy checklist fit. */
+.detailDrawer {
+  position: fixed;
+  top: var(--dsh-frame-chrome-top, 0px);
+  right: 0;
+  bottom: 0;
+  width: min(640px, 100vw);
+  height: auto;
+  gap: 0;
+  padding: 0;
+  border-radius: var(--dsw-radius-panel) 0 0 var(--dsw-radius-panel);
+}
+
+.drawerTabs {
+  padding: 12px 20px 0;
+}
+
+/* Proxy checklist inside the detail drawer. */
+.proxyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Bind-tool dialog rows. */
+.bindBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bindBot {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.bindList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bindRow,
+.bindRowActive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-l1);
+  text-align: start;
+  cursor: pointer;
+}
+
+.bindRowActive {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+}
+
+.bindRow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bindRowTool {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dsh-font-family-code-default);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Deploy confirmation body. */
+.confirmBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirmBot {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.confirmLine {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.confirmWarning {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-warn-label);
 }
 
 /* Right-side drawer shell: pin the Modal dialog to the right edge, full height. */
@@ -692,7 +797,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-error);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .formRow {

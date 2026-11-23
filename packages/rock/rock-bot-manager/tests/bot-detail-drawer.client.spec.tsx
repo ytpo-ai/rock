@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BotDetailDrawer } from '../src/client/BotDetailDrawer.tsx'
 import type { RockBotManagerKey } from '../src/client/locales.ts'
-import type { BotRow } from '../src/types.ts'
+import type { BotRow, LlmProxyChecklist } from '../src/types.ts'
 
 afterEach(cleanup)
 
@@ -32,8 +32,23 @@ const ASSISTANT: BotRow = {
   active: false,
 }
 
+const CHECKLIST: LlmProxyChecklist = {
+  botId: 'bot-C',
+  providerId: 'rock-bot-c',
+  displayName: 'Bot C',
+  baseUrl: 'http://127.0.0.1:4090/v1/bots/bot-C',
+  protocol: 'OpenAI Chat Completions',
+  apiKey: 'sk-rock-test',
+  modelId: 'gpt-5',
+  modelName: 'gpt-5/Bot C',
+}
+
 /** Render one bot's drawer with every action wired to no-ops. */
-function renderDrawer(bot: BotRow, status: 'undeployed' | 'deployed' = 'undeployed'): void {
+function renderDrawer(bot: BotRow, options: {
+  status?: 'undeployed' | 'deployed'
+  loadProxy?: () => Promise<LlmProxyChecklist | null>
+} = {}): void {
+  const status = options.status ?? 'undeployed'
   const boundTool = bot.tool?.toolType
   render(
     <BotDetailDrawer
@@ -47,16 +62,14 @@ function renderDrawer(bot: BotRow, status: 'undeployed' | 'deployed' = 'undeploy
         deployable: true,
       }}
       status={status}
-      toolTypes={['codex', 'dsh']}
-      installed={new Set(['codex', 'dsh'])}
       debug={null}
       deployLocked={false}
       deployBusy={false}
       debugBusy={false}
+      loadProxy={options.loadProxy}
       onBind={() => {}}
       onDeploy={() => {}}
       onDebug={() => {}}
-      onProxy={() => {}}
       onEdit={() => {}}
       onDelete={() => {}}
       onClose={() => {}}
@@ -72,7 +85,6 @@ describe('BotDetailDrawer', () => {
     expect(screen.getByText('Project A')).toBeTruthy()
     expect(screen.getByText('detail.rebind')).toBeTruthy()
     expect(screen.getByText('debug')).toBeTruthy()
-    expect(screen.getByText('proxy.button')).toBeTruthy()
     expect(screen.queryByText('edit')).toBeNull()
   })
 
@@ -90,11 +102,31 @@ describe('BotDetailDrawer', () => {
     expect(screen.getByText('detail.assistantHint')).toBeTruthy()
     expect(screen.queryByText('debug')).toBeNull()
     expect(screen.queryByText('deploy.action')).toBeNull()
-    expect(screen.queryByText('proxy.button')).toBeNull()
+    expect(screen.queryByRole('tablist')).toBeNull()
   })
 
   it('shows the redeploy action once the bot is deployed', () => {
-    renderDrawer(CLAIMED, 'deployed')
+    renderDrawer(CLAIMED, { status: 'deployed' })
     expect(screen.getByText('deploy.redeploy')).toBeTruthy()
+  })
+
+  it('reads the proxy checklist only when its tab is opened', async () => {
+    const loadProxy = vi.fn(() => Promise.resolve(CHECKLIST))
+    renderDrawer(CLAIMED, { loadProxy })
+
+    expect(loadProxy).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('tab', { name: 'proxy.tab' }))
+
+    expect(await screen.findByText('rock-bot-c')).toBeTruthy()
+    expect(loadProxy).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a failed proxy read inside the tab', async () => {
+    renderDrawer(CLAIMED, { loadProxy: () => Promise.resolve(null) })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'proxy.tab' }))
+
+    expect(await screen.findByText('proxy.loadFailed')).toBeTruthy()
+    expect(screen.getByText('load.retry')).toBeTruthy()
   })
 })

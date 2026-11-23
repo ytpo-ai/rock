@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LlmProxyDrawer } from '../src/client/LlmProxyDrawer.tsx'
+import { LlmProxyFields } from '../src/client/LlmProxyFields.tsx'
 import type { RockBotManagerKey } from '../src/client/locales.ts'
 import type { LlmProxyChecklist } from '../src/types.ts'
 
 afterEach(cleanup)
 
-const checklist: LlmProxyChecklist = {
+const CHECKLIST: LlmProxyChecklist = {
   botId: 'agent-bot-C',
   providerId: 'rock-agent-bot-c',
   displayName: '客服助手',
@@ -21,9 +21,9 @@ const checklist: LlmProxyChecklist = {
 /** Return the key verbatim so assertions target the checklist values, not localized copy. */
 const t = (key: RockBotManagerKey): string => key
 
-describe('LlmProxyDrawer', () => {
+describe('LlmProxyFields', () => {
   it('renders every provider and model field value', () => {
-    render(<LlmProxyDrawer t={t} checklist={checklist} onClose={() => {}} />)
+    render(<LlmProxyFields t={t} checklist={CHECKLIST} />)
 
     expect(screen.getByText('rock-agent-bot-c')).toBeTruthy()
     expect(screen.getByText('客服助手')).toBeTruthy()
@@ -35,9 +35,9 @@ describe('LlmProxyDrawer', () => {
   })
 
   it('offers a copy action for each copyable field', () => {
-    render(<LlmProxyDrawer t={t} checklist={checklist} onClose={() => {}} />)
+    render(<LlmProxyFields t={t} checklist={CHECKLIST} />)
 
-    // Seven copyable fields (5 provider + model id + model name) plus the header/footer close buttons.
+    // Seven copyable fields: 5 provider fields, then the model id and model name.
     expect(screen.getAllByText('proxy.copy').length).toBe(7)
   })
 })

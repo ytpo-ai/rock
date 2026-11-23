@@ -585,8 +585,8 @@ export default class RockBotController extends TypertRemoteService {
    * result and progress stream in via {@link testState}.
    */
   @Remote
-  async testBot(id: string): Promise<BotDebugState> {
-    if (this.debug.running) return this.debug
+  testBot(id: string): Promise<BotDebugState> {
+    if (this.debug.running) return Promise.resolve(this.debug)
     const resolved = this.resolveDebugBot(id)
     if (resolved.kind === 'unknown') throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
     if (resolved.kind === 'unbound') {
@@ -605,7 +605,7 @@ export default class RockBotController extends TypertRemoteService {
     this.debugAssistantText = ''
     this.debugDelegated = false
     void this.launchTest(bot)
-    return this.debug
+    return Promise.resolve(this.debug)
   }
 
   /** Latest per-bot debug run state (result + progress; the process renders in the DSH session). */

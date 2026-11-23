@@ -1,5 +1,5 @@
 /** Rock bot manager panel: a bot card grid mirroring the Seagull bot list, the bot detail drawer, and the add/edit-bot form. */
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -12,9 +12,9 @@ import type {
   BotDebugState, BotDefinition, BotDeployState, BotDeploymentRow, BotInput, BotLlm, BotReasoning, BotRow, BotSource,
   BotTestResult, LlmProxyChecklist,
 } from '@rock/rock-bot-manager/types'
+import { BindToolDialog } from './BindToolDialog.tsx'
 import { BotDetailDrawer } from './BotDetailDrawer.tsx'
 import { BotFormDrawer } from './BotFormDrawer.tsx'
-import { LlmProxyDrawer } from './LlmProxyDrawer.tsx'
 import { boundToolType, cardCtas, isDeployable, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import css from './rock-bot-manager.module.css'
 
@@ -121,12 +121,12 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BotRow | null>(null)
-  const [bindingMenu, setBindingMenu] = useState<string | null>(null)
+  const [bindTarget, setBindTarget] = useState<BotRow | null>(null)
   const [cardMenu, setCardMenu] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [debug, setDebug] = useState<BotDebugState | null>(null)
   const [debugStarting, setDebugStarting] = useState<string | null>(null)
-  const [proxy, setProxy] = useState<LlmProxyChecklist | null>(null)
+  const [debugDismissed, setDebugDismissed] = useState(false)
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
@@ -135,6 +135,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   const [deploymentsFailed, setDeploymentsFailed] = useState(false)
   const [deployDialog, setDeployDialog] = useState(false)
   const [deployBatchIds, setDeployBatchIds] = useState<readonly string[]>([])
+  const [deployConfirm, setDeployConfirm] = useState<BotRow | null>(null)
   const [pendingDeploy, setPendingDeploy] = useState<{ kind: 'all' } | { kind: 'bot'; id: string } | null>(null)
   const [deployError, setDeployError] = useState('')
 
@@ -220,6 +221,12 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     const batch = new Set(deployBatchIds)
     return deployments.filter(row => row.deployable && (row.status === 'undeployed' || batch.has(row.id)))
   }, [deployments, deployBatchIds])
+
+  /** Bots whose last deployment failed, reported in the page alert strip rather than on their cards. */
+  const deployFailures = useMemo(
+    () => deployments.filter(row => row.status === 'failed' && row.error !== undefined && row.error !== ''),
+    [deployments],
+  )
 
   const retryLoad = (): void => {
     setLoading(true)
@@ -333,8 +340,9 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     }
   }
 
-  const rebind = (id: string, toolType: string): void => {
-    void remote.rebindBot(id, toolType).then((result) => {
+  const rebind = (bot: BotRow, toolType: string): void => {
+    setBindTarget(null)
+    void remote.rebindBot(bot.id, toolType).then((result) => {
       if (result.ok) {
         showToast(t('toast.rebound'), true)
         refresh()
@@ -346,20 +354,11 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
 
   const runDebug = (id: string): void => {
     setDebugStarting(id)
+    setDebugDismissed(false)
     void remote.testBot(id).then((result) => {
       setDebugStarting(null)
       if (result.ok) setDebug(result.value)
       else showToast(result.error.code === 'rockBots/unbound' ? t('debug.unbound') : result.error.message, false)
-    })
-  }
-
-  const openProxy = (id: string): void => {
-    void remote.getLlmProxy(id).then((result) => {
-      if (result.ok && result.value !== null) {
-        setProxy(result.value)
-      } else {
-        showToast(t('proxy.failed'), false)
-      }
     })
   }
 
@@ -376,9 +375,11 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     setDeployError('')
   }
 
-  const deployOne = (id: string): void => {
-    setPendingDeploy({ kind: 'bot', id })
-    void remote.deployBot(id).then((result) => {
+  /** Run one bot's deployment after the confirmation dialog was accepted. */
+  const deployOne = (bot: BotRow): void => {
+    setDeployConfirm(null)
+    setPendingDeploy({ kind: 'bot', id: bot.id })
+    void remote.deployBot(bot.id).then((result) => {
       setPendingDeploy(null)
       if (result.ok) {
         showToast(t('toast.deploy.started'), true)
@@ -422,6 +423,9 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     })
   }
 
+  const loadProxy = (id: string): Promise<LlmProxyChecklist | null> =>
+    remote.getLlmProxy(id).then(result => (result.ok ? result.value : null))
+
   const deployLocked = pendingDeploy !== null || deployState?.running === true
   const deployAllAvailable = deployDialogRows.some(row => row.status === 'undeployed' || row.status === 'failed')
   const deploymentLabel = (status: BotDeployStatus): string => t(`deploy.status.${status}`)
@@ -431,14 +435,6 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     return bot.llm.modelName ?? bot.llm.model
   }
   const projectLabel = (bot: BotRow): string => bot.projectName ?? t('project.global')
-
-  /** Tool menu rows; `allowUninstalled` opens the form selector to tools not yet installed. */
-  const toolOptions = (selected: string | undefined, allowUninstalled: boolean): Array<{ id: string; label: string; disabled?: boolean }> =>
-    toolTypes.map(tool => ({
-      id: tool,
-      label: installed.has(tool) ? tool : `${tool} · ${t('notInstalled')}`,
-      ...(!allowUninstalled && tool !== selected && !installed.has(tool) ? { disabled: true } : {}),
-    }))
 
   const visibleBots = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -450,6 +446,8 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   }, [bots, search, sourceFilter])
 
   const detailBot = detailId === null ? undefined : bots.find(bot => bot.id === detailId)
+  const debugFailure = debug !== null && !debug.running && debug.result !== undefined && !debug.result.ok
+  const alertsVisible = deployFailures.length > 0 || (debugFailure && !debugDismissed)
 
   return (
     <div className={css.root}>
@@ -472,6 +470,36 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           <Button size="sm" variant="primary" icon={<IconPlusOutlineRegular size={14} />} onClick={openAdd}>{t('add')}</Button>
         </div>
       </header>
+
+      {alertsVisible && (
+        <div className={css.alertStack}>
+          {debugFailure && !debugDismissed && (
+            <PageAlert
+              title={t('alert.debug.title')}
+              detail={`[${debug.botName ?? ''}] ${debug.result?.error ?? ''}`}
+              onDismiss={() => { setDebugDismissed(true) }}
+              dismissLabel={t('alert.dismiss')}
+              action={debug.sessionId === undefined
+                ? undefined
+                : { label: t('progress.viewSession'), onClick: () => { openSession(debug.sessionId as string) } }}
+            />
+          )}
+          {deployFailures.map(row => (
+            <PageAlert
+              key={row.id}
+              title={t('alert.deploy.title')}
+              detail={`${row.name}${row.toolType === undefined ? '' : ` · ${row.toolType}`} — ${row.error ?? ''}`}
+              action={{
+                label: t('alert.deploy.retry'),
+                onClick: () => {
+                  const bot = bots.find(candidate => candidate.id === row.id)
+                  if (bot !== undefined) setDeployConfirm(bot)
+                },
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       <div className={css.toolbar}>
         <div className={css.toolbarControls}>
@@ -497,7 +525,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
       {debug !== null && debug.running && (
         <DebugProgressRow debug={debug} t={t} openSession={openSession} />
       )}
-      {debug !== null && !debug.running && debug.result !== undefined && (
+      {debug !== null && !debug.running && debug.result?.ok === true && (
         <DebugResultRow result={debug.result} sessionId={debug.sessionId} t={t} openSession={openSession} />
       )}
       {deployState?.running === true && (
@@ -562,31 +590,19 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                   )}
                 </div>
 
-                {status === 'failed' && deployment?.error !== undefined && (
-                  <p className={css.cardError}>{deployment.error}</p>
-                )}
-
-                {ctas.length > 0 && (
-                  <div className={css.cardActions}>
+                <div className={css.cardFooter}>
+                  <span className={css.cardProject}>{t('project.label')}：{projectLabel(bot)}</span>
+                  <span className={css.cardFooterActions}>
                     {ctas.includes('bind') && (
-                      <Menu
-                        open={bindingMenu === bot.id}
-                        anchor={(
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            disabled={rebindDisabled}
-                            title={bot.active ? t('status.active') : (!bot.canRebind ? t('rebind.locked') : undefined)}
-                            onClick={() => { setBindingMenu(bindingMenu === bot.id ? null : bot.id) }}
-                          >
-                            {t('bind.pending')}
-                          </Button>
-                        )}
-                        items={toolOptions(bound, false)}
-                        selectedId={bound}
-                        onSelect={(id) => { rebind(bot.id, id); setBindingMenu(null) }}
-                        onClose={() => { setBindingMenu(null) }}
-                      />
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={rebindDisabled}
+                        title={bot.active ? t('status.active') : (!bot.canRebind ? t('rebind.locked') : undefined)}
+                        onClick={() => { setBindTarget(bot) }}
+                      >
+                        {t('bind.pending')}
+                      </Button>
                     )}
                     {ctas.includes('deploy') && (
                       <Button
@@ -595,7 +611,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                         icon={status === 'deploying' || deployBusy ? <StateDot state="ongoing" /> : undefined}
                         disabled={deployLocked || status === 'deploying' || deployBusy || !isDeployable(deployment)}
                         title={!isDeployable(deployment) ? t('deploy.notDeployable') : (deployLocked && status !== 'deploying' ? t('deploy.running') : undefined)}
-                        onClick={() => { deployOne(bot.id) }}
+                        onClick={() => { setDeployConfirm(bot) }}
                       >
                         {status === 'deploying' || deployBusy
                           ? t('deploy.status.deploying')
@@ -612,42 +628,38 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                         {t('debug')}
                       </Button>
                     )}
-                  </div>
-                )}
-
-                <div className={css.cardFooter}>
-                  <span className={css.cardProject}>{t('project.label')}：{projectLabel(bot)}</span>
-                  <Menu
-                    open={cardMenu === bot.id}
-                    align="end"
-                    anchor={(
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t('card.more')}
-                        title={t('card.more')}
-                        onClick={() => { setCardMenu(cardMenu === bot.id ? null : bot.id) }}
-                      >
-                        <IconEllipsisOutlineRegular size={14} />
-                      </Button>
-                    )}
-                    onClose={() => { setCardMenu(null) }}
-                  >
-                    <MenuItemButton onSelect={() => { setCardMenu(null); setDetailId(bot.id) }}>{t('detail.open')}</MenuItemButton>
-                    {bot.source === 'local' && (
-                      <MenuItemButton onSelect={() => { setCardMenu(null); openEdit(bot) }}>{t('edit')}</MenuItemButton>
-                    )}
-                    {bot.canDelete && (
-                      <MenuItemButton
-                        danger
-                        disabled={bot.active}
-                        disabledReason={bot.active ? t('status.active') : undefined}
-                        onSelect={() => { setCardMenu(null); setDeleteTarget(bot) }}
-                      >
-                        {t('delete')}
-                      </MenuItemButton>
-                    )}
-                  </Menu>
+                    <Menu
+                      open={cardMenu === bot.id}
+                      align="end"
+                      anchor={(
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={t('card.more')}
+                          title={t('card.more')}
+                          onClick={() => { setCardMenu(cardMenu === bot.id ? null : bot.id) }}
+                        >
+                          <IconEllipsisOutlineRegular size={14} />
+                        </Button>
+                      )}
+                      onClose={() => { setCardMenu(null) }}
+                    >
+                      <MenuItemButton onSelect={() => { setCardMenu(null); setDetailId(bot.id) }}>{t('detail.open')}</MenuItemButton>
+                      {bot.source === 'local' && (
+                        <MenuItemButton onSelect={() => { setCardMenu(null); openEdit(bot) }}>{t('edit')}</MenuItemButton>
+                      )}
+                      {bot.canDelete && (
+                        <MenuItemButton
+                          danger
+                          disabled={bot.active}
+                          disabledReason={bot.active ? t('status.active') : undefined}
+                          onSelect={() => { setCardMenu(null); setDeleteTarget(bot) }}
+                        >
+                          {t('delete')}
+                        </MenuItemButton>
+                      )}
+                    </Menu>
+                  </span>
                 </div>
               </li>
             )
@@ -661,20 +673,55 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           bot={detailBot}
           deployment={deploymentById.get(detailBot.id)}
           status={deploymentStatusOf(detailBot.id)}
-          toolTypes={toolTypes}
-          installed={installed}
           debug={debug}
           deployLocked={deployLocked}
           deployBusy={pendingDeploy?.kind === 'bot' && pendingDeploy.id === detailBot.id}
           debugBusy={debugStarting === detailBot.id}
-          onBind={(toolType) => { rebind(detailBot.id, toolType) }}
-          onDeploy={() => { deployOne(detailBot.id) }}
+          loadProxy={detailBot.source === 'claimed' ? () => loadProxy(detailBot.id) : undefined}
+          onBind={() => { setBindTarget(detailBot) }}
+          onDeploy={() => { setDeployConfirm(detailBot) }}
           onDebug={() => { runDebug(detailBot.id) }}
-          onProxy={() => { openProxy(detailBot.id) }}
           onEdit={() => { openEdit(detailBot) }}
           onDelete={() => { setDeleteTarget(detailBot) }}
           onClose={() => { setDetailId(null) }}
         />
+      )}
+
+      {bindTarget !== null && (
+        <BindToolDialog
+          t={t}
+          botName={bindTarget.name}
+          toolTypes={toolTypes}
+          installed={installed}
+          current={boundToolType(bindTarget)}
+          onConfirm={(toolType) => { rebind(bindTarget, toolType) }}
+          onClose={() => { setBindTarget(null) }}
+        />
+      )}
+
+      {deployConfirm !== null && (
+        <Modal
+          open
+          onClose={() => { setDeployConfirm(null) }}
+          title={t('deploy.confirm.title')}
+          tone="warning"
+          description={t('deploy.confirm.description')}
+          closeLabel={t('deploy.confirm.cancel')}
+          footer={(
+            <>
+              <Button variant="ghost" onClick={() => { setDeployConfirm(null) }}>{t('deploy.confirm.cancel')}</Button>
+              <Button variant="primary" onClick={() => { deployOne(deployConfirm) }}>{t('deploy.confirm.confirm')}</Button>
+            </>
+          )}
+        >
+          <div className={css.confirmBody}>
+            <p className={css.confirmBot}>{deployConfirm.name}</p>
+            <p className={css.confirmLine}>
+              {t('detail.tool')}：{boundToolType(deployConfirm) ?? t('bind.pending')}
+            </p>
+            <p className={css.confirmWarning}>{t('deploy.confirm.warning')}</p>
+          </div>
+        </Modal>
       )}
 
       {modal !== null && (
@@ -711,10 +758,6 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
         </Modal>
       )}
 
-      {proxy !== null && (
-        <LlmProxyDrawer t={t} checklist={proxy} onClose={() => { setProxy(null) }} />
-      )}
-
       {deployDialog && (
         <Modal
           open
@@ -734,6 +777,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           )}
         >
           <div className={css.deployDialogBody}>
+            <p className={css.confirmWarning}>{t('deploy.confirm.warning')}</p>
             {deployState?.running === true && (
               <DeployProgress state={deployState} nameOf={deploymentNameOf} t={t} />
             )}
@@ -769,6 +813,31 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
         toast.success
           ? <Toast key={toast.key} text={toast.text} tone="success" onDone={() => { setToast(null) }} />
           : <Toast key={toast.key} text={toast.text} onDone={() => { setToast(null) }} />
+      )}
+    </div>
+  )
+}
+
+/** One page-level alert row: a titled failure with an optional action and dismiss control. */
+function PageAlert(props: {
+  title: string
+  detail: string
+  action?: { label: string; onClick: () => void } | undefined
+  onDismiss?: (() => void) | undefined
+  dismissLabel?: string | undefined
+  children?: ReactNode
+}): ReactElement {
+  const { title, detail, action, onDismiss, dismissLabel, children } = props
+  return (
+    <div className={css.pageAlert} role="alert">
+      <span className={css.pageAlertTitle}>{title}</span>
+      <span className={css.pageAlertDetail}>{detail}</span>
+      {children}
+      {action !== undefined && (
+        <Button size="sm" variant="ghost" onClick={action.onClick}>{action.label}</Button>
+      )}
+      {onDismiss !== undefined && dismissLabel !== undefined && (
+        <Button size="sm" variant="ghost" onClick={onDismiss}>{dismissLabel}</Button>
       )}
     </div>
   )
