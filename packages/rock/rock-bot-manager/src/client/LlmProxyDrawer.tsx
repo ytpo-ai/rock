@@ -41,13 +41,13 @@ export function LlmProxyDrawer({ t, checklist, onClose }: LlmProxyDrawerProps): 
   const copyLabel = t('proxy.copy')
   const copiedLabel = t('proxy.copied')
   return (
-    <Modal open onClose={onClose} title={t('proxy.title')} headless className={css.proxyDrawer ?? ''}>
-      <header className={css.proxyHeader}>
-        <h2 className={css.proxyTitle}>{t('proxy.title')}</h2>
+    <Modal open onClose={onClose} title={t('proxy.title')} headless className={css.drawer ?? ''}>
+      <header className={css.drawerHeader}>
+        <h2 className={css.drawerTitle}>{t('proxy.title')}</h2>
         <Button size="sm" variant="ghost" onClick={onClose} aria-label={t('proxy.close')}>{t('proxy.close')}</Button>
       </header>
-      <div className={css.proxyBody}>
-        <p className={css.proxyDescription}>{t('proxy.description')}</p>
+      <div className={css.drawerBody}>
+        <p className={css.drawerDescription}>{t('proxy.description')}</p>
         <section className={css.proxySection}>
           <h3 className={css.proxySectionTitle}>{t('proxy.section.provider')}</h3>
           <CopyRow label={t('proxy.providerId')} value={checklist.providerId} copyLabel={copyLabel} copiedLabel={copiedLabel} />
@@ -69,7 +69,7 @@ export function LlmProxyDrawer({ t, checklist, onClose }: LlmProxyDrawerProps): 
         </section>
         <p className={css.proxyNote}>{t('proxy.note')}</p>
       </div>
-      <footer className={css.proxyFooter}>
+      <footer className={css.drawerFooter}>
         <Button variant="primary" onClick={onClose}>{t('proxy.close')}</Button>
       </footer>
     </Modal>

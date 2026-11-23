@@ -56,8 +56,8 @@ export interface TaskBot {
   id: string
   /** Human-readable display name. */
   name: string
-  /** Execution backend the bot delegates to. */
-  toolType: string
+  /** Execution backend the bot delegates to; absent when the bot is unbound. */
+  toolType?: string
   /** Bot source: `claimed` / `assistant` / `local`. */
   source: string
 }

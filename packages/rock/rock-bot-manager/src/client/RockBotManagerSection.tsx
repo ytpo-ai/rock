@@ -1,24 +1,66 @@
-/** Rock bot manager panel: card grid for the unified bot list, the add/edit-bot modal, and per-bot tool testing. */
-import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react'
+/** Rock bot manager panel: a bot card grid mirroring the Seagull bot list, the bot detail drawer, and the add/edit-bot form. */
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { Button, Input, Menu, Modal, Pill, StateDot, Tag, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, IconAgentPresetOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular,
+  IconUploadOutlineRegular, Input, Menu, MenuItemButton, Modal, Pill, StateDot, Tag, Toast,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { BotDefinition, BotInput, BotRow, BotSource, BotTestResult, LlmProxyChecklist } from '@rock/rock-bot-manager/types'
+import type {
+  BotDebugState, BotDefinition, BotDeployState, BotDeploymentRow, BotInput, BotLlm, BotReasoning, BotRow, BotSource,
+  BotTestResult, LlmProxyChecklist,
+} from '@rock/rock-bot-manager/types'
+import { BotDetailDrawer } from './BotDetailDrawer.tsx'
+import { BotFormDrawer } from './BotFormDrawer.tsx'
 import { LlmProxyDrawer } from './LlmProxyDrawer.tsx'
+import { boundToolType, cardCtas, isDeployable, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import css from './rock-bot-manager.module.css'
 
-/** Empty create-form state. */
+/** Empty create-form state: a new bot starts unbound. */
 const EMPTY_FORM: BotInput = {
   name: '',
   role: '',
   llm: { provider: '', baseUrl: '', apiKey: '', model: '' },
-  tool: { toolType: 'codex' },
 }
 
-/** The add/edit form id, shared by the modal submit button and the form element. */
-const FORM_ID = 'rock-bot-form'
+/** Refresh interval while a deployment batch is running. */
+const DEPLOY_POLL_MS = 1500
+
+/** Clone one reasoning mapping so the form never aliases the persisted bot's state. */
+function cloneReasoning(reasoning: BotReasoning): BotReasoning {
+  return { enabled: reasoning.enabled, levels: reasoning.levels.map(row => ({ ...row })) }
+}
+
+/** Build the editable form's LLM route from a persisted route, blanking the secret. */
+function toEditableLlm(llm: BotLlm | undefined): BotLlm {
+  if (llm === undefined) return { provider: '', baseUrl: '', apiKey: '', model: '' }
+  return {
+    provider: llm.provider,
+    ...llm.name === undefined ? {} : { name: llm.name },
+    baseUrl: llm.baseUrl ?? '',
+    ...llm.protocol === undefined ? {} : { protocol: llm.protocol },
+    apiKey: '',
+    model: llm.model,
+    ...llm.modelName === undefined ? {} : { modelName: llm.modelName },
+    ...llm.contextWindow === undefined ? {} : { contextWindow: llm.contextWindow },
+    ...llm.maxOutputTokens === undefined ? {} : { maxOutputTokens: llm.maxOutputTokens },
+    ...llm.inputTypes === undefined ? {} : { inputTypes: [...llm.inputTypes] },
+    ...(llm.reasoning === undefined ? {} : { reasoning: cloneReasoning(llm.reasoning) }),
+  }
+}
+
+/** Build the persisted reasoning mapping, dropping the disabled state and empty levels. */
+function toPersistedReasoning(reasoning: BotReasoning | undefined): BotReasoning | undefined {
+  if (reasoning?.enabled !== true) return undefined
+  return {
+    enabled: true,
+    levels: reasoning.levels
+      .filter(row => row.level.trim() !== '')
+      .map(row => ({ level: row.level.trim(), value: row.value })),
+  }
+}
 
 /** Source filter values: all three bot sources plus the "all" sentinel. */
 type SourceFilter = 'all' | BotSource
@@ -34,10 +76,15 @@ export interface RockBotManagerSectionInjected {
     toolTypes(): Promise<RemoteResult<string[]>>
     installedTools(): Promise<RemoteResult<string[]>>
     watchDetected(signal?: AbortSignal): AsyncIterable<number>
-    providers(): Promise<RemoteResult<Array<{ id: string; name: string }>>>
-    testBot(id: string): Promise<RemoteResult<BotTestResult>>
+    testBot(id: string): Promise<RemoteResult<BotDebugState>>
+    testState(): Promise<RemoteResult<BotDebugState>>
     getLlmProxy(id: string): Promise<RemoteResult<LlmProxyChecklist | null>>
+    listDeployableBots(): Promise<RemoteResult<BotDeploymentRow[]>>
+    deploymentState(): Promise<RemoteResult<BotDeployState>>
+    deployBot(id: string): Promise<RemoteResult<void>>
+    deployAll(): Promise<RemoteResult<void>>
   }
+  openSession: (sessionId: string) => void
 }
 
 export type RockBotManagerSectionProps =
@@ -52,27 +99,44 @@ function sourceTone(source: BotSource): TagTone {
   }
 }
 
-/** Render the unified bot card grid, the add/edit-bot modal, and per-bot tool testing. */
-export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps): ReactElement {
+/** Tag tone for each deployment status. */
+function deploymentTone(status: BotDeployStatus): TagTone {
+  switch (status) {
+    case 'deployed': return 'success'
+    case 'deploying': return 'info'
+    case 'failed': return 'danger'
+    case 'undeployed': return 'neutral'
+  }
+}
+
+/** Render the unified bot card grid, the bot detail drawer, the add/edit-bot drawer, and per-bot tool debugging. */
+export function RockBotManagerSection({ t, remote, openSession }: RockBotManagerSectionProps): ReactElement {
   const [bots, setBots] = useState<BotRow[]>([])
   const [toolTypes, setToolTypes] = useState<string[]>([])
   const [installed, setInstalled] = useState<ReadonlySet<string>>(new Set())
-  const [providers, setProviders] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [modal, setModal] = useState<{ mode: 'add' } | { mode: 'edit'; bot: BotRow } | null>(null)
   const [form, setForm] = useState<BotInput>(EMPTY_FORM)
   const [formError, setFormError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BotRow | null>(null)
   const [bindingMenu, setBindingMenu] = useState<string | null>(null)
-  const [toolMenu, setToolMenu] = useState(false)
-  const [providerMenu, setProviderMenu] = useState(false)
-  const [testing, setTesting] = useState<string | null>(null)
-  const [testResults, setTestResults] = useState<Record<string, BotTestResult>>({})
+  const [cardMenu, setCardMenu] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [debug, setDebug] = useState<BotDebugState | null>(null)
+  const [debugStarting, setDebugStarting] = useState<string | null>(null)
   const [proxy, setProxy] = useState<LlmProxyChecklist | null>(null)
   const [toast, setToast] = useState<{ text: string; key: number; success: boolean } | null>(null)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
+  const [deployments, setDeployments] = useState<BotDeploymentRow[]>([])
+  const [deployState, setDeployState] = useState<BotDeployState | null>(null)
+  const [deploymentsFailed, setDeploymentsFailed] = useState(false)
+  const [deployDialog, setDeployDialog] = useState(false)
+  const [deployBatchIds, setDeployBatchIds] = useState<readonly string[]>([])
+  const [pendingDeploy, setPendingDeploy] = useState<{ kind: 'all' } | { kind: 'bot'; id: string } | null>(null)
+  const [deployError, setDeployError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -84,7 +148,12 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
     void remote.toolTypes().then((result) => { if (!cancelled && result.ok) setToolTypes(result.value) })
     void remote.installedTools().then((result) => { if (!cancelled && result.ok) setInstalled(new Set(result.value)) })
-    void remote.providers().then((result) => { if (!cancelled && result.ok) setProviders(result.value) })
+    void remote.listDeployableBots().then((result) => {
+      if (cancelled) return
+      if (result.ok) setDeployments(result.value)
+      else setDeploymentsFailed(true)
+    })
+    void remote.deploymentState().then((result) => { if (!cancelled && result.ok) setDeployState(result.value) })
     return () => { cancelled = true }
   }, [remote])
 
@@ -103,6 +172,55 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     return () => { controller.abort() }
   }, [remote])
 
+  // Poll the in-flight debug run so progress and the final result surface without a manual reload.
+  useEffect(() => {
+    if (debug?.running !== true) return
+    const timer = setInterval(() => {
+      void remote.testState().then((result) => { if (result.ok) setDebug(result.value) })
+    }, 1000)
+    return () => { clearInterval(timer) }
+  }, [debug?.running, remote])
+
+  // Poll the active deployment batch; the final read settles per-bot statuses and stops the timer.
+  useEffect(() => {
+    if (deployState?.running !== true) return
+    const timer = setInterval(() => {
+      void remote.listDeployableBots().then((result) => {
+        if (!result.ok) return
+        setDeployments(result.value)
+        setDeploymentsFailed(false)
+      })
+      void remote.deploymentState().then((result) => {
+        if (!result.ok) return
+        setDeployState(result.value)
+        if (!result.value.running) {
+          void remote.listDeployableBots().then((next) => {
+            if (!next.ok) return
+            setDeployments(next.value)
+            setDeploymentsFailed(false)
+          })
+        }
+      })
+    }, DEPLOY_POLL_MS)
+    return () => { clearInterval(timer) }
+  }, [deployState?.running, remote])
+
+  const deploymentById = useMemo(() => new Map(deployments.map(row => [row.id, row])), [deployments])
+
+  /** The batch's current bot reports `deploying` before its record is persisted. */
+  const deploymentStatusOf = (id: string): BotDeployStatus => {
+    if (deployState?.running === true && deployState.current === id) return 'deploying'
+    return deploymentById.get(id)?.status ?? 'undeployed'
+  }
+
+  const deploymentNameOf = (id: string): string => deploymentById.get(id)?.name ?? id
+
+  /** Rows offered by the deploy dialog: deployable undeployed bots plus the running batch's captured ids. */
+  const deployDialogRows = useMemo(() => {
+    const batch = new Set(deployBatchIds)
+    return deployments.filter(row => row.deployable && (row.status === 'undeployed' || batch.has(row.id)))
+  }, [deployments, deployBatchIds])
+
   const retryLoad = (): void => {
     setLoading(true)
     setLoadFailed(false)
@@ -119,6 +237,18 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     void remote.installedTools().then((result) => { if (result.ok) setInstalled(new Set(result.value)) })
   }
 
+  const refreshDeployments = (): void => {
+    void remote.listDeployableBots().then((result) => {
+      if (!result.ok) {
+        setDeploymentsFailed(true)
+        return
+      }
+      setDeployments(result.value)
+      setDeploymentsFailed(false)
+    })
+    void remote.deploymentState().then((result) => { if (result.ok) setDeployState(result.value) })
+  }
+
   const showToast = (text: string, success: boolean): void => {
     setToast({ text, key: Date.now(), success })
   }
@@ -133,10 +263,8 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     setForm({
       name: bot.name,
       role: bot.role ?? '',
-      llm: bot.llm === undefined
-        ? { provider: '', baseUrl: '', apiKey: '', model: '' }
-        : { provider: bot.llm.provider, baseUrl: bot.llm.baseUrl ?? '', apiKey: '', model: bot.llm.model },
-      tool: { toolType: bot.tool.toolType },
+      llm: toEditableLlm(bot.llm),
+      ...boundToolType(bot) === undefined ? {} : { tool: { toolType: boundToolType(bot) as string } },
     })
     setFormError('')
     setModal({ mode: 'edit', bot })
@@ -144,26 +272,38 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
 
   const formInput = (): BotInput => {
     const role = (form.role ?? '').trim()
+    const name = (form.llm.name ?? '').trim()
     const baseUrl = (form.llm.baseUrl ?? '').trim()
     const apiKey = (form.llm.apiKey ?? '').trim()
+    const modelName = (form.llm.modelName ?? '').trim()
+    const reasoning = toPersistedReasoning(form.llm.reasoning)
+    const toolType = (form.tool?.toolType ?? '').trim()
     return {
       name: form.name.trim(),
       ...role === '' ? {} : { role },
       llm: {
         provider: form.llm.provider.trim(),
+        ...name === '' ? {} : { name },
         ...baseUrl === '' ? {} : { baseUrl },
+        protocol: form.llm.protocol ?? 'openai-chat',
         ...apiKey === '' ? {} : { apiKey },
         model: form.llm.model.trim(),
+        ...modelName === '' ? {} : { modelName },
+        ...form.llm.contextWindow === undefined ? {} : { contextWindow: form.llm.contextWindow },
+        ...form.llm.maxOutputTokens === undefined ? {} : { maxOutputTokens: form.llm.maxOutputTokens },
+        inputTypes: form.llm.inputTypes ?? ['text'],
+        ...reasoning === undefined ? {} : { reasoning },
       },
-      tool: { toolType: form.tool.toolType },
+      ...toolType === '' ? {} : { tool: { toolType } },
     }
   }
 
-  const submit = (event: FormEvent): void => {
-    event.preventDefault()
+  const submit = (): void => {
     if (modal === null) return
+    setSubmitting(true)
     if (modal.mode === 'add') {
       void remote.createBot(formInput()).then((result) => {
+        setSubmitting(false)
         if (result.ok) {
           setModal(null)
           showToast(t('toast.created'), true)
@@ -181,6 +321,7 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
           : {}),
       }
       void remote.updateBot(modal.bot.id, { ...input, llm }).then((result) => {
+        setSubmitting(false)
         if (result.ok) {
           setModal(null)
           showToast(t('toast.updated'), true)
@@ -203,17 +344,12 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
   }
 
-  const runTest = (id: string): void => {
-    setTesting(id)
+  const runDebug = (id: string): void => {
+    setDebugStarting(id)
     void remote.testBot(id).then((result) => {
-      setTesting(null)
-      if (!result.ok) {
-        setTestResults(prev => ({ ...prev, [id]: { ok: false, toolType: '', error: result.error.message } }))
-        return
-      }
-      const value = result.value
-      setTestResults(prev => ({ ...prev, [id]: value }))
-      if (value.ok) showToast(t('toast.tested'), true)
+      setDebugStarting(null)
+      if (result.ok) setDebug(result.value)
+      else showToast(result.error.code === 'rockBots/unbound' ? t('debug.unbound') : result.error.message, false)
     })
   }
 
@@ -227,10 +363,55 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
   }
 
+  const openDeployDialog = (): void => {
+    setDeployDialog(true)
+    setDeployBatchIds([])
+    setDeployError('')
+    refreshDeployments()
+  }
+
+  const closeDeployDialog = (): void => {
+    setDeployDialog(false)
+    setDeployBatchIds([])
+    setDeployError('')
+  }
+
+  const deployOne = (id: string): void => {
+    setPendingDeploy({ kind: 'bot', id })
+    void remote.deployBot(id).then((result) => {
+      setPendingDeploy(null)
+      if (result.ok) {
+        showToast(t('toast.deploy.started'), true)
+      } else {
+        showToast(result.error.message, false)
+      }
+      refreshDeployments()
+    })
+  }
+
+  const deployAllBots = (): void => {
+    // Capture the batch ids so their rows stay listed while their statuses advance.
+    setDeployBatchIds(deployDialogRows
+      .filter(row => row.status === 'undeployed' || row.status === 'failed')
+      .map(row => row.id))
+    setPendingDeploy({ kind: 'all' })
+    setDeployError('')
+    void remote.deployAll().then((result) => {
+      setPendingDeploy(null)
+      if (result.ok) {
+        refreshDeployments()
+      } else {
+        setDeployError(result.error.message)
+        showToast(result.error.message, false)
+      }
+    })
+  }
+
   const confirmDelete = (): void => {
     if (deleteTarget === null) return
     const id = deleteTarget.id
     setDeleteTarget(null)
+    if (detailId === id) setDetailId(null)
     void remote.removeBot(id).then((result) => {
       if (result.ok) {
         showToast(t('toast.deleted'), true)
@@ -241,13 +422,18 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
   }
 
+  const deployLocked = pendingDeploy !== null || deployState?.running === true
+  const deployAllAvailable = deployDialogRows.some(row => row.status === 'undeployed' || row.status === 'failed')
+  const deploymentLabel = (status: BotDeployStatus): string => t(`deploy.status.${status}`)
   const sourceLabel = (source: BotSource): string => t(`source.${source}`)
-  const llmLabel = (bot: BotRow): string => bot.llm === undefined ? t('cloudManaged') : `${bot.llm.provider} / ${bot.llm.model}`
+  const llmLabel = (bot: BotRow): string => {
+    if (bot.llm === undefined) return t('cloudManaged')
+    return bot.llm.modelName ?? bot.llm.model
+  }
   const projectLabel = (bot: BotRow): string => bot.projectName ?? t('project.global')
-  const rebindLockedReason = (bot: BotRow): string | undefined => bot.active ? t('status.active') : (bot.canRebind ? undefined : t('rebind.locked'))
 
   /** Tool menu rows; `allowUninstalled` opens the form selector to tools not yet installed. */
-  const toolOptions = (selected: string, allowUninstalled: boolean): Array<{ id: string; label: string; disabled?: boolean }> =>
+  const toolOptions = (selected: string | undefined, allowUninstalled: boolean): Array<{ id: string; label: string; disabled?: boolean }> =>
     toolTypes.map(tool => ({
       id: tool,
       label: installed.has(tool) ? tool : `${tool} · ${t('notInstalled')}`,
@@ -263,76 +449,42 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
     })
   }, [bots, search, sourceFilter])
 
-  const formFields = (
-    <>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.name')}</span>
-        <Input value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }) }} aria-label={t('form.name')} />
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.role')}</span>
-        <Input value={form.role ?? ''} onChange={(event) => { setForm({ ...form, role: event.target.value }) }} aria-label={t('form.role')} />
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.provider')}</span>
-        <div className={css.formTool}>
-          <Menu
-            open={providerMenu}
-            anchor={(
-              <Button size="sm" variant="outline" onClick={() => { setProviderMenu(!providerMenu) }}>
-                {form.llm.provider || t('form.providerPlaceholder')}
-              </Button>
-            )}
-            items={providers.map(provider => ({ id: provider.id, label: provider.name || provider.id }))}
-            selectedId={form.llm.provider}
-            onSelect={(id) => { setForm({ ...form, llm: { ...form.llm, provider: id } }); setProviderMenu(false) }}
-            onClose={() => { setProviderMenu(false) }}
-          />
-        </div>
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.baseUrl')}</span>
-        <Input value={form.llm.baseUrl ?? ''} onChange={(event) => { setForm({ ...form, llm: { ...form.llm, baseUrl: event.target.value } }) }} aria-label={t('form.baseUrl')} />
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.apiKey')}</span>
-        <Input type="password" value={form.llm.apiKey ?? ''} onChange={(event) => { setForm({ ...form, llm: { ...form.llm, apiKey: event.target.value } }) }} aria-label={t('form.apiKey')} />
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.model')}</span>
-        <Input value={form.llm.model} onChange={(event) => { setForm({ ...form, llm: { ...form.llm, model: event.target.value } }) }} aria-label={t('form.model')} />
-      </div>
-      <div className={css.formField}>
-        <span className={css.formLabel}>{t('form.toolType')}</span>
-        <div className={css.formTool}>
-          <Menu
-            open={toolMenu}
-            anchor={(
-              <Button size="sm" variant="outline" onClick={() => { setToolMenu(!toolMenu) }}>
-                {form.tool.toolType}
-              </Button>
-            )}
-            items={toolOptions(form.tool.toolType, true)}
-            selectedId={form.tool.toolType}
-            onSelect={(id) => { setForm({ ...form, tool: { toolType: id } }); setToolMenu(false) }}
-            onClose={() => { setToolMenu(false) }}
-          />
-        </div>
-      </div>
-    </>
-  )
+  const detailBot = detailId === null ? undefined : bots.find(bot => bot.id === detailId)
 
   return (
     <div className={css.root}>
+      <header className={css.pageHeader}>
+        <div className={css.pageHeading}>
+          <h1 className={css.pageTitle}>{t('page.title')}</h1>
+          <p className={css.pageDescription}>{t('page.description')}</p>
+        </div>
+        <div className={css.toolbarActions}>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<IconUploadOutlineRegular size={14} />}
+            disabled={loading || deployState?.running === true}
+            title={deployState?.running === true ? t('deploy.running') : undefined}
+            onClick={openDeployDialog}
+          >
+            {t('deploy.button')}
+          </Button>
+          <Button size="sm" variant="primary" icon={<IconPlusOutlineRegular size={14} />} onClick={openAdd}>{t('add')}</Button>
+        </div>
+      </header>
+
       <div className={css.toolbar}>
         <div className={css.toolbarControls}>
-          <Input
-            value={search}
-            onChange={(event) => { setSearch(event.target.value) }}
-            placeholder={t('search.placeholder')}
-            aria-label={t('search.placeholder')}
-            className={css.search ?? ''}
-          />
+          <span className={css.searchField}>
+            <IconSearchOutlineRegular size={14} className={css.searchIcon} />
+            <Input
+              value={search}
+              onChange={(event) => { setSearch(event.target.value) }}
+              placeholder={t('search.placeholder')}
+              aria-label={t('search.placeholder')}
+              className={css.search ?? ''}
+            />
+          </span>
           <div className={css.filters}>
             <Pill active={sourceFilter === 'all'} onClick={() => { setSourceFilter('all') }}>{t('filter.all')}</Pill>
             <Pill active={sourceFilter === 'claimed'} onClick={() => { setSourceFilter('claimed') }}>{t('source.claimed')}</Pill>
@@ -340,8 +492,17 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
             <Pill active={sourceFilter === 'assistant'} onClick={() => { setSourceFilter('assistant') }}>{t('source.assistant')}</Pill>
           </div>
         </div>
-        <Button variant="primary" size="sm" onClick={openAdd}>{t('add')}</Button>
       </div>
+
+      {debug !== null && debug.running && (
+        <DebugProgressRow debug={debug} t={t} openSession={openSession} />
+      )}
+      {debug !== null && !debug.running && debug.result !== undefined && (
+        <DebugResultRow result={debug.result} sessionId={debug.sessionId} t={t} openSession={openSession} />
+      )}
+      {deployState?.running === true && (
+        <DeployProgress state={deployState} nameOf={deploymentNameOf} t={t} />
+      )}
 
       {loading ? (
         <div className={css.cards}>
@@ -358,105 +519,177 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
       ) : (
         <ul className={css.cards}>
           {visibleBots.map((bot) => {
-            const testResult = testResults[bot.id]
-            const rebindReason = rebindLockedReason(bot)
+            const deployment = deploymentById.get(bot.id)
+            const status = deploymentStatusOf(bot.id)
+            const ctas = cardCtas(bot, status)
+            const bound = boundToolType(bot)
+            const deployBusy = pendingDeploy?.kind === 'bot' && pendingDeploy.id === bot.id
+            const rebindDisabled = !bot.canRebind || bot.active
             return (
               <li key={bot.id} className={css.card}>
                 <div className={css.cardHeader}>
-                  <span className={css.cardName}>{bot.name}</span>
+                  <span className={css.cardAvatar} aria-hidden="true">
+                    <IconAgentPresetOutlineRegular size={20} />
+                  </span>
+                  <div className={css.cardIdentity}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={css.cardNameButton}
+                      title={t('detail.open')}
+                      onClick={() => { setDetailId(bot.id) }}
+                    >
+                      {bot.name}
+                    </Button>
+                    <span className={css.cardRole}>{bot.role === undefined || bot.role === '' ? t('role.none') : bot.role}</span>
+                  </div>
                   <Tag tone={sourceTone(bot.source)}>{sourceLabel(bot.source)}</Tag>
                   <span className={css.status}>
                     <StateDot state={bot.active ? 'ongoing' : 'idle'} />
                     {bot.active ? t('status.active') : t('status.idle')}
                   </span>
                 </div>
-                {bot.role !== undefined && bot.role !== '' && <div className={css.cardRole}>{bot.role}</div>}
-                <div className={css.cardMeta}>
-                  <span className={css.cardMetaRow}>{llmLabel(bot)}</span>
-                  <span className={css.cardMetaRow}>{t('project.label')}：{projectLabel(bot)}</span>
+
+                <div className={css.cardChips}>
+                  <span className={css.cardChip}>{llmLabel(bot)}</span>
+                  {supportsTools(bot) && (
+                    <span className={bound === undefined ? css.cardChipMuted : css.cardChip}>
+                      {bound === undefined ? t('bind.pending') : bound}
+                    </span>
+                  )}
+                  {supportsTools(bot) && status !== 'undeployed' && (
+                    <Tag tone={deploymentTone(status)}>{deploymentLabel(status)}</Tag>
+                  )}
                 </div>
-                <div className={css.cardActions}>
-                  <Menu
-                    open={bindingMenu === bot.id}
-                    anchor={(
+
+                {status === 'failed' && deployment?.error !== undefined && (
+                  <p className={css.cardError}>{deployment.error}</p>
+                )}
+
+                {ctas.length > 0 && (
+                  <div className={css.cardActions}>
+                    {ctas.includes('bind') && (
+                      <Menu
+                        open={bindingMenu === bot.id}
+                        anchor={(
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={rebindDisabled}
+                            title={bot.active ? t('status.active') : (!bot.canRebind ? t('rebind.locked') : undefined)}
+                            onClick={() => { setBindingMenu(bindingMenu === bot.id ? null : bot.id) }}
+                          >
+                            {t('bind.pending')}
+                          </Button>
+                        )}
+                        items={toolOptions(bound, false)}
+                        selectedId={bound}
+                        onSelect={(id) => { rebind(bot.id, id); setBindingMenu(null) }}
+                        onClose={() => { setBindingMenu(null) }}
+                      />
+                    )}
+                    {ctas.includes('deploy') && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={status === 'deploying' || deployBusy ? <StateDot state="ongoing" /> : undefined}
+                        disabled={deployLocked || status === 'deploying' || deployBusy || !isDeployable(deployment)}
+                        title={!isDeployable(deployment) ? t('deploy.notDeployable') : (deployLocked && status !== 'deploying' ? t('deploy.running') : undefined)}
+                        onClick={() => { deployOne(bot.id) }}
+                      >
+                        {status === 'deploying' || deployBusy
+                          ? t('deploy.status.deploying')
+                          : status === 'failed' ? t('deploy.redeploy') : t('deploy.action')}
+                      </Button>
+                    )}
+                    {ctas.includes('debug') && (
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!bot.canRebind || bot.active}
-                        title={rebindReason}
-                        onClick={() => { setBindingMenu(bindingMenu === bot.id ? null : bot.id) }}
+                        disabled={debug?.running === true || debugStarting === bot.id}
+                        onClick={() => { runDebug(bot.id) }}
                       >
-                        {bot.tool.toolType}
+                        {t('debug')}
                       </Button>
-                    )}
-                    items={toolOptions(bot.tool.toolType, false)}
-                    selectedId={bot.tool.toolType}
-                    onSelect={(id) => { rebind(bot.id, id); setBindingMenu(null) }}
-                    onClose={() => { setBindingMenu(null) }}
-                  />
-                  <Button size="sm" disabled={testing === bot.id} onClick={() => { runTest(bot.id) }}>
-                    {testing === bot.id ? t('test.running') : t('test')}
-                  </Button>
-                  {bot.source !== 'local' && (
-                    <Button size="sm" variant="outline" onClick={() => { openProxy(bot.id) }}>
-                      {t('proxy.button')}
-                    </Button>
-                  )}
-                  {bot.source === 'local' && (
-                    <Button size="sm" variant="outline" onClick={() => { openEdit(bot) }}>
-                      {t('edit')}
-                    </Button>
-                  )}
-                  {bot.canDelete && (
-                    <Button className={css.deleteAction} variant="outline" size="sm" disabled={bot.active} title={bot.active ? t('status.active') : undefined} onClick={() => { setDeleteTarget(bot) }}>
-                      {t('delete')}
-                    </Button>
-                  )}
-                </div>
-                {testing !== bot.id && testResult !== undefined && (
-                  <div className={css.testResult}>
-                    {testResult.ok ? (
-                      <>
-                        <span className={css.testResultLabel}>{t('test.answer')}</span>
-                        <span className={css.testAnswer}>{testResult.answer}</span>
-                      </>
-                    ) : (
-                      <div className={css.testError} role="alert">
-                        <span>{testResult.error}</span>
-                        <Button variant="ghost" size="sm" onClick={() => { runTest(bot.id) }}>{t('test.retry')}</Button>
-                      </div>
                     )}
                   </div>
                 )}
+
+                <div className={css.cardFooter}>
+                  <span className={css.cardProject}>{t('project.label')}：{projectLabel(bot)}</span>
+                  <Menu
+                    open={cardMenu === bot.id}
+                    align="end"
+                    anchor={(
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('card.more')}
+                        title={t('card.more')}
+                        onClick={() => { setCardMenu(cardMenu === bot.id ? null : bot.id) }}
+                      >
+                        <IconEllipsisOutlineRegular size={14} />
+                      </Button>
+                    )}
+                    onClose={() => { setCardMenu(null) }}
+                  >
+                    <MenuItemButton onSelect={() => { setCardMenu(null); setDetailId(bot.id) }}>{t('detail.open')}</MenuItemButton>
+                    {bot.source === 'local' && (
+                      <MenuItemButton onSelect={() => { setCardMenu(null); openEdit(bot) }}>{t('edit')}</MenuItemButton>
+                    )}
+                    {bot.canDelete && (
+                      <MenuItemButton
+                        danger
+                        disabled={bot.active}
+                        disabledReason={bot.active ? t('status.active') : undefined}
+                        onSelect={() => { setCardMenu(null); setDeleteTarget(bot) }}
+                      >
+                        {t('delete')}
+                      </MenuItemButton>
+                    )}
+                  </Menu>
+                </div>
               </li>
             )
           })}
         </ul>
       )}
 
+      {detailBot !== undefined && (
+        <BotDetailDrawer
+          t={t}
+          bot={detailBot}
+          deployment={deploymentById.get(detailBot.id)}
+          status={deploymentStatusOf(detailBot.id)}
+          toolTypes={toolTypes}
+          installed={installed}
+          debug={debug}
+          deployLocked={deployLocked}
+          deployBusy={pendingDeploy?.kind === 'bot' && pendingDeploy.id === detailBot.id}
+          debugBusy={debugStarting === detailBot.id}
+          onBind={(toolType) => { rebind(detailBot.id, toolType) }}
+          onDeploy={() => { deployOne(detailBot.id) }}
+          onDebug={() => { runDebug(detailBot.id) }}
+          onProxy={() => { openProxy(detailBot.id) }}
+          onEdit={() => { openEdit(detailBot) }}
+          onDelete={() => { setDeleteTarget(detailBot) }}
+          onClose={() => { setDetailId(null) }}
+        />
+      )}
+
       {modal !== null && (
-        <Modal
-          open
-          onClose={() => { setModal(null) }}
-          title={modal.mode === 'add' ? t('form.title') : t('form.editTitle')}
-          description={t('form.description')}
-          closeLabel={t('form.cancel')}
-          footer={(
-            <>
-              <Button variant="ghost" onClick={() => { setModal(null) }}>{t('form.cancel')}</Button>
-              <Button variant="primary" type="submit" form={FORM_ID}>{modal.mode === 'add' ? t('form.submit') : t('form.save')}</Button>
-            </>
-          )}
-        >
-          <form id={FORM_ID} className={css.form} onSubmit={submit}>
-            {formFields}
-            {formError !== '' && (
-              <div className={css.testError} role="alert">
-                <span>{formError}</span>
-              </div>
-            )}
-          </form>
-        </Modal>
+        <BotFormDrawer
+          t={t}
+          mode={modal.mode}
+          value={form}
+          onChange={setForm}
+          error={formError}
+          submitting={submitting}
+          toolTypes={toolTypes}
+          installed={installed}
+          onCancel={() => { setModal(null) }}
+          onSubmit={submit}
+        />
       )}
 
       {deleteTarget !== null && (
@@ -482,11 +715,142 @@ export function RockBotManagerSection({ t, remote }: RockBotManagerSectionProps)
         <LlmProxyDrawer t={t} checklist={proxy} onClose={() => { setProxy(null) }} />
       )}
 
+      {deployDialog && (
+        <Modal
+          open
+          onClose={closeDeployDialog}
+          title={t('deploy.dialog.title')}
+          description={t('deploy.dialog.description')}
+          closeLabel={t('deploy.dialog.close')}
+          className={css.deployDialog ?? ''}
+          contentClassName={css.deployDialogContent ?? ''}
+          footer={(
+            <>
+              <Button variant="ghost" onClick={closeDeployDialog}>{t('deploy.dialog.close')}</Button>
+              <Button variant="primary" disabled={deploymentsFailed || !deployAllAvailable || deployLocked} onClick={deployAllBots}>
+                {pendingDeploy?.kind === 'all' ? t('deploy.all.starting') : t('deploy.all')}
+              </Button>
+            </>
+          )}
+        >
+          <div className={css.deployDialogBody}>
+            {deployState?.running === true && (
+              <DeployProgress state={deployState} nameOf={deploymentNameOf} t={t} />
+            )}
+            {deployError !== '' && (
+              <div className={css.testError} role="alert"><span>{deployError}</span></div>
+            )}
+            {deploymentsFailed ? (
+              <div className={css.testError} role="alert">
+                <span>{t('deploy.loadFailed')}</span>
+                <Button variant="ghost" size="sm" onClick={refreshDeployments}>{t('load.retry')}</Button>
+              </div>
+            ) : deployDialogRows.length === 0 ? (
+              <p className={css.empty}>{t('deploy.dialog.empty')}</p>
+            ) : (
+              <ul className={css.deployList}>
+                {deployDialogRows.map(row => (
+                  <li key={row.id} className={css.deployRow}>
+                    <span className={css.deployRowName}>{row.name}</span>
+                    <span className={css.deployRowTool}>{row.toolType ?? t('bind.pending')}</span>
+                    <Tag tone={deploymentTone(row.status)}>{deploymentLabel(row.status)}</Tag>
+                    {row.status === 'failed' && row.error !== undefined && (
+                      <span className={css.deployRowError}>{row.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Modal>
+      )}
+
       {toast !== null && (
         toast.success
           ? <Toast key={toast.key} text={toast.text} tone="success" onDone={() => { setToast(null) }} />
           : <Toast key={toast.key} text={toast.text} onDone={() => { setToast(null) }} />
       )}
+    </div>
+  )
+}
+
+/** Batch deployment progress: label, count, the current bot, and a determinate bar. */
+function DeployProgress(props: {
+  state: BotDeployState
+  nameOf: (id: string) => string
+  t: RockBotManagerSectionProps['t']
+}): ReactElement {
+  const { state, nameOf, t } = props
+  const percent = state.total === 0 ? 0 : Math.round((state.done / state.total) * 100)
+  const label = `${t('deploy.progress')} ${String(state.done)}/${String(state.total)}`
+  const current = state.current === undefined ? undefined : nameOf(state.current)
+  return (
+    <div className={css.deployProgress} role="status" aria-live="polite">
+      <StateDot state="ongoing" />
+      <span className={css.deployProgressLabel}>{label}</span>
+      {current !== undefined && <span className={css.deployCurrent}>{current}</span>}
+      <span
+        className={css.deployTrack}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-label={label}
+      >
+        <span className={css.deployFill} style={{ width: `${String(percent)}%` }} />
+      </span>
+    </div>
+  )
+}
+
+/** Single-line debug progress: the bot name + bound backend + view-session link. */
+function DebugProgressRow(props: {
+  debug: BotDebugState
+  t: RockBotManagerSectionProps['t']
+  openSession: (sessionId: string) => void
+}): ReactElement {
+  const { debug, t, openSession } = props
+  const sessionId = debug.sessionId
+  const current = debug.progress.current
+  const text = current === undefined
+    ? `[${debug.botName ?? ''}]${t('debug.running')}`
+    : `[${debug.botName ?? ''}]${t('debug.running')} ${current}`
+  return (
+    <div className={css.progressRow}>
+      <span className={css.progressCurrent}>{text}</span>
+      {sessionId !== undefined
+        ? (
+          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+            {t('progress.viewSession')}
+          </Button>
+        )
+        : null}
+    </div>
+  )
+}
+
+/** One completed debug run: pass/fail tag + answer/error + view-session link. */
+function DebugResultRow(props: {
+  result: BotTestResult
+  sessionId: string | undefined
+  t: RockBotManagerSectionProps['t']
+  openSession: (sessionId: string) => void
+}): ReactElement {
+  const { result, sessionId, t, openSession } = props
+  const detail = result.ok ? result.answer : result.error
+  return (
+    <div className={css.debugResult}>
+      <Tag tone={result.ok ? 'success' : 'danger'}>
+        {result.ok ? t('debug.pass') : t('debug.fail')}
+      </Tag>
+      <span className={css.debugDetail}>{detail}</span>
+      {sessionId !== undefined
+        ? (
+          <Button size="sm" variant="ghost" onClick={() => { openSession(sessionId) }}>
+            {t('progress.viewSession')}
+          </Button>
+        )
+        : null}
     </div>
   )
 }

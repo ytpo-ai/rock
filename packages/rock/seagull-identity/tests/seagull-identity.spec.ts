@@ -9,6 +9,21 @@ const CLAIMS = [
   { agentBotId: 'agent-bot-D', employeeId: 'employee-a', claimedAt: '2026-11-14T00:00:00.000Z' },
 ]
 
+const CLAIMS_WITH_MODELS = [
+  {
+    agentBotId: 'agent-bot-C',
+    employeeId: 'employee-a',
+    claimedAt: '2026-11-14T00:00:00.000Z',
+    model: { provider: 'deepseek', model: 'deepseek-v4-flash', name: 'deepseek-v4-flash' },
+  },
+  {
+    agentBotId: 'agent-bot-D',
+    employeeId: 'employee-a',
+    claimedAt: '2026-11-14T00:00:00.000Z',
+    model: { provider: 'moonshotai', model: 'kimi-k2.6', name: 'Kimi k2.6' },
+  },
+]
+
 describe('SeagullIdentityService', () => {
   let dir: string
 
@@ -46,6 +61,25 @@ describe('SeagullIdentityService', () => {
       name: '@deepseek-ai/dsh-agent-loop',
       config: { agents: service.renderAgents() },
     })
+  })
+
+  it('resolves a bot bound model or falls back to the relay placeholder', async () => {
+    const claimFile = join(dir, 'claims.json')
+    await writeFile(claimFile, JSON.stringify(CLAIMS_WITH_MODELS), 'utf8')
+
+    const service = new SeagullIdentityService({
+      claimFile,
+      bindings: {},
+      defaultToolType: 'codex',
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+    })
+    await service.sync()
+
+    expect(service.modelOf('agent-bot-C')).toBe('deepseek-v4-flash')
+    expect(service.modelOf('agent-bot-D')).toBe('kimi-k2.6')
+    // A bot without a projected model falls back to the relay placeholder.
+    expect(service.modelOf('agent-bot-E')).toBe('seagull-relay')
   })
 
   it('syncs from the gateway and falls back to the local file on failure', async () => {
@@ -119,6 +153,26 @@ describe('SeagullIdentityService', () => {
     ])
     expect(service.toolBindingOf('agent-bot-E')).toBe('codex')
     expect(service.toolBindingOf('agent-bot-C')).toBe('codex')
+  })
+
+  it('leaves a bot without any binding unbound', async () => {
+    const claimFile = join(dir, 'claims.json')
+    await writeFile(claimFile, JSON.stringify(CLAIMS), 'utf8')
+
+    const service = new SeagullIdentityService({
+      claimFile,
+      bindings: {},
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+    })
+    await service.sync()
+
+    expect(service.toolBindingOf('agent-bot-C')).toBeUndefined()
+
+    service.setBotDefinitions([
+      { id: 'agent-bot-D', name: 'Unbound Local', llm: { provider: 'deepseek', model: 'deepseek-chat' } },
+    ])
+    expect(service.toolBindingOf('agent-bot-D')).toBeUndefined()
   })
 
   it('lets a local bot override a claimed bot id and updates via setBotDefinitions', async () => {

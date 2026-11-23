@@ -23,22 +23,34 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { SubagentRunEndInfo, SubagentRunInfo } from '@deepseek-ai/dsh-subagent'
 // Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
 import type {} from '@rock/rock-tool-inventory'
 import { installedToolIds, type InstalledStatus } from './installed.ts'
 import { buildLlmProxyChecklist, RELAY_MODEL } from './proxy.ts'
 import { RockBotService } from './service.ts'
-import { JsonFileBindingStore, JsonFileBotStore } from './store.ts'
+import { JsonFileBindingStore, JsonFileBotStore, JsonFileDeploymentStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
 import { presetForToolType } from './tool-preset.ts'
-import { buildUnifiedBots } from './unify.ts'
-import type { BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult, LlmProxyChecklist } from './types.ts'
+import { buildUnifiedBots, resolveBotToolType } from './unify.ts'
+import type { BotDebugState, BotDeployState, BotDeploymentRow, BotDefinition, BotInput, BotModelInfo, BotRow, BotTestResult, LlmProxyChecklist } from './types.ts'
 
 export { presetForToolType } from './tool-preset.ts'
 export type * from './types.ts'
 
 const DEFAULT_STORE_PATH = '../.rock/bots.json'
 const DEFAULT_BINDINGS_PATH = '../.rock/bindings.json'
+const DEFAULT_DEPLOYMENTS_PATH = '../.rock/deployments.json'
+
+/** Thin-relay assistant preset id used to drive a skill-based deployment. */
+const ASSISTANT_PRESET = 'assistant'
+
+/** Execution backend → config skill slug. */
+const DEPLOY_SKILLS: Readonly<Record<string, string>> = {
+  codex: 'rock-config-codex',
+  dsh: 'rock-config-dsh',
+  opencode: 'rock-config-opencode',
+}
 
 /** Tool types the binding selector offers before deployment overrides them. */
 const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-code']
@@ -47,11 +59,13 @@ const DEFAULT_TOOL_TYPES = ['codex', 'pi', 'opencode', 'dsh', 'acp', 'claude-cod
 const TEST_PROVIDER = 'seagull-cloud'
 const TEST_MODEL = 'seagull-relay'
 
-/** The fixed smoke-test prompt the card's "test" action sends through the bound backend. */
-const TEST_PROMPT = '请查询并回答当前北京的天气'
+/** The fixed smoke-test prompt the card's "debug" action sends through the bound backend. */
+const DEBUG_TASK = '请查询并回答当前北京的天气'
 
-/** Default wall-clock timeout for one thin-relay test run. */
-const DEFAULT_TEST_TIMEOUT_MS = 120_000
+/** Build the debug prompt, prefixed with the bot name so the session title stays clear. */
+function debugPrompt(botName: string): string {
+  return `调试Bot【${botName}】\n${DEBUG_TASK}`
+}
 
 /** Deployment-owned persistence facts; patchable from cordis.yml. */
 export interface Config {
@@ -65,15 +79,15 @@ export interface Config {
   toolTypes?: string[]
   /** JSON file persisting cloud-sourced bot bindings. */
   bindingsPath?: string
-  /** Wall-clock timeout for one thin-relay test run; defaults to {@link DEFAULT_TEST_TIMEOUT_MS}. */
-  testTimeoutMs?: number
+  /** JSON file persisting Rock-recorded deployment state. */
+  deploymentsPath?: string
 }
 
 /** The seagull-identity service surface the unified list reads, structurally typed to avoid a package cycle. */
 interface IdentityLike {
   getClaims(): readonly { agentBotId: string; name?: string; role?: string; model?: BotModelInfo; projectId?: string }[]
   getAssistants(): readonly { agentBotId: string; name?: string; role?: string; model?: BotModelInfo; projectId?: string }[]
-  toolBindingOf(id: string): string
+  toolBindingOf(id: string): string | undefined
   sync(): Promise<void>
 }
 
@@ -86,14 +100,23 @@ export default class RockBotController extends TypertRemoteService {
     employeeId: z.string().default(''),
     toolTypes: z.array(z.string().min(1)).default(DEFAULT_TOOL_TYPES),
     bindingsPath: z.string().min(1).default(DEFAULT_BINDINGS_PATH),
-    testTimeoutMs: z.number().step(1).min(1).default(DEFAULT_TEST_TIMEOUT_MS),
+    deploymentsPath: z.string().min(1).default(DEFAULT_DEPLOYMENTS_PATH),
   })
 
   private readonly service: RockBotService
   private readonly config: Config
   private readonly detectedListeners = new Set<() => void>()
   private detectedRevision = 0
-  private readonly pendingTests = new Map<SessionId, PendingTest>()
+  private debug: BotDebugState = { running: false, progress: { total: 1, detected: 0, steps: 0 } }
+  private debugSessionId: SessionId | undefined
+  private debugToolType: string | undefined
+  private debugAssistantText = ''
+  private debugDelegated = false
+  private deployState: BotDeployState = { running: false, total: 0, done: 0 }
+  private deployQueue: ResolvedDeployBot[] = []
+  private deployCurrent: ResolvedDeployBot | undefined
+  private deploySessionId: SessionId | undefined
+  private deployAssistantText = ''
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rockBots')
@@ -101,8 +124,10 @@ export default class RockBotController extends TypertRemoteService {
     this.service = new RockBotService({
       store: new JsonFileBotStore(config.storePath ?? DEFAULT_STORE_PATH),
       bindingsStore: new JsonFileBindingStore(config.bindingsPath ?? DEFAULT_BINDINGS_PATH),
+      deploymentsStore: new JsonFileDeploymentStore(config.deploymentsPath ?? DEFAULT_DEPLOYMENTS_PATH),
     })
     void this.service.load().then(() => {
+      this.resetStaleDeployments()
       ctx.logger.info(`rock-bot-manager: loaded ${this.service.list().length} local bot(s)`)
     }, (error: unknown) => {
       ctx.logger.warn(`rock-bot-manager: failed to load bots: ${messageOf(error)}`)
@@ -110,13 +135,24 @@ export default class RockBotController extends TypertRemoteService {
     ctx.effect(() => () => {
       for (const listener of this.detectedListeners) listener()
       this.detectedListeners.clear()
-      for (const [sessionId, pending] of this.pendingTests) {
-        pending.resolve({ ok: false, toolType: pending.toolType, error: 'service disposed' })
-        this.pendingTests.delete(sessionId)
+      if (this.debug.running) {
+        this.debug = { ...this.debug, running: false, error: 'service disposed' }
       }
-    }, 'rock-bot-manager: close detection followers and settle pending tests')
+    }, 'rock-bot-manager: close detection followers and settle pending debug runs')
     ctx.on('rock-tool-inventory/detected', () => { this.publishDetected() })
-    ctx.on('session/event', (session: Session, event: SessionEvent) => { this.recordTestEvent(session, event) })
+    ctx.on('session/event', (session: Session, event: SessionEvent) => {
+      this.recordTestEvent(session, event)
+      this.recordDeployEvent(session, event)
+    })
+    ctx.on('subagent/start', (info: SubagentRunInfo) => {
+      if (this.debugSessionId === undefined || info.parentSessionId !== this.debugSessionId) return
+      this.ctx.logger.info(`rock-bot-manager: debug delegated (${info.provider})`)
+      this.debugDelegated = true
+    })
+    ctx.on('subagent/end', (info: SubagentRunEndInfo) => {
+      if (this.debugSessionId === undefined || info.parentSessionId !== this.debugSessionId) return
+      this.finalizeTestFromChild(info)
+    })
   }
 
   /** Advance the detection revision and wake every `watchDetected` follower. */
@@ -189,12 +225,6 @@ export default class RockBotController extends TypertRemoteService {
     return [...(this.config.toolTypes ?? DEFAULT_TOOL_TYPES)]
   }
 
-  /** Registered LLM provider routes for the add/edit form's provider selector. */
-  @Remote
-  providers(): Array<{ id: string; name: string }> {
-    return this.optionalLlm()?.listProviders() ?? []
-  }
-
   /** DSH custom-model-API checklist for one cloud bot (D-034); null for local bots. */
   @Remote
   getLlmProxy(id: string): LlmProxyChecklist | null {
@@ -240,7 +270,7 @@ export default class RockBotController extends TypertRemoteService {
         canRebind: false,
       })),
       activeIds,
-      bindingOf: id => this.service.getBinding(id) ?? identity?.toolBindingOf(id) ?? 'codex',
+      bindingOf: id => this.resolveBinding(id),
       projectNameOf: projectId => projectNameById.get(projectId),
     })
   }
@@ -292,44 +322,341 @@ export default class RockBotController extends TypertRemoteService {
   }
 
   /**
-   * Run one bound tool's smoke-test through its thin-relay preset: the bot's
-   * delegator agent forwards the fixed prompt to the bound `subagent-*` provider
-   * (the service channel), and the assistant output is returned. Falls back to a
-   * structured failure when the agent runtime is unavailable or the launch fails.
+   * Resolve a bot's execution-backend binding across the persisted binding
+   * store and the identity service; `undefined` when the bot is unbound.
+   */
+  private resolveBinding(id: string): string | undefined {
+    const identity = this.optionalIdentity()
+    return this.service.getBinding(id) ?? identity?.toolBindingOf(id)
+  }
+
+  /**
+   * Resolve a bot id to its display name, execution-backend tool binding, and
+   * delegator LLM route. Reports an id outside the three bot sources as
+   * `unknown`, and a bot without any execution backend as `unbound`. Local bots
+   * route through their own `llm`; cloud bots route through the seagull-cloud
+   * relay keyed by their agent-bot id, carrying their bound model name (falling
+   * back to the `seagull-relay` placeholder when the claim has no model).
+   */
+  private resolveDebugBot(id: string): DebugResolution {
+    const local = this.service.get(id)
+    const identity = this.optionalIdentity()
+    const cloudRefs = [...(identity?.getClaims() ?? []), ...(identity?.getAssistants() ?? [])]
+    const cloud = cloudRefs.find(item => item.agentBotId === id)
+    if (local === undefined && cloud === undefined) return { kind: 'unknown' }
+    const cloudIds = new Set(cloudRefs.map(item => item.agentBotId))
+    const toolType = resolveBotToolType(id, this.service.list(), cloudIds, botId => this.resolveBinding(botId))
+    const name = local?.name ?? cloud?.name ?? id
+    if (toolType === undefined) return { kind: 'unbound', name }
+    if (local !== undefined) {
+      return {
+        kind: 'ok',
+        bot: { id, name: local.name, toolType, agentOptions: { provider: local.llm.provider, model: local.llm.model } },
+      }
+    }
+    return {
+      kind: 'ok',
+      bot: {
+        id,
+        name,
+        toolType,
+        agentOptions: { provider: TEST_PROVIDER, model: cloud?.model?.model ?? TEST_MODEL, agentId: id },
+      },
+    }
+  }
+
+  /** A deployment cannot survive a process restart; settle orphaned `deploying` rows as failed. */
+  private resetStaleDeployments(): void {
+    for (const [id, record] of Object.entries(this.service.listDeployments())) {
+      if (record.status !== 'deploying') continue
+      void this.service.setDeployment({
+        ...record,
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        error: 'deployment interrupted by restart; redeploy',
+      }).catch((error: unknown) => {
+        this.ctx.logger.warn(`rock-bot-manager: reset stale deployment "${id}" failed: ${messageOf(error)}`)
+      })
+    }
+  }
+
+  /**
+   * All bots with Rock-recorded deployment status (`undeployed` when Rock has
+   * no record). The management panel filters `undeployed` for the deploy dialog.
    */
   @Remote
-  async testBot(id: string): Promise<BotTestResult> {
-    const bot = this.service.get(id)
-    if (bot === undefined) throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
-    const toolType = bot.tool.toolType
-    const presetId = presetForToolType(toolType)
+  async listDeployableBots(): Promise<BotDeploymentRow[]> {
+    const rows = await this.listBotsUnified()
+    const deployments = this.service.listDeployments()
+    return rows.map((row) => {
+      const record = deployments[row.id]
+      return {
+        id: row.id,
+        name: row.name,
+        ...row.tool === undefined ? {} : { toolType: row.tool.toolType },
+        status: record?.status ?? 'undeployed',
+        deployable: this.resolveDeployBot(row.id) !== undefined,
+        ...(record?.updatedAt === undefined ? {} : { updatedAt: record.updatedAt }),
+        ...(record?.error === undefined ? {} : { error: record.error }),
+      }
+    })
+  }
+
+  /** Current deployment batch state (running / total / done / current / last). */
+  @Remote
+  deploymentState(): BotDeployState {
+    return this.deployState
+  }
+
+  /** Queue one bot's deployment to its bound execution backend and start the queue. */
+  @Remote
+  deployBot(id: string): void {
+    if (this.deployState.running) {
+      throw new RemoteError('rockBots/invalid', 'a deployment batch is already running', {})
+    }
+    const bot = this.requireDeployBot(id)
+    this.deployQueue = [bot]
+    this.deployState = { running: true, total: 1, done: 0 }
+    void this.runDeployQueue()
+  }
+
+  /** Queue every not-yet-deployed bot (serial) and start the batch. */
+  @Remote
+  async deployAll(): Promise<void> {
+    if (this.deployState.running) {
+      throw new RemoteError('rockBots/invalid', 'a deployment batch is already running', {})
+    }
+    const rows = await this.listDeployableBots()
+    const pending: ResolvedDeployBot[] = []
+    for (const row of rows) {
+      if (!row.deployable) continue
+      if (row.status === 'deployed' || row.status === 'deploying') continue
+      const bot = this.resolveDeployBot(row.id)
+      if (bot !== undefined) pending.push(bot)
+    }
+    this.deployQueue = pending
+    this.deployState = { running: pending.length > 0, total: pending.length, done: 0 }
+    if (pending.length > 0) void this.runDeployQueue()
+  }
+
+  /** Resolve the deployable surface (name/tool/skill/checklist) for one bot, or undefined. */
+  private resolveDeployBot(id: string): ResolvedDeployBot | undefined {
+    const resolved = this.resolveDebugBot(id)
+    if (resolved.kind !== 'ok') return undefined
+    const bot = resolved.bot
+    const skillSlug = DEPLOY_SKILLS[bot.toolType]
+    if (skillSlug === undefined) return undefined
+    const checklist = this.getLlmProxy(bot.id)
+    if (checklist === null) return undefined
+    return { id: bot.id, name: bot.name, toolType: bot.toolType, skillSlug, checklist }
+  }
+
+  /**
+   * Resolve one bot for deployment, reporting why it cannot deploy:
+   * `unknown` for an id outside the three sources, `unbound` before the user
+   * binds an execution backend, and `invalid` for a backend without a deploy skill.
+   */
+  private requireDeployBot(id: string): ResolvedDeployBot {
+    const resolved = this.resolveDebugBot(id)
+    if (resolved.kind === 'unknown') throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
+    if (resolved.kind === 'unbound') {
+      throw new RemoteError('rockBots/unbound', `bot "${resolved.name}" has no execution backend; bind one before deploying`, {})
+    }
+    const bot = this.resolveDeployBot(id)
+    if (bot === undefined) {
+      throw new RemoteError('rockBots/invalid', `bot "${id}" cannot be deployed (no relay checklist or deploy skill)`, {})
+    }
+    return bot
+  }
+
+  /** Start the next queued deployment, marking it `deploying` first. */
+  private async runDeployQueue(): Promise<void> {
+    const next = this.deployQueue.shift()
+    if (next === undefined) {
+      this.deployState = { ...this.deployState, running: false, current: undefined }
+      return
+    }
+    this.deployCurrent = next
+    this.deployState = { ...this.deployState, current: next.id }
+    try {
+      await this.service.setDeployment({
+        agentBotId: next.id,
+        toolType: next.toolType,
+        status: 'deploying',
+        updatedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      this.ctx.logger.warn(`rock-bot-manager: persist deploying state failed: ${messageOf(error)}`)
+    }
+    void this.launchDeploy(next)
+  }
+
+  /** Start one deployment through the dedicated assistant (skill-driven). */
+  private async launchDeploy(bot: ResolvedDeployBot): Promise<void> {
     const agentPresets = this.optionalAgentPresets()
     const agents = this.optionalAgents()
     if (agentPresets === undefined || agents === undefined) {
-      return { ok: false, toolType, error: 'agent runtime unavailable' }
+      this.settleDeploy(bot.id, 'failed', 'agent runtime unavailable')
+      return
     }
-    let result: Promise<BotTestResult>
+    const assistantId = this.optionalIdentity()?.getAssistants()[0]?.agentBotId
+    if (assistantId === undefined) {
+      this.settleDeploy(bot.id, 'failed', 'assistant identity not synced')
+      return
+    }
     try {
-      const preset = await agentPresets.resolve(presetId)
+      const preset = await agentPresets.resolve(ASSISTANT_PRESET)
       await using scope = await agentPresets.acquireScope(preset.id)
       void scope
-      const sessionId = brandString<SessionId>(`bot-test-${randomUUID()}`)
-      const agentOptions: AgentOptions = { provider: TEST_PROVIDER, model: TEST_MODEL, agentId: id }
+      const workspace = await this.resolveWorkspace()
+      const sessionId = brandString<SessionId>(`bot-deploy-${randomUUID()}`)
       const handle = await agents.create({
         sessionId,
-        meta: { agentPreset: preset.id },
-        agentOptions,
+        meta: {
+          agentPreset: preset.id,
+          ...(workspace === undefined ? {} : { cwd: workspace.path }),
+        },
+        agentOptions: { provider: TEST_PROVIDER, model: TEST_MODEL, agentId: assistantId },
         setup: async (agentCtx) => { await agentPresets.mount(agentCtx, preset.id) },
       })
-      result = this.awaitTestResult(sessionId, toolType)
+      this.deploySessionId = sessionId
+      if (workspace !== undefined) {
+        await workspace.attachSession(sessionId).catch((error: unknown) => {
+          this.ctx.logger.warn(`rock-bot-manager: attach deploy session failed: ${messageOf(error)}`)
+        })
+      }
       handle.agent.followup(createUserMessage({
-        content: [{ type: 'text', text: TEST_PROMPT }],
+        content: [{ type: 'text', text: deployPrompt(bot) }],
         source: { kind: 'user' },
       }))
     } catch (error) {
-      return { ok: false, toolType, error: messageOf(error) }
+      this.settleDeploy(bot.id, 'failed', messageOf(error))
     }
-    return await result
+  }
+
+  /** Fold deploy-session assistant output and settle the deployment on turn end. */
+  private recordDeployEvent(session: Session, event: SessionEvent): void {
+    if (this.deploySessionId === undefined || session.id !== this.deploySessionId) return
+    if (event.type === 'assistant/message') {
+      const text = blocksToText(event.data.message.content)
+      if (text.length > 0) this.deployAssistantText = text
+    } else if (event.type === 'turn/end') {
+      const current = this.deployCurrent
+      if (current === undefined) return
+      const ok = /"ok"\s*:\s*true/.test(this.deployAssistantText)
+      const diagnostic = this.deployAssistantText.length > 0
+        ? this.deployAssistantText.slice(0, 500)
+        : `assistant turn ended: ${event.data.reason.kind}`
+      this.settleDeploy(current.id, ok ? 'deployed' : 'failed', ok ? undefined : diagnostic)
+    }
+  }
+
+  /** Persist one deployment outcome, advance the batch, and start the next. */
+  private settleDeploy(id: string, status: 'deployed' | 'failed', error?: string): void {
+    const toolType = this.deployCurrent?.toolType ?? ''
+    this.deployCurrent = undefined
+    this.deploySessionId = undefined
+    this.deployAssistantText = ''
+    void this.service.setDeployment({
+      agentBotId: id,
+      toolType,
+      status,
+      updatedAt: new Date().toISOString(),
+      ...(error === undefined || error.length === 0 ? {} : { error }),
+    }).catch((persistError: unknown) => {
+      this.ctx.logger.warn(`rock-bot-manager: persist deployment result failed: ${messageOf(persistError)}`)
+    })
+    this.deployState = {
+      ...this.deployState,
+      done: this.deployState.done + 1,
+      last: { id, status },
+    }
+    if (this.deployQueue.length > 0) {
+      void this.runDeployQueue()
+    } else {
+      this.deployState = { ...this.deployState, running: false, current: undefined }
+    }
+  }
+
+  /**
+   * Start one smoke-test through the bot's thin-relay preset: the delegator
+   * agent forwards the fixed prompt to the bound `subagent-*` provider and the
+   * assistant output is returned. Returns immediately with `running: true`; the
+   * result and progress stream in via {@link testState}.
+   */
+  @Remote
+  async testBot(id: string): Promise<BotDebugState> {
+    if (this.debug.running) return this.debug
+    const resolved = this.resolveDebugBot(id)
+    if (resolved.kind === 'unknown') throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
+    if (resolved.kind === 'unbound') {
+      throw new RemoteError('rockBots/unbound', `bot "${resolved.name}" has no execution backend; bind one before debugging`, {})
+    }
+    const bot = resolved.bot
+    this.debug = {
+      running: true,
+      botId: id,
+      botName: bot.name,
+      toolType: bot.toolType,
+      progress: { total: 1, detected: 0, steps: 0, current: bot.toolType },
+    }
+    this.debugSessionId = undefined
+    this.debugToolType = bot.toolType
+    this.debugAssistantText = ''
+    this.debugDelegated = false
+    void this.launchTest(bot)
+    return this.debug
+  }
+
+  /** Latest per-bot debug run state (result + progress; the process renders in the DSH session). */
+  @Remote
+  testState(): BotDebugState {
+    return this.debug
+  }
+
+  /** Launch the thin-relay debug session in the default workspace and submit the debug prompt. */
+  private async launchTest(bot: ResolvedDebugBot): Promise<void> {
+    const agentPresets = this.optionalAgentPresets()
+    const agents = this.optionalAgents()
+    if (agentPresets === undefined || agents === undefined) {
+      this.settleDebugError('agent runtime unavailable')
+      return
+    }
+    try {
+      const preset = await agentPresets.resolve(presetForToolType(bot.toolType))
+      await using scope = await agentPresets.acquireScope(preset.id)
+      void scope
+      const workspace = await this.resolveWorkspace()
+      const sessionId = brandString<SessionId>(`bot-test-${randomUUID()}`)
+      const handle = await agents.create({
+        sessionId,
+        meta: {
+          agentPreset: preset.id,
+          ...(workspace === undefined ? {} : { cwd: workspace.path }),
+        },
+        agentOptions: bot.agentOptions,
+        setup: async (agentCtx) => { await agentPresets.mount(agentCtx, preset.id) },
+      })
+      this.debugSessionId = sessionId
+      this.debug = { ...this.debug, sessionId: String(sessionId) }
+      if (workspace !== undefined) {
+        await workspace.attachSession(sessionId).catch((error: unknown) => {
+          this.ctx.logger.warn(`rock-bot-manager: attach session ${String(sessionId)} to workspace failed: ${messageOf(error)}`)
+        })
+      }
+      handle.agent.followup(createUserMessage({
+        content: [{ type: 'text', text: debugPrompt(bot.name) }],
+        source: { kind: 'user' },
+      }))
+    } catch (error) {
+      this.settleDebugError(messageOf(error))
+    }
+  }
+
+  /** Settle the debug run with a safe failure diagnostic. */
+  private settleDebugError(error: string): void {
+    this.debug = { ...this.debug, running: false, error }
+    this.debugSessionId = undefined
   }
 
   /** Fetch the cloud task queue; an empty list when unconfigured or unreachable. */
@@ -392,11 +719,6 @@ export default class RockBotController extends TypertRemoteService {
     return [...identity.getClaims(), ...identity.getAssistants()].find(item => item.agentBotId === id)
   }
 
-  /** The optional LLM runtime, structurally typed to avoid a package cycle. */
-  private optionalLlm(): { listProviders(): Array<{ id: string; name: string }> } | undefined {
-    return this.ctx.get('llm')
-  }
-
   /** The optional agent-preset registry, structurally typed to avoid a package cycle. */
   private optionalAgentPresets(): {
     resolve(id: string): Promise<{ id: string }>
@@ -410,7 +732,7 @@ export default class RockBotController extends TypertRemoteService {
   private optionalAgents(): {
     create(options: {
       sessionId: SessionId
-      meta?: { agentPreset?: string }
+      meta?: { agentPreset?: string; cwd?: string }
       agentOptions?: AgentOptions
       setup?: (agentCtx: Context) => Promise<void>
     }): Promise<{ agent: { followup(message: unknown): void } }>
@@ -418,40 +740,103 @@ export default class RockBotController extends TypertRemoteService {
     return this.ctx.get('agents')
   }
 
-  /** Fold session events for an in-flight test run and settle it on turn end. */
-  private recordTestEvent(session: Session, event: SessionEvent): void {
-    const pending = this.pendingTests.get(session.id)
-    if (pending === undefined) return
-    if (event.type === 'assistant/message') {
-      const content = event.data.message.content
-      if (content.length > 0) pending.message = content
-    } else if (event.type === 'turn/end') {
-      const text = blocksToText(pending.message ?? [])
-      pending.resolve({
-        ok: text.length > 0,
-        toolType: pending.toolType,
-        ...(text.length > 0 ? { answer: text } : { error: 'tool produced no output' }),
-      })
+  /** Resolve the default workspace so the debug session groups there; fall back to the Rock root. */
+  private async resolveWorkspace(): Promise<{ path: string; attachSession(id: SessionId): Promise<void> } | undefined> {
+    const registry = this.ctx.get('workspaceRegistry') as {
+      initializeDefault(resolveDirectory: () => Promise<string>):
+      Promise<{ path: string; attachSession(id: SessionId): Promise<void> } | undefined>
+      create(path: string): Promise<{ path: string; attachSession(id: SessionId): Promise<void> }>
+    } | undefined
+    if (registry === undefined) return undefined
+    const fallback = this.rockRoot()
+    try {
+      const workspace = await registry.initializeDefault(() => Promise.resolve(fallback))
+      if (workspace !== undefined) return workspace
+    } catch (error) {
+      this.ctx.logger.warn(`rock-bot-manager: resolve default workspace failed: ${messageOf(error)}`)
+    }
+    try {
+      return await registry.create(fallback)
+    } catch (error) {
+      this.ctx.logger.warn(`rock-bot-manager: create workspace at "${fallback}" failed: ${messageOf(error)}`)
+      return undefined
     }
   }
 
-  /** Register an in-flight test session and settle on turn end or timeout. */
-  private awaitTestResult(sessionId: SessionId, toolType: string): Promise<BotTestResult> {
-    return new Promise<BotTestResult>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pendingTests.delete(sessionId)
-        resolve({ ok: false, toolType, error: 'test timed out' })
-      }, this.config.testTimeoutMs ?? DEFAULT_TEST_TIMEOUT_MS)
-      this.pendingTests.set(sessionId, {
-        toolType,
-        resolve: (result) => {
-          clearTimeout(timer)
-          this.pendingTests.delete(sessionId)
-          resolve(result)
-        },
-      })
-    })
+  /** The Rock workspace root as a fallback cwd; the process cwd when uninitialized. */
+  private rockRoot(): string {
+    const rock = this.ctx.get('rockWorkspace') as { rootPath(): string | null } | undefined
+    return rock?.rootPath() ?? process.cwd()
   }
+
+  /** Fold session events for the in-flight debug run and settle it on turn end. */
+  private recordTestEvent(session: Session, event: SessionEvent): void {
+    if (session.id !== this.debugSessionId) return
+    if (event.type === 'assistant/message') {
+      const text = blocksToText(event.data.message.content)
+      if (text.length > 0) this.debugAssistantText = text
+    } else if (event.type === 'tool/call') {
+      if (event.data.name === 'subagent') this.debugDelegated = true
+      this.debug.progress = {
+        total: 1,
+        detected: 1,
+        ...(this.debugToolType === undefined ? {} : { current: this.debugToolType }),
+        steps: this.debug.progress.steps + 1,
+      }
+    } else if (event.type === 'turn/end') {
+      this.ctx.logger.info(`rock-bot-manager: debug turn ${String(event.data.turn)} end steps=${String(this.debug.progress.steps)} delegated=${String(this.debugDelegated)}`)
+      // A delegated child's result arrives as a follow-up turn (turn >= 2); wait for
+      // that instead of reporting the delegator's first-turn placeholder.
+      if (event.data.turn >= 2 || (!this.debugDelegated && this.debug.progress.steps === 0)) this.finalizeTest()
+    }
+  }
+
+  /** Settle the debug run from the delegated child's final answer. */
+  private finalizeTestFromChild(info: SubagentRunEndInfo): void {
+    const toolType = this.debugToolType ?? ''
+    const answer = info.lastAssistantMessage === undefined ? '' : blocksToText(info.lastAssistantMessage)
+    const result: BotTestResult = answer.length > 0
+      ? { ok: true, toolType, answer }
+      : { ok: false, toolType, error: `tool stopped: ${info.stopReason}` }
+    this.debug = { ...this.debug, running: false, result }
+    this.debugSessionId = undefined
+    this.debugToolType = undefined
+    this.debugAssistantText = ''
+    this.debugDelegated = false
+  }
+
+  /** Settle the debug run from the assistant output and keep the result for the panel. */
+  private finalizeTest(): void {
+    const toolType = this.debugToolType ?? ''
+    const answer = this.debugAssistantText
+    const result: BotTestResult = answer.length > 0
+      ? { ok: true, toolType, answer }
+      : { ok: false, toolType, error: 'tool produced no output' }
+    this.debug = { ...this.debug, running: false, result }
+    this.debugSessionId = undefined
+    this.debugToolType = undefined
+    this.debugAssistantText = ''
+    this.debugDelegated = false
+  }
+}
+
+/** Resolved deployable surface for one bot. */
+interface ResolvedDeployBot {
+  id: string
+  name: string
+  toolType: string
+  skillSlug: string
+  checklist: LlmProxyChecklist
+}
+
+/** Build the deployment task prompt from the bot's checklist + config skill. */
+function deployPrompt(bot: ResolvedDeployBot): string {
+  return [
+    `部署 Bot【${bot.name}】到 ${bot.toolType}。`,
+    '部署清单（唯一来源，直接使用，不要猜值）：',
+    JSON.stringify(bot.checklist, null, 2),
+    `请先用 skill_get 加载 skill "${bot.skillSlug}"，严格按其步骤写配置并重启；完成后按 skill 的回报格式输出一行 JSON。`,
+  ].join('\n')
 }
 
 /** Map a domain-service failure to a Remote error the Client can branch on. */
@@ -472,15 +857,20 @@ function messageOf(error: unknown): string {
   return 'unknown error'
 }
 
-/** One in-flight thin-relay test run awaiting its turn end. */
-interface PendingTest {
-  /** The bound tool type, echoed into the result. */
+/** Resolved identity for a bot being debugged: display name, tool binding, and delegator LLM route. */
+interface ResolvedDebugBot {
+  /** Stable bot id. */
+  id: string
+  name: string
   toolType: string
-  /** The last non-empty assistant message content, or undefined. */
-  message?: readonly ContentBlock[]
-  /** Settle the run; clears its timeout and removes the pending entry. */
-  resolve: (result: BotTestResult) => void
+  agentOptions: AgentOptions
 }
+
+/** Outcome of resolving a bot for debugging or deployment. */
+type DebugResolution =
+  | { kind: 'ok'; bot: ResolvedDebugBot }
+  | { kind: 'unbound'; name: string }
+  | { kind: 'unknown' }
 
 /** Join the text blocks of assistant content into one trimmed string. */
 function blocksToText(blocks: readonly ContentBlock[]): string {

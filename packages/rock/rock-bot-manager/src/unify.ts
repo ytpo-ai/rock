@@ -33,8 +33,8 @@ export interface UnifiedBotsInput {
   assistants: readonly CloudBotRef[]
   /** Bot ids that own at least one active cloud task. */
   activeIds: ReadonlySet<string>
-  /** Resolves the tool type a claimed/assistant bot binds to. */
-  bindingOf: (agentBotId: string) => string
+  /** Resolves the tool type a claimed/assistant bot binds to; `undefined` when unbound. */
+  bindingOf: (agentBotId: string) => string | undefined
   /** Resolves a project's display name; falls back to the raw id when unsynced. */
   projectNameOf: (projectId: string) => string | undefined
 }
@@ -62,7 +62,7 @@ function localRow(bot: BotDefinition, active: boolean): BotRow {
     ...bot.role === undefined ? {} : { role: bot.role },
     source: 'local',
     llm: bot.llm,
-    tool: bot.tool,
+    ...bot.tool === undefined ? {} : { tool: bot.tool },
     canRebind: true,
     canDelete: true,
     active,
@@ -71,13 +71,14 @@ function localRow(bot: BotDefinition, active: boolean): BotRow {
 
 /** Build a cloud-sourced row (claimed or assistant). */
 function cloudRow(ref: CloudBotRef, source: BotSource, input: UnifiedBotsInput): BotRow {
+  const toolType = input.bindingOf(ref.agentBotId)
   return {
     id: ref.agentBotId,
     name: ref.name ?? ref.agentBotId,
     ...ref.role === undefined ? {} : { role: ref.role },
     source,
     ...ref.model === undefined ? {} : { llm: toBotLlm(ref.model) },
-    tool: { toolType: input.bindingOf(ref.agentBotId) },
+    ...toolType === undefined ? {} : { tool: { toolType } },
     canRebind: ref.canRebind ?? false,
     canDelete: false,
     active: input.activeIds.has(ref.agentBotId),
@@ -91,4 +92,23 @@ function toBotLlm(model: BotModelInfo): { provider: string; model: string } {
     provider: model.provider ?? '',
     model: model.name ?? model.model ?? '',
   }
+}
+
+/**
+ * Resolve the execution-backend tool type for one bot id across the unified
+ * sources, mirroring {@link buildUnifiedBots}'s per-row `tool.toolType`
+ * assignment: local bots read their `BotDefinition`, while cloud bots
+ * (claimed/assistant) resolve through `bindingOf`. Returns `undefined` for an
+ * unknown id or an unbound bot.
+ */
+export function resolveBotToolType(
+  id: string,
+  localBots: readonly BotDefinition[],
+  cloudIds: ReadonlySet<string>,
+  bindingOf: (agentBotId: string) => string | undefined,
+): string | undefined {
+  const local = localBots.find(bot => bot.id === id)
+  if (local !== undefined) return local.tool?.toolType
+  if (!cloudIds.has(id)) return undefined
+  return bindingOf(id)
 }

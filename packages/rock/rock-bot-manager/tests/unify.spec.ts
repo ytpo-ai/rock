@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUnifiedBots } from '../src/unify.ts'
+import { buildUnifiedBots, resolveBotToolType } from '../src/unify.ts'
 import type { BotDefinition } from '../src/types.ts'
 
 const LOCAL: BotDefinition = {
@@ -23,6 +23,30 @@ describe('buildUnifiedBots', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 'local-1', role: 'Frontend', source: 'local', canRebind: true, canDelete: true, active: false })
     expect(rows[0]?.llm).toEqual(LOCAL.llm)
+  })
+
+  it('projects an unbound local bot without a tool field', () => {
+    const rows = buildUnifiedBots({
+      localBots: [{ id: 'local-2', name: 'Local Two', llm: { provider: 'deepseek', model: 'deepseek-chat' } }],
+      claimed: [],
+      assistants: [],
+      activeIds: new Set(),
+      bindingOf: () => undefined,
+      projectNameOf: () => undefined,
+    })
+    expect(rows[0]).not.toHaveProperty('tool')
+  })
+
+  it('projects an unbound cloud bot without a tool field', () => {
+    const rows = buildUnifiedBots({
+      localBots: [],
+      claimed: [{ agentBotId: 'bot-C', name: 'Bot C' }],
+      assistants: [],
+      activeIds: new Set(),
+      bindingOf: () => undefined,
+      projectNameOf: () => undefined,
+    })
+    expect(rows[0]).not.toHaveProperty('tool')
   })
 
   it('projects claimed bots without delete rights and resolves their binding', () => {
@@ -76,5 +100,25 @@ describe('buildUnifiedBots', () => {
     })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 'assistant-1', name: 'assistant-1', source: 'assistant', canRebind: false, canDelete: false })
+  })
+})
+
+describe('resolveBotToolType', () => {
+  it('resolves a local bot id from its own definition', () => {
+    expect(resolveBotToolType('local-1', [LOCAL], new Set(), () => 'pi')).toBe('codex')
+  })
+
+  it('resolves a cloud bot id through the binding resolver', () => {
+    expect(resolveBotToolType('bot-C', [], new Set(['bot-C']), () => 'pi')).toBe('pi')
+  })
+
+  it('returns undefined for an unknown id', () => {
+    expect(resolveBotToolType('nope', [LOCAL], new Set(['bot-C']), () => 'codex')).toBeUndefined()
+  })
+
+  it('returns undefined for a bot without an execution backend', () => {
+    const unbound = { id: 'local-2', name: 'Local Two', llm: { provider: 'deepseek', model: 'deepseek-chat' } }
+    expect(resolveBotToolType('local-2', [unbound], new Set(), () => undefined)).toBeUndefined()
+    expect(resolveBotToolType('bot-C', [], new Set(['bot-C']), () => undefined)).toBeUndefined()
   })
 })

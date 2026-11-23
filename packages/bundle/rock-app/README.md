@@ -14,7 +14,7 @@ Rock（ConnectorClient）的 profile bundle：在 dsh web 面之上挂载 codex 
 | Preset | `rock-codex`（persona + tool-subagent codex） | 绑定 codex 的 bot 委派 |
 | Preset | `rock-dsh`（persona + tool-subagent dsh） | 绑定 dsh 的 bot 委派 |
 
-委派工具下沉到 per-tool preset（isolated scope），toolName 统一 `subagent`；`rock-tasks` 按 bot 的 `toolType` 绑定选择 `rock-codex` / `rock-dsh`（未知绑定回退 codex）。
+委派工具下沉到 per-tool preset（isolated scope），toolName 统一 `subagent`；`rock-tasks` 按 bot 的 `toolType` 绑定选择 `rock-codex` / `rock-dsh`。未绑定执行后端的 bot 在 Bot 管理里显示「待绑定」，`rock-tasks` 会拒绝为它启动会话，而不是隐式回退 codex。
 
 ## 启动
 

@@ -27,6 +27,9 @@
       "path": "../../../packages/core/session"
     },
     {
+      "path": "../../../packages/subagent/subagent"
+    },
+    {
       "path": "../../../packages/llm/llm"
     },
     {

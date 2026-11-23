@@ -109,12 +109,17 @@ export default class RockTasksController extends TypertRemoteService {
   @Remote
   async listBots(): Promise<TaskBot[]> {
     const bots = this.ctx.get('rockBots') as {
-      listBotsUnified(): Promise<Array<{ id: string; name: string; source: string; tool: { toolType: string } }>>
+      listBotsUnified(): Promise<Array<{ id: string; name: string; source: string; tool?: { toolType: string } }>>
     } | undefined
     if (bots === undefined) return []
     try {
       const rows = await bots.listBotsUnified()
-      return rows.map(row => ({ id: row.id, name: row.name, toolType: row.tool.toolType, source: row.source }))
+      return rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        ...row.tool === undefined ? {} : { toolType: row.tool.toolType },
+        source: row.source,
+      }))
     } catch (error) {
       this.ctx.logger.warn(`rock-tasks: listBots failed: ${messageOf(error)}`)
       return []
@@ -142,6 +147,11 @@ export default class RockTasksController extends TypertRemoteService {
   /** Assign the task to a bot, launch its thin-relay session, and return the updated task. */
   @Remote
   async runTask(taskId: string, botId: string): Promise<TaskSummary> {
+    // Validate the binding before the gateway assigns the task: an unbound bot
+    // would receive work it cannot launch.
+    if (this.resolveToolType(botId) === undefined) {
+      throw new RemoteError('rockTasks/launchFailed', `bot "${botId}" has no execution backend; bind one in Bot management`, {})
+    }
     const task = await this.postTaskAction(taskId, botId, 'run')
     try {
       await this.launchSession(botId, task)
@@ -243,15 +253,29 @@ export default class RockTasksController extends TypertRemoteService {
     }
   }
 
-  /** Resolve the bot's bound toolType from the identity service (default codex). */
-  private resolveToolType(botId: string): string {
-    const identity = this.ctx.get('seagullIdentity') as { toolBindingOf(id: string): string } | undefined
-    return identity?.toolBindingOf(botId) ?? 'codex'
+  /** Resolve the bot's bound toolType from the identity service; `undefined` when unbound. */
+  private resolveToolType(botId: string): string | undefined {
+    const identity = this.ctx.get('seagullIdentity') as { toolBindingOf(id: string): string | undefined } | undefined
+    return identity?.toolBindingOf(botId)
+  }
+
+  /**
+   * Resolve the bot's bound upstream model id (the model the deploy flow wrote
+   * into the relay provider), or the `seagull-relay` placeholder. This is the
+   * model the child backend must select so its LLM routes through rock-llm-relay.
+   * @param botId - the claimed bot id.
+   * @returns the bound model id, or `seagull-relay` when the identity has none.
+   */
+  private resolveBotModel(botId: string): string {
+    const identity = this.ctx.get('seagullIdentity') as { modelOf(id: string): string } | undefined
+    return identity?.modelOf(botId) ?? 'seagull-relay'
   }
 
   /** Launch the bot's thin-relay session and submit the task as its first message. */
   private async launchSession(botId: string, task: TaskSummary): Promise<void> {
-    const presetId = presetForToolType(this.resolveToolType(botId))
+    const toolType = this.resolveToolType(botId)
+    if (toolType === undefined) throw new Error(`bot "${botId}" has no execution backend`)
+    const presetId = presetForToolType(toolType)
 
     // Services the thin-relay session depends on; read through ctx.get so the
     // lookup is not topology-sensitive (the property proxy is reserved for
@@ -285,7 +309,7 @@ export default class RockTasksController extends TypertRemoteService {
     void scope
 
     const sessionId = brandString<SessionId>(`${botId}-${randomUUID()}`)
-    const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: 'seagull-relay', agentId: botId }
+    const agentOptions: AgentOptions = { provider: 'seagull-cloud', model: this.resolveBotModel(botId), agentId: botId }
     const workspace = this.ctx.get('rockWorkspace') as {
       rootPath(): string | null
       resolveProjectDir(projectId: string): string

@@ -5,7 +5,9 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import remote from '@rock/rock-bot-manager/remote'
 import { NS, en, zh } from './locales.ts'
 import type { RockBotManagerKey } from './locales.ts'
@@ -20,12 +22,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const PANEL_ID = 'rock-bots' as MainPanelId
 
 /** Services required before the Remote namespace mounts. */
-export const inject = ['remote', 'slots', 'locale']
+export const inject = ['remote', 'slots', 'locale', 'uiWorkspace']
 
 /** Mount the Remote namespace, then register the locale dictionary and the console panel in a child context. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const unmountRemote = await ctx.remote.$mount(remote)
-  const ui = ctx.inject(['remote.rockBots', 'slots', 'locale'], registerPanel)
+  const ui = ctx.inject(['remote.rockBots', 'slots', 'locale', 'uiWorkspace'], registerPanel)
   try {
     await ui
   } catch (error) {
@@ -47,7 +49,10 @@ function registerPanel(ctx: Context): void {
     name: 'main',
     key: PANEL_ID,
     locale: NS,
-    inject: (): RockBotManagerSectionInjected => ({ remote: ctx.remote.rockBots }),
+    inject: (): RockBotManagerSectionInjected => ({
+      remote: ctx.remote.rockBots,
+      openSession: (sessionId: string) => { ctx.uiWorkspace.openSession(sessionId as SessionId) },
+    }),
   }, RockBotManagerSection))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',

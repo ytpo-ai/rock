@@ -25,7 +25,7 @@ Rock ConnectorClient 的身份插件：同步 Seagull 云端认领关系（`Seat
 | `employeeId` | — | 认领员工身份 |
 | `claimFile` | — | 离线降级用的本地 `SeatClaim[]` JSON 文件 |
 | `bindings` | `{}` | 静态工具绑定：`agentBotId → toolType` |
-| `defaultToolType` | `codex` | 未显式绑定的 bot 使用的默认后端 |
+| `defaultToolType` | — | 显式指定未绑定 bot 的后端；不配置时未绑定即「待绑定」，不隐式回退任何工具 |
 | `providerName` | `seagull-cloud` | 认领 bot 的 LLM 路由（cloud-llm-adapter） |
 | `defaultModel` | `seagull-relay` | 认领 bot 的占位模型 |
 | `botDefinitions` | `[]` | 本地自定义 bot（静态兜底；挂载 `rock-bot-manager` 时由其 `ctx.rockBots.list()` 覆盖） |
@@ -33,6 +33,7 @@ Rock ConnectorClient 的身份插件：同步 Seagull 云端认领关系（`Seat
 ## 实现
 
 - 挂载后 `ctx.provide('seagullIdentity', service)`，暴露 `getClaims()` / `toolBindingOf()` / `renderAgents()` / `renderAgentLoopPatch()` / `setBotDefinitions()`。
+- `toolBindingOf()` 返回 `ToolType | undefined`：本地 bot 读自身 `tool`，云端 bot 依次走 `rockBots.getBinding()`、静态 `bindings`、`defaultToolType`；都没有就是未绑定（不再回退 `codex`）。
 - `SeatClaim` / `AssistantRef` 现额外透传 `model`（provider/model/name）与 `projectId`，供 `rock-bot-manager` 卡片展示真实模型与所属项目（Seagull `seat-claim` 端点下发，兼容旧契约）。
 - `sync()` 先走网关，失败降级读 `claimFile`；两者都没有则空认领。
 - `renderAgents()` 输出「认领 bot（默认 provider/model）∪ 本地自定义 bot（各自 provider/model）」的并集，本地 bot 同 id 时覆盖认领条目。

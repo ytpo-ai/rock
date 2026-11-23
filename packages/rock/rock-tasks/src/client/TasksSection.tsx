@@ -926,13 +926,17 @@ export function TasksSection({ t, remote }: TasksSectionProps): ReactElement {
                       {currentBot === undefined ? t('run.select') : currentBot.name}
                     </Button>
                   )}
-                  items={bots.map(bot => ({ id: bot.id, label: bot.name }))}
+                  items={bots.map(bot => bot.toolType === undefined
+                    ? { id: bot.id, label: `${bot.name} · ${t('run.unbound')}`, disabled: true }
+                    : { id: bot.id, label: bot.name })}
                   selectedId={selectedBot}
                   onSelect={(id) => { setSelectedBot(id); setBotMenu(false) }}
                   onClose={() => { setBotMenu(false) }}
                 />
               )}
-              {currentBot !== undefined && <Tag tone="info">{toolTypeLabel(currentBot.toolType)}</Tag>}
+              {currentBot !== undefined && (currentBot.toolType === undefined
+                ? <Tag tone="neutral">{t('run.unbound')}</Tag>
+                : <Tag tone="info">{toolTypeLabel(currentBot.toolType)}</Tag>)}
             </div>
           </div>
         </Modal>

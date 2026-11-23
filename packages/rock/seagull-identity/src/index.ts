@@ -26,7 +26,6 @@ import type { ToolType } from './types.ts'
 export const name = 'rock-seagull-identity'
 export const inject = ['rockOnboarding']
 
-const DEFAULT_TOOL_TYPE = 'codex'
 const DEFAULT_PROVIDER = 'seagull-cloud'
 const DEFAULT_MODEL = 'seagull-relay'
 
@@ -40,7 +39,7 @@ export interface Config {
   claimFile?: string
   /** Static tool bindings keyed by agent bot id. */
   bindings?: Record<string, ToolType>
-  /** Default tool type for bots without an explicit binding. */
+  /** Explicit tool type for bots without a stored binding; absent means unbound. */
   defaultToolType?: ToolType
   /** LLM provider route for rendered agent entries (cloud-llm-adapter). */
   providerName?: string
@@ -69,7 +68,7 @@ export const Config: z<Config> = z.object({
   employeeId: z.string().min(1),
   claimFile: z.string().min(1),
   bindings: z.dict(z.string().min(1)).default({}),
-  defaultToolType: z.string().min(1).default(DEFAULT_TOOL_TYPE),
+  defaultToolType: z.string().min(1),
   providerName: z.string().min(1).default(DEFAULT_PROVIDER),
   defaultModel: z.string().min(1).default(DEFAULT_MODEL),
   botDefinitions: z.array(botSchema).default([]),
@@ -82,7 +81,7 @@ export function apply(ctx: Context, config: Config): void {
     ...config.employeeId === undefined ? {} : { employeeId: config.employeeId },
     ...config.claimFile === undefined ? {} : { claimFile: config.claimFile },
     bindings: config.bindings ?? {},
-    defaultToolType: config.defaultToolType ?? DEFAULT_TOOL_TYPE,
+    ...config.defaultToolType === undefined ? {} : { defaultToolType: config.defaultToolType },
     defaultProvider: config.providerName ?? DEFAULT_PROVIDER,
     defaultModel: config.defaultModel ?? DEFAULT_MODEL,
     ...config.botDefinitions === undefined || config.botDefinitions.length === 0
@@ -118,7 +117,7 @@ function cleanBot(bot: BotDefinition): BotDefinition {
       ...bot.llm.apiKey === undefined || bot.llm.apiKey === '' ? {} : { apiKey: bot.llm.apiKey },
       model: bot.llm.model,
     },
-    tool: { toolType: bot.tool.toolType },
+    ...bot.tool === undefined ? {} : { tool: { toolType: bot.tool.toolType } },
   }
 }
 

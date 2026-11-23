@@ -19,8 +19,8 @@ export interface SeagullIdentityOptions {
   claimFile?: string
   /** Static tool bindings keyed by agent bot id. */
   bindings: Record<string, ToolType>
-  /** Default tool type for bots without an explicit binding. */
-  defaultToolType: ToolType
+  /** Explicit tool type for bots without a stored binding; absent means unbound. */
+  defaultToolType?: ToolType
   /** LLM provider route for rendered agent entries (cloud-llm-adapter). */
   defaultProvider: string
   /** Placeholder model id for rendered agent entries. */
@@ -84,11 +84,25 @@ export class SeagullIdentityService {
     this.onboardingStatus = result.onboarding
   }
 
-  /** Resolve the tool type an agent bot binds to (local tool binding). */
-  toolBindingOf(agentBotId: string): ToolType {
+  /** Resolve the tool type an agent bot binds to; `undefined` when unbound. */
+  toolBindingOf(agentBotId: string): ToolType | undefined {
     const local = this.localBots.find(bot => bot.id === agentBotId)
-    if (local !== undefined) return local.tool.toolType
+    if (local !== undefined) return local.tool?.toolType
     return this.claimedBindingOf?.(agentBotId) ?? this.options.bindings[agentBotId] ?? this.options.defaultToolType
+  }
+
+  /**
+   * Resolve a bot's bound upstream model id (the model the deploy flow writes
+   * into the relay provider), or the relay placeholder when the claim projects
+   * none. Local bots use their own bound model.
+   * @param agentBotId - the claimed bot or local bot id.
+   * @returns the bound model id, or {@link options.defaultModel} as the placeholder.
+   */
+  modelOf(agentBotId: string): string {
+    const local = this.localBots.find(bot => bot.id === agentBotId)
+    if (local !== undefined) return local.llm.model
+    const ref = [...this.claims, ...this.assistants].find(item => item.agentBotId === agentBotId)
+    return ref?.model?.model ?? this.options.defaultModel
   }
 
   /** Render the agent-loop agent entries for every claimed bot and local bot. */
