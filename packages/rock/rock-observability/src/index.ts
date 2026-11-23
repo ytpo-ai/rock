@@ -10,8 +10,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { fillForwardLog, type IdentityLike } from './relay-log.ts'
 import { RockObservabilityService } from './service.ts'
-import type { ObservabilityRow } from './types.ts'
+import type { ObservabilityRow, RelayForwardLog } from './types.ts'
 
 export type * from './types.ts'
 
@@ -38,6 +39,22 @@ export default class RockObservabilityController extends TypertRemoteService {
   @Remote
   rowOf(sessionId: string): ObservabilityRow | null {
     return this.fold.rowOf(sessionId) ?? null
+  }
+
+  /** One newest-first page of relay forward logs; empty when the relay is absent. */
+  @Remote
+  async relayLogs(offset: number, limit: number): Promise<RelayForwardLog[]> {
+    const relay = this.ctx.get('rockLlmRelay') as { logPage(offset: number, limit: number): Promise<RelayForwardLog[]> } | undefined
+    const identity = this.ctx.get('seagullIdentity') as IdentityLike | undefined
+    const logs = await relay?.logPage(offset, limit) ?? []
+    return logs.map(log => fillForwardLog(log, identity))
+  }
+
+  /** Total relay forward-log entries; zero when the relay is absent. */
+  @Remote
+  async relayLogCount(): Promise<number> {
+    const relay = this.ctx.get('rockLlmRelay') as { logCount(): Promise<number> } | undefined
+    return relay?.logCount() ?? 0
   }
 }
 

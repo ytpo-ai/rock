@@ -16,6 +16,18 @@ export function parseRelayRoute(pathname: string): RelayRoute | undefined {
   return { agentBotId: decodeURIComponent(match[1]), pathSuffix: match[2] ?? '/chat/completions' }
 }
 
+/** Wire protocol inferred from a relay path suffix. */
+const WIRE_PROTOCOL_BY_PATH_SUFFIX: Readonly<Record<string, string>> = {
+  '/messages': 'anthropic-messages',
+  '/responses': 'openai-responses',
+  '/chat/completions': 'chat-completions',
+}
+
+/** Resolve the wire protocol from a path suffix, or `undefined` when unknown. */
+function wireProtocolOf(pathSuffix: string): string | undefined {
+  return WIRE_PROTOCOL_BY_PATH_SUFFIX[pathSuffix]
+}
+
 /** Loopback LLM relay: forwards external-tool calls to the cloud Proxy. */
 export class RockLlmRelay {
   private server: Server | undefined
@@ -61,9 +73,19 @@ export class RockLlmRelay {
       this.writeJson(res, 404, { error: { message: 'not found' } })
       return
     }
+    const startedAt = new Date().toISOString()
     try {
-      const body = await this.readBody(req)
-      const upstream = await this.forward(route, body)
+      const info = relayModelInfo(await this.readBody(req))
+      const sessionIds = this.sessionIds(req, info.sessionId)
+      let upstream: Response
+      try {
+        upstream = await this.forward(route, info.mappedBody)
+      } catch (error) {
+        this.record(route, info, sessionIds, startedAt, undefined, diagnosticOf(error))
+        this.writeJson(res, 502, { error: { message: diagnosticOf(error) } })
+        return
+      }
+      this.record(route, info, sessionIds, startedAt, upstream.status)
       await this.pipeResponse(res, upstream)
     } catch (error) {
       this.writeJson(res, 502, { error: { message: diagnosticOf(error) } })
@@ -85,7 +107,7 @@ export class RockLlmRelay {
     return req.headers.authorization === `Bearer ${this.options.localKey}`
   }
 
-  private async forward(route: RelayRoute, body: string): Promise<Response> {
+  private async forward(route: RelayRoute, mappedBody: string): Promise<Response> {
     const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1/bots/${route.agentBotId}${route.pathSuffix}`
     const headers = new Headers()
     headers.set('content-type', 'application/json')
@@ -98,7 +120,47 @@ export class RockLlmRelay {
     if (connectorKey !== undefined && connectorKey !== '') headers.set('authorization', `Bearer ${connectorKey}`)
 
     const doForward = this.options.forward ?? ((target: string, init: RequestInit) => fetch(target, init))
-    return doForward(url, { method: 'POST', headers, body: forceRelayModel(body) })
+    return doForward(url, { method: 'POST', headers, body: mappedBody })
+  }
+
+  /** Extract the two session ids the inbound request may carry, opportunistically. */
+  private sessionIds(req: IncomingMessage, bodySessionId?: string): SessionIds {
+    const header = (name: string): string | undefined => {
+      const value = req.headers[name]
+      return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+    }
+    const rockSessionId = header('x-dsh-session-id') ?? bodySessionId
+    const toolSessionId = header('x-session-id') ?? header('x-conversation-id')
+    return {
+      ...(rockSessionId === undefined ? {} : { rockSessionId }),
+      ...(toolSessionId === undefined ? {} : { toolSessionId }),
+    }
+  }
+
+  /** Emit one forwarding attempt through the plugin's `onForward` hook, if present. */
+  private record(
+    route: RelayRoute,
+    info: RelayModelInfo,
+    sessionIds: SessionIds,
+    startedAt: string,
+    status?: number,
+    error?: string,
+  ): void {
+    const wireProtocol = wireProtocolOf(route.pathSuffix)
+    this.options.onForward?.({
+      timestamp: new Date().toISOString(),
+      startedAt,
+      durationMs: Date.now() - Date.parse(startedAt),
+      agentBotId: route.agentBotId,
+      pathSuffix: route.pathSuffix,
+      ...(wireProtocol === undefined ? {} : { wireProtocol }),
+      ...(sessionIds.rockSessionId === undefined ? {} : { rockSessionId: sessionIds.rockSessionId }),
+      ...(sessionIds.toolSessionId === undefined ? {} : { toolSessionId: sessionIds.toolSessionId }),
+      ...(info.requestModel === undefined ? {} : { requestModel: info.requestModel }),
+      mappedModel: RELAY_MODEL,
+      ...(status === undefined ? {} : { status }),
+      ...(error === undefined ? {} : { error }),
+    })
   }
 
   private async pipeResponse(res: ServerResponse, upstream: Response): Promise<void> {
@@ -143,15 +205,35 @@ function diagnosticOf(error: unknown): string {
 /** The placeholder model id the relay stamps so Seagull routes by bot binding, not the caller's model. */
 const RELAY_MODEL = 'seagull-relay'
 
-/** Replace a JSON request body's top-level `model` field with {@link RELAY_MODEL}. */
-function forceRelayModel(body: string): string {
+/** Parsed inbound body: the original fields the relay logs plus the body it forwards. */
+interface RelayModelInfo {
+  requestModel?: string
+  sessionId?: string
+  mappedBody: string
+}
+
+/** Opportunistically extracted session ids from an inbound request. */
+interface SessionIds {
+  rockSessionId?: string
+  toolSessionId?: string
+}
+
+/** Parse the body, capture the original `model`/`sessionId`, and stamp `model` with {@link RELAY_MODEL}. */
+function relayModelInfo(body: string): RelayModelInfo {
   let parsed: unknown
   try {
     parsed = JSON.parse(body)
   } catch {
-    return body
+    return { mappedBody: body }
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return body
-  ;(parsed as Record<string, unknown>).model = RELAY_MODEL
-  return JSON.stringify(parsed)
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { mappedBody: body }
+  const record = parsed as Record<string, unknown>
+  const requestModel = typeof record.model === 'string' ? record.model : undefined
+  const sessionId = typeof record.sessionId === 'string' ? record.sessionId : undefined
+  record.model = RELAY_MODEL
+  return {
+    ...(requestModel === undefined ? {} : { requestModel }),
+    ...(sessionId === undefined ? {} : { sessionId }),
+    mappedBody: JSON.stringify(parsed),
+  }
 }

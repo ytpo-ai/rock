@@ -21,8 +21,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { RelayKeyService } from './key-service.ts'
+import { RelayLogStore } from './log-store.ts'
 import { RockLlmRelay } from './relay.ts'
-import type { RockLlmRelayFacts } from './types.ts'
+import type { RelayForwardLog, RockLlmRelayFacts } from './types.ts'
 
 export const name = 'rock-llm-relay'
 export const inject = []
@@ -31,10 +32,13 @@ export type * from './types.ts'
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 4090
 const DEFAULT_KEY_PATH = '../.rock/relay-key.json'
+const DEFAULT_LOG_PATH = '../.rock/llm-relay-logs.jsonl'
 
 /** Minimal structural view of the `seagull-identity` service (optional dep). */
 interface IdentityLike {
-  getClaims(): readonly { agentBotId: string; employeeId: string }[]
+  getClaims(): readonly { agentBotId: string; name?: string; employeeId: string; model?: { model?: string } }[]
+  getAssistants(): readonly { agentBotId: string; name?: string; model?: { model?: string } }[]
+  toolBindingOf(id: string): string | undefined
 }
 
 /** Deployment-owned relay connection facts; every field is patchable from cordis.yml. */
@@ -49,6 +53,8 @@ export interface Config {
   connectorClientId: string
   /** Local JSON file persisting the inbound relay bearer key. */
   keyPath?: string
+  /** Local JSONL file persisting the relay forward log (size-rotated). */
+  logPath?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -57,6 +63,7 @@ export const Config: z<Config> = z.object({
   cloudBaseUrl: z.string().min(1),
   connectorClientId: z.string().min(1),
   keyPath: z.string().min(1).default(DEFAULT_KEY_PATH),
+  logPath: z.string().min(1).default(DEFAULT_LOG_PATH),
 })
 
 /** Host-side surface exposed as `ctx.rockLlmRelay` for the bot-manager drawer. */
@@ -65,6 +72,7 @@ class RockLlmRelayService {
     private readonly host: string,
     private port: number,
     private readonly keyService: RelayKeyService,
+    private readonly logStore: RelayLogStore,
   ) {}
 
   /** Record the actual bound port once the server is listening. */
@@ -81,6 +89,21 @@ class RockLlmRelayService {
       apiKey: this.keyService.getKey(),
     }
   }
+
+  /** Recent relay forward logs, newest first. */
+  recentLogs(): RelayForwardLog[] {
+    return this.logStore.recent()
+  }
+
+  /** Total persisted forward-log entries across the active file and rotated fragments. */
+  logCount(): Promise<number> {
+    return this.logStore.count()
+  }
+
+  /** One newest-first page of persisted forward logs; `offset` is a 0-based skip. */
+  logPage(offset: number, limit: number): Promise<RelayForwardLog[]> {
+    return this.logStore.page(offset, limit)
+  }
 }
 
 /** Mount the relay, its local key, and the host-side facts service, and dispose with the fiber. */
@@ -93,6 +116,11 @@ export function apply(ctx: Context, config: Config): void {
       ctx.logger.warn(`rock-llm-relay: failed to persist relay key: ${messageOf(error)}`)
     })
   }
+
+  const logStore = new RelayLogStore(config.logPath ?? DEFAULT_LOG_PATH, undefined, undefined, undefined, (error: unknown) => {
+    ctx.logger.warn(`rock-llm-relay: failed to persist forward log: ${messageOf(error)}`)
+  })
+  void logStore.load()
 
   const relay = new RockLlmRelay({
     host,
@@ -108,9 +136,10 @@ export function apply(ctx: Context, config: Config): void {
       const identity = ctx.get('seagullIdentity') as IdentityLike | undefined
       return identity?.getClaims().find(claim => claim.agentBotId === agentBotId)?.employeeId
     },
+    onForward: (log) => { logStore.append(enrichForwardLog(log, ctx.get('seagullIdentity') as IdentityLike | undefined)) },
   })
 
-  const service = new RockLlmRelayService(host, port, keyService)
+  const service = new RockLlmRelayService(host, port, keyService, logStore)
   ctx.provide('rockLlmRelay', service)
 
   void relay.start().then((boundPort) => {
@@ -127,6 +156,25 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+/**
+ * Attach the bot's name, bound model, and bound tool from the identity, when resolvable.
+ * @param log - the relay record to enrich in place of a copy.
+ * @param identity - the `seagull-identity` service surface, or `undefined` when absent.
+ * @returns a new record carrying any resolvable `botName`, `boundModel`, and `toolType`.
+ */
+export function enrichForwardLog(log: RelayForwardLog, identity: IdentityLike | undefined): RelayForwardLog {
+  if (identity === undefined) return log
+  const ref = [...identity.getClaims(), ...identity.getAssistants()].find(item => item.agentBotId === log.agentBotId)
+  const boundModel = ref?.model?.model
+  const toolType = identity.toolBindingOf(log.agentBotId)
+  return {
+    ...log,
+    ...(ref?.name === undefined ? {} : { botName: ref.name }),
+    ...(boundModel === undefined ? {} : { boundModel }),
+    ...(toolType === undefined ? {} : { toolType }),
+  }
 }
 
 declare module '@deepseek-ai/cordis' {

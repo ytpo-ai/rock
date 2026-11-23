@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { fillForwardLog, type IdentityLike } from '../src/relay-log.ts'
+import type { RelayForwardLog } from '../src/types.ts'
 import { RockObservabilityService } from '../src/service.ts'
 
 /** Minimal Session stand-in for the fold, which only reads `session.id`. */
@@ -49,5 +51,51 @@ describe('RockObservabilityService', () => {
       { sessionId: 'a', turns: 1, steps: 1, outputTokens: 10 },
       { sessionId: 'b', turns: 0, steps: 0, outputTokens: 0 },
     ])
+  })
+})
+
+describe('fillForwardLog', () => {
+  const identity: IdentityLike = {
+    getClaims: () => [{ agentBotId: 'bot-a', name: 'Bot A', model: { model: 'gpt-5' } }],
+    getAssistants: () => [],
+    toolBindingOf: id => id === 'bot-a' ? 'codex' : undefined,
+  }
+
+  it('fills missing bot name, bound model, and tool from the identity', () => {
+    const log: RelayForwardLog = { timestamp: 't', agentBotId: 'bot-a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' }
+    expect(fillForwardLog(log, identity)).toEqual({
+      timestamp: 't',
+      agentBotId: 'bot-a',
+      pathSuffix: '/chat/completions',
+      mappedModel: 'seagull-relay',
+      botName: 'Bot A',
+      boundModel: 'gpt-5',
+      toolType: 'codex',
+    })
+  })
+
+  it('keeps values the record already carries (write-time values win)', () => {
+    const log: RelayForwardLog = {
+      timestamp: 't',
+      agentBotId: 'bot-a',
+      pathSuffix: '/chat/completions',
+      mappedModel: 'seagull-relay',
+      botName: 'Old Name',
+      toolType: 'pi',
+    }
+    expect(fillForwardLog(log, identity)).toEqual({
+      timestamp: 't',
+      agentBotId: 'bot-a',
+      pathSuffix: '/chat/completions',
+      mappedModel: 'seagull-relay',
+      botName: 'Old Name',
+      toolType: 'pi',
+      boundModel: 'gpt-5',
+    })
+  })
+
+  it('returns the record unchanged when the identity is absent', () => {
+    const log: RelayForwardLog = { timestamp: 't', agentBotId: 'bot-a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' }
+    expect(fillForwardLog(log, undefined)).toBe(log)
   })
 })
