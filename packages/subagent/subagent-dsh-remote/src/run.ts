@@ -23,6 +23,14 @@ import {
 import { extractAssistantOutput, type DshRemoteClient } from './client.ts'
 import { abortError, failureDiagnostic, DshRemoteRunFailure } from './failure.ts'
 
+/** Per-bot relay route selected for a child session (deploy-written provider + bound model). */
+export interface DshRemoteRelayRoute {
+  /** The per-bot relay provider id the deploy flow registered (e.g. `rock-{agentBotId}`). */
+  readonly provider: string
+  /** The bot's bound model id under that provider. */
+  readonly model: string
+}
+
 /** Fully resolved inputs for one DSH Remote run. */
 export interface DshRemoteRunSpec {
   /** The connected Host client for this run. */
@@ -31,6 +39,8 @@ export interface DshRemoteRunSpec {
   readonly cwd: string
   /** Optional child preset id. */
   readonly agentPreset?: string
+  /** Optional per-bot relay route applied to the session before the prompt. */
+  readonly relayRoute?: DshRemoteRelayRoute
   /** Per-poll `session/wait` deadline. */
   readonly waitTimeoutMs: number
   /** Diagnostic sink for a post-publication error flattened into a result. */
@@ -89,13 +99,21 @@ export async function startDshRemoteRun(request: SubagentStartRequest, spec: Dsh
   const onAbort = (): void => { requestCancel() }
   request.signal.addEventListener('abort', onAbort, { once: true })
 
-  let startupStage: 'session-create' | 'prompt' = 'session-create'
+  let startupStage: 'session-create' | 'select-model' | 'prompt' = 'session-create'
   try {
     const session = await spec.client.createSession({
       cwd: spec.cwd,
       ...(spec.agentPreset === undefined ? {} : { agentPreset: spec.agentPreset }),
     }, request.signal)
     sessionId = session.sessionId
+    startupStage = 'select-model'
+    if (spec.relayRoute !== undefined) {
+      await spec.client.selectModel({
+        sessionId,
+        provider: spec.relayRoute.provider,
+        model: spec.relayRoute.model,
+      }, request.signal)
+    }
     startupStage = 'prompt'
     await spec.client.prompt({
       requestId: randomUUID(),

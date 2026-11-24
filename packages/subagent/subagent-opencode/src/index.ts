@@ -17,6 +17,7 @@ import {
   assertPositiveFinite,
   assertUsableCwd,
   NO_START_CAPABILITIES,
+  parentAgentOptionsForDelegation,
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
@@ -41,6 +42,30 @@ const DEFAULT_PROVIDER_NAME = 'opencode'
 
 /** Default delay between durable-message polls. */
 export const DEFAULT_POLL_INTERVAL_MS = 500
+
+/**
+ * Derive the per-bot OpenCode agent id from a Seagull agent-bot id. This must
+ * match the deploy flow's `rock-{agentBotId}` convention (`@rock/rock-bot-manager`
+ * `providerIdFor`): the deploy flow writes an OpenCode agent with this exact id.
+ * @param agentBotId - the Seagull agent-bot id (parent `agentOptions.agentId`).
+ * @returns the OpenCode agent id the deploy flow registered for that bot.
+ */
+export function relayAgentId(agentBotId: string): string {
+  const slug = agentBotId.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')
+  return `rock-${slug === '' ? 'bot' : slug}`
+}
+
+/**
+ * Resolve the per-run OpenCode agent id from the static config and the parent's
+ * Seagull agent-bot identity. The relay identity wins: a bot-bound parent
+ * selects its deploy-written relay agent; otherwise the instance default applies.
+ * @param configAgent - the instance's static `agent` config, if any.
+ * @param agentId - the parent's Seagull agent-bot id (`agentOptions.agentId`), if any.
+ * @returns the OpenCode agent id, or undefined to let OpenCode use its default.
+ */
+export function resolveRelayAgent(configAgent: string | undefined, agentId: string | undefined): string | undefined {
+  return agentId === undefined || agentId === '' ? configAgent : relayAgentId(agentId)
+}
 
 /** The tool-type id the runtime connection config (url + token) is keyed by. */
 const TOOL_TYPE = 'opencode'
@@ -113,6 +138,18 @@ class OpencodeProvider implements SubagentProvider {
     return inventory?.connectionConfig(TOOL_TYPE)
   }
 
+  /**
+   * Resolve the per-run OpenCode agent id. A parent that carries a Seagull
+   * agent-bot identity (`agentOptions.agentId`, the Rock relay identity) wins:
+   * the child session selects the per-bot relay agent the deploy flow wrote.
+   * Otherwise the instance's static `agent` config applies.
+   * @param request - the resolved subagent start request.
+   * @returns the OpenCode agent id, or undefined to let OpenCode use its default.
+   */
+  private resolveAgent(request: ResolvedSubagentStartRequest): string | undefined {
+    return resolveRelayAgent(this.config.agent, parentAgentOptionsForDelegation(request.parent).agentId)
+  }
+
   /** Resolve the service record, preferring the runtime url+password over static discovery. */
   private resolveServiceWithOverride(): OpencodeServiceInfo {
     const connection = this.connectionOverride()
@@ -142,11 +179,12 @@ class OpencodeProvider implements SubagentProvider {
       service.url,
       basicAuthorization(service.password),
     )
+    const agent = this.resolveAgent(request)
     const spec: OpencodeRunSpec = {
       client,
       cwd,
       ...(request.label === undefined ? {} : { label: request.label }),
-      ...(this.config.agent === undefined ? {} : { agent: this.config.agent }),
+      ...(agent === undefined ? {} : { agent }),
       pollIntervalMs: this.config.pollIntervalMs,
       onError: (error, stopReason: SubagentStopReason) => {
         this.ctx.logger.warn(`subagent-opencode "${this.name}": child run failed (${stopReason}): ${error.message}`)

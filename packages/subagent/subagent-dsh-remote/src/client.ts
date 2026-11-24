@@ -20,6 +20,8 @@ import type {
   SessionCreateValue,
   SessionPromptArgs,
   SessionPromptValue,
+  SessionSelectModelArgs,
+  SessionSelectModelValue,
   SessionWaitArgs,
   SessionWaitValue,
 } from './types.ts'
@@ -88,6 +90,17 @@ function parseCreateValue(value: unknown): SessionCreateValue {
   const sessionId = string(obj.sessionId, 'session/create session id')
   const agentPreset = typeof obj.agentPreset === 'string' ? obj.agentPreset : undefined
   return { sessionId, ...(agentPreset === undefined ? {} : { agentPreset }) }
+}
+
+function parseSelectModelValue(value: unknown): SessionSelectModelValue {
+  const obj = object(value, 'session/selectModel value')
+  const selected = object(obj.selected, 'session/selectModel selected')
+  return {
+    selected: {
+      provider: string(selected.provider, 'session/selectModel provider'),
+      model: string(selected.model, 'session/selectModel model'),
+    },
+  }
 }
 
 function parseAcceptedValue(value: unknown, stage: DshRemoteFailureStage): { readonly accepted: true } {
@@ -174,6 +187,12 @@ export class DshRemoteClient {
   async prompt(args: SessionPromptArgs, signal: AbortSignal): Promise<SessionPromptValue> {
     const value = await this.call('session/prompt', { request: args }, 'prompt', signal)
     return parseAcceptedValue(value, 'prompt')
+  }
+
+  /** Route the child session through a per-bot relay provider before the first prompt. */
+  async selectModel(args: SessionSelectModelArgs, signal: AbortSignal): Promise<SessionSelectModelValue> {
+    const value = await this.call('session/selectModel', { request: args }, 'select-model', signal)
+    return parseSelectModelValue(value)
   }
 
   /** Block until the session reaches a stopping state or the deadline. */

@@ -64,7 +64,7 @@ describe('textTask', () => {
   })
 })
 
-async function startWithFetch(fetchFn: typeof fetch, signal: AbortSignal): Promise<ReturnType<typeof startDshRemoteRun>> {
+async function startWithFetch(fetchFn: typeof fetch, signal: AbortSignal, relayRoute?: DshRemoteRunSpec['relayRoute']): Promise<ReturnType<typeof startDshRemoteRun>> {
   const ctx = new Context()
   const parent: Agent = await externalTestParent(ctx, '/tmp/dsh-remote-workspace')
   const request: SubagentStartRequest = {
@@ -75,6 +75,7 @@ async function startWithFetch(fetchFn: typeof fetch, signal: AbortSignal): Promi
   const spec: DshRemoteRunSpec = {
     client: new DshRemoteClient('http://127.0.0.1:3080', 'cookie', fetchFn),
     cwd: '/tmp/dsh-remote-workspace',
+    ...(relayRoute === undefined ? {} : { relayRoute }),
     waitTimeoutMs: 5,
   }
   return startDshRemoteRun(request, spec)
@@ -96,6 +97,31 @@ describe('startDshRemoteRun', () => {
     })
     const run = await startWithFetch(fetchFn, new AbortController().signal)
     await expect(run.result).resolves.toEqual({ output: [{ type: 'text', text: 'OK' }], stopReason: 'completed' })
+  })
+
+  it('selects the per-bot relay model before the first prompt', async () => {
+    const calls: string[] = []
+    let selectModelArgs: unknown
+    const fetchFn = envelopeFetch((endpoint, args) => {
+      calls.push(endpoint)
+      if (endpoint === 'session/create') return { sessionId: 'ses_x' }
+      if (endpoint === 'session/selectModel') {
+        selectModelArgs = args
+        return { selected: { provider: 'rock-69a04a2574989e4972c4cbb9', model: 'deepseek-v4' } }
+      }
+      if (endpoint === 'session/prompt') return { accepted: true }
+      if (endpoint === 'session/wait') {
+        return { reason: 'idle', output: { records: [assistantRecord('OK')], truncated: false } }
+      }
+      throw new Error(`unexpected endpoint ${endpoint}`)
+    })
+    const run = await startWithFetch(fetchFn, new AbortController().signal, {
+      provider: 'rock-69a04a2574989e4972c4cbb9',
+      model: 'deepseek-v4',
+    })
+    await expect(run.result).resolves.toEqual({ output: [{ type: 'text', text: 'OK' }], stopReason: 'completed' })
+    expect(calls).toEqual(['session/create', 'session/selectModel', 'session/prompt', 'session/wait'])
+    expect(selectModelArgs).toEqual({ request: { sessionId: 'ses_x', provider: 'rock-69a04a2574989e4972c4cbb9', model: 'deepseek-v4' } })
   })
 
   it('maps an input-required wait to an error result', async () => {

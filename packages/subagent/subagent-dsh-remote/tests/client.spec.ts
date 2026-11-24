@@ -83,6 +83,18 @@ describe('DshRemoteClient', () => {
     await expect(client.wait({ sessionId: 'ses_x', timeoutMs: 100 }, signal))
       .resolves.toEqual({ reason: 'idle', output: { records: [], truncated: false } })
   })
+
+  it('selectModel routes the session through a per-bot relay provider', async () => {
+    let seen: unknown
+    const fetchFn = envelopeFetch((_endpoint, args) => {
+      seen = args
+      return { selected: { provider: 'rock-bot', model: 'deepseek-v4' } }
+    })
+    const client = new DshRemoteClient('http://127.0.0.1:3080', 'cookie', fetchFn)
+    await expect(client.selectModel({ sessionId: 'ses_x', provider: 'rock-bot', model: 'deepseek-v4' }, signal))
+      .resolves.toEqual({ selected: { provider: 'rock-bot', model: 'deepseek-v4' } })
+    expect(seen).toEqual({ request: { sessionId: 'ses_x', provider: 'rock-bot', model: 'deepseek-v4' } })
+  })
 })
 
 describe('extractAssistantOutput', () => {

@@ -14,6 +14,7 @@ import {
   assertPositiveFinite,
   assertUsableCwd,
   NO_START_CAPABILITIES,
+  parentAgentOptionsForDelegation,
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
@@ -41,6 +42,34 @@ export const DEFAULT_WAIT_TIMEOUT_MS = 30_000
 
 /** The tool-type id the runtime connection config (url + token) is keyed by. */
 const TOOL_TYPE = 'dsh'
+
+/**
+ * Derive the per-bot relay provider id from a Seagull agent-bot id. This must
+ * match the deploy flow's `rock-{agentBotId}` convention (`@rock/rock-bot-manager`
+ * `providerIdFor`): the deploy flow registers a DSH provider with this exact id.
+ * @param agentBotId - the Seagull agent-bot id (parent `agentOptions.agentId`).
+ * @returns the DSH provider id the deploy flow registered for that bot.
+ */
+export function relayProviderId(agentBotId: string): string {
+  const slug = agentBotId.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')
+  return `rock-${slug === '' ? 'bot' : slug}`
+}
+
+/**
+ * Resolve a per-run relay route from the static config and the parent's Seagull
+ * agent-bot identity + bound model. A bot-bound parent wins: the child session
+ * selects the deploy-written relay provider and the bot's bound model. Otherwise
+ * no route is returned and the Host default applies.
+ * @param parentAgentId - the parent's Seagull agent-bot id, if any.
+ * @param parentModel - the parent's bound model id (`agentOptions.model`), if any.
+ * @returns the per-bot relay route, or undefined when the parent has no relay identity.
+ */
+export function resolveRelayRoute(parentAgentId: string | undefined, parentModel: string | undefined): DshRemoteRunSpec['relayRoute'] {
+  if (parentAgentId === undefined || parentAgentId === '' || parentModel === undefined || parentModel === '') {
+    return undefined
+  }
+  return { provider: relayProviderId(parentAgentId), model: parentModel }
+}
 
 /** Deployment-owned Host, context, and polling settings. */
 export interface Config {
@@ -108,10 +137,13 @@ class DshRemoteProvider implements SubagentProvider {
     } catch (error) {
       throw error instanceof DshRemoteRunFailure ? error : dshRemoteConnectFailure(error)
     }
+    const parentOptions = parentAgentOptionsForDelegation(request.parent)
+    const relayRoute = resolveRelayRoute(parentOptions.agentId, parentOptions.model)
     const spec: DshRemoteRunSpec = {
       client,
       cwd,
       ...(this.config.agentPreset === undefined ? {} : { agentPreset: this.config.agentPreset }),
+      ...(relayRoute === undefined ? {} : { relayRoute }),
       waitTimeoutMs: this.config.waitTimeoutMs,
       onError: (error, stopReason: SubagentStopReason) => {
         this.ctx.logger.warn(`subagent-dsh-remote "${this.name}": child run failed (${stopReason}): ${error.message}`)

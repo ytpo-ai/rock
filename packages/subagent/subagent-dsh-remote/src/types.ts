@@ -25,6 +25,15 @@ export interface SessionPromptArgs {
   readonly content: readonly ContentBlock[]
 }
 
+/** `session/selectModel` arguments: route the child session through a per-bot relay provider. */
+export interface SessionSelectModelArgs {
+  readonly sessionId: string
+  /** The per-bot relay provider id the deploy flow registered (e.g. `rock-{agentBotId}`). */
+  readonly provider: string
+  /** The bot's bound model id under that provider. */
+  readonly model: string
+}
+
 /** `session/wait` arguments. */
 export interface SessionWaitArgs {
   readonly sessionId: string
@@ -46,6 +55,11 @@ export interface SessionCreateValue {
 /** `session/prompt` result. */
 export interface SessionPromptValue {
   readonly accepted: true
+}
+
+/** `session/selectModel` result. */
+export interface SessionSelectModelValue {
+  readonly selected: { readonly provider: string; readonly model: string }
 }
 
 /** `session/cancel` result. */
@@ -80,6 +94,7 @@ export interface SessionWaitValue {
 export type DshRemoteFailureStage =
   | 'connect'
   | 'session-create'
+  | 'select-model'
   | 'prompt'
   | 'wait'
   | 'cancel'
