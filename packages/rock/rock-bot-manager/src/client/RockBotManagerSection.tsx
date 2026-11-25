@@ -18,7 +18,7 @@ import type {
 import { BindToolDialog } from './BindToolDialog.tsx'
 import { BotDetailDrawer } from './BotDetailDrawer.tsx'
 import { BotFormDrawer } from './BotFormDrawer.tsx'
-import { boundToolType, cardCtas, isDeployable, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
+import { boundToolType, cardCtas, isDeployable, modelChanged, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import css from './rock-bot-manager.module.css'
 
 /** Empty create-form state: a new bot starts unbound. */
@@ -259,6 +259,11 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     void remote.deploymentState().then((result) => { if (result.ok) setDeployState(result.value) })
   }
 
+  const refreshAll = (): void => {
+    refresh()
+    refreshDeployments()
+  }
+
   const showToast = (text: string, success: boolean): void => {
     setToast({ text, key: Date.now(), success })
   }
@@ -462,6 +467,16 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
         <div className={css.toolbarActions}>
           <Button
             size="sm"
+            variant="ghost"
+            icon={<IconRefreshOutlineRegular size={14} />}
+            disabled={loading}
+            title={t('refresh.title')}
+            onClick={refreshAll}
+          >
+            {t('refresh')}
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             icon={<IconUploadOutlineRegular size={14} />}
             disabled={loading || deployState?.running === true}
@@ -558,7 +573,8 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           {visibleBots.map((bot) => {
             const deployment = deploymentById.get(bot.id)
             const status = deploymentStatusOf(bot.id)
-            const ctas = cardCtas(bot, status)
+            const ctas = cardCtas(bot, status, deployment)
+            const modelChangedFlag = modelChanged(bot, deployment)
             const bound = boundToolType(bot)
             const deployBusy = pendingDeploy?.kind === 'bot' && pendingDeploy.id === bot.id
             const rebindDisabled = !bot.canRebind || bot.active
@@ -601,6 +617,9 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                   {supportsTools(bot) && status !== 'undeployed' && (
                     <Tag tone={deploymentTone(status)}>{deploymentLabel(status)}</Tag>
                   )}
+                  {modelChangedFlag && (
+                    <Tag tone="warning">{t('modelChanged')}</Tag>
+                  )}
                 </div>
 
                 <div className={css.cardFooter}>
@@ -629,7 +648,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                       >
                         {status === 'deploying' || deployBusy
                           ? t('deploy.status.deploying')
-                          : status === 'failed' ? t('deploy.redeploy') : t('deploy.action')}
+                          : status === 'failed' || status === 'deployed' ? t('deploy.redeploy') : t('deploy.action')}
                       </Button>
                     )}
                     {ctas.includes('debug') && (

@@ -78,6 +78,7 @@ function cloudRow(ref: CloudBotRef, source: BotSource, input: UnifiedBotsInput):
     ...ref.role === undefined ? {} : { role: ref.role },
     source,
     ...ref.model === undefined ? {} : { llm: toBotLlm(ref.model) },
+    ...ref.model?.model === undefined ? {} : { modelId: ref.model.model },
     ...toolType === undefined ? {} : { tool: { toolType } },
     canRebind: ref.canRebind ?? false,
     canDelete: false,

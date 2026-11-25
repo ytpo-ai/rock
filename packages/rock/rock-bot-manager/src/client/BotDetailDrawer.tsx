@@ -6,7 +6,7 @@ import {
   Modal, SegmentedTabs, StateDot, Tag, type TagTone,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { BotDebugState, BotDeploymentRow, BotRow, BotSource, LlmProxyChecklist } from '@rock/rock-bot-manager/types'
-import { bindLockedReason, boundToolType, detailActions, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
+import { bindLockedReason, boundToolType, detailActions, modelChanged, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import { LlmProxyFields } from './LlmProxyFields.tsx'
 import type { RockBotManagerKey } from './locales.ts'
 import { wireProtocolLabel } from './wire-protocol.ts'
@@ -95,6 +95,7 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
   const [proxyFailed, setProxyFailed] = useState(false)
   const actions = detailActions(bot, deployment?.deployable === true)
   const bound = boundToolType(bot)
+  const modelChangedFlag = modelChanged(bot, deployment)
   const debugState = debug?.botId === bot.id ? debug : undefined
   const llm = bot.llm
   const rebindReason = bindLockedReason(bot, t('status.active'), t('rebind.locked'))
@@ -225,8 +226,12 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
                     </span>
                   </Field>
                   <Field label={t('detail.deployStatus')}>
-                    <Tag tone={deploymentTone(status)}>{t(`deploy.status.${status}`)}</Tag>
+                    <span className={css.detailFieldInline}>
+                      <Tag tone={deploymentTone(status)}>{t(`deploy.status.${status}`)}</Tag>
+                      {modelChangedFlag && <Tag tone="warning">{t('modelChanged')}</Tag>}
+                    </span>
                   </Field>
+                  <Field label={t('detail.deployedModel')}>{deployment?.deployedModel}</Field>
                   <Field label={t('detail.deployUpdatedAt')}>
                     {deployment?.updatedAt === undefined ? undefined : new Date(deployment.updatedAt).toLocaleString('zh-CN')}
                   </Field>

@@ -101,6 +101,8 @@ export interface BotRow {
   source: BotSource
   /** Upstream LLM route; cloud bots carry it once the claim/assistant projects the model. */
   llm?: BotLlm
+  /** Raw model id bound on Seagull (cloud bots only); drives model-change detection against the deployed model. */
+  modelId?: string
   /** Current execution-backend binding; absent means the bot is unbound. */
   tool?: BotTool
   /** Whether the binding may be edited. */
@@ -210,6 +212,8 @@ export interface DeploymentRecord {
   updatedAt: string
   /** Safe failure diagnostic when {@link status} is `failed`. */
   error?: string
+  /** Model id written to the external tool during the last successful deploy. */
+  deployedModel?: string
 }
 
 /** One bot's deployment row for the management panel. */
@@ -228,6 +232,8 @@ export interface BotDeploymentRow {
   updatedAt?: string
   /** Safe failure diagnostic when the last deployment failed. */
   error?: string
+  /** Model id written to the external tool during the last successful deploy; absent when never deployed. */
+  deployedModel?: string
 }
 
 /** Live progress of a batch deployment run. */

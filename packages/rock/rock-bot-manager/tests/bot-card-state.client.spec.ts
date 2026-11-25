@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { bindLockedReason, boundToolType, cardCtas, detailActions, isDeployable, supportsTools } from '../src/client/bot-card-state.ts'
-import type { BotRow } from '../src/types.ts'
+import { bindLockedReason, boundToolType, cardCtas, currentModelId, detailActions, isDeployable, modelChanged, supportsTools } from '../src/client/bot-card-state.ts'
+import type { BotDeploymentRow, BotRow } from '../src/types.ts'
 
 /** A claimed cloud bot with full rebind rights. */
 const CLAIMED: BotRow = {
@@ -87,5 +87,32 @@ describe('deployability', () => {
     expect(isDeployable(undefined)).toBe(false)
     expect(isDeployable({ id: 'bot-C', name: 'Bot C', toolType: 'codex', status: 'undeployed', deployable: false })).toBe(false)
     expect(isDeployable({ id: 'bot-C', name: 'Bot C', toolType: 'codex', status: 'undeployed', deployable: true })).toBe(true)
+  })
+})
+
+describe('model change detection', () => {
+  const deployed: BotDeploymentRow = { id: 'bot-C', name: 'Bot C', status: 'deployed', deployable: true, deployedModel: 'gpt-4' }
+
+  it('reads the raw model id before the display-name fallback', () => {
+    expect(currentModelId({ ...CLAIMED, modelId: 'gpt-5', llm: { provider: 'x', model: 'GPT-5' } })).toBe('gpt-5')
+    expect(currentModelId({ ...CLAIMED, llm: { provider: 'x', model: 'gpt-4' } })).toBe('gpt-4')
+    expect(currentModelId({ ...CLAIMED, llm: { provider: 'x', model: '' } })).toBeUndefined()
+    expect(currentModelId(CLAIMED)).toBeUndefined()
+  })
+
+  it('flags a deployed bot whose model changed since the last deploy', () => {
+    const bot = { ...CLAIMED, modelId: 'gpt-5' }
+    expect(modelChanged(bot, deployed)).toBe(true)
+    expect(modelChanged({ ...bot, modelId: 'gpt-4' }, deployed)).toBe(false)
+    expect(modelChanged(bot, { ...deployed, status: 'undeployed' })).toBe(false)
+    expect(modelChanged(bot, { ...deployed, deployedModel: undefined })).toBe(false)
+    expect(modelChanged({ ...bot, modelId: undefined }, deployed)).toBe(false)
+  })
+
+  it('offers a redeploy action on the card only after the model changed', () => {
+    const bot = { ...CLAIMED, modelId: 'gpt-5' }
+    expect(cardCtas(bot, 'deployed', deployed)).toEqual(['deploy'])
+    expect(cardCtas({ ...bot, modelId: 'gpt-4' }, 'deployed', deployed)).toEqual([])
+    expect(cardCtas(bot, 'deployed', undefined)).toEqual([])
   })
 })

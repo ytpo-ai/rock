@@ -84,6 +84,7 @@ describe('buildUnifiedBots', () => {
       id: 'bot-C',
       source: 'claimed',
       llm: { provider: 'deepseek', model: 'DeepSeek-V3' },
+      modelId: 'deepseek-chat',
       projectId: 'proj-a',
       projectName: 'Project A',
     })

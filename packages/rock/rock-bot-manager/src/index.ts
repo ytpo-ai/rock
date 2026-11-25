@@ -241,15 +241,8 @@ export default class RockBotController extends TypertRemoteService {
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */
   @Remote
   async listBotsUnified(): Promise<BotRow[]> {
+    await this.refreshIdentity()
     const identity = this.optionalIdentity()
-    if (identity !== undefined) {
-      try {
-        await identity.sync()
-      } catch (error) {
-        // Keep the last-known claims/assistants when the gateway is unreachable.
-        this.ctx.logger.warn(`rock-bot-manager: identity re-sync failed: ${messageOf(error)}`)
-      }
-    }
     const activeIds = new Set(activeBotIdsFrom(await this.fetchTasks()))
     const projectNameById = new Map((this.optionalWorkspace()?.listProjects() ?? []).map(project => [project.id, project.name]))
     return buildUnifiedBots({
@@ -399,6 +392,7 @@ export default class RockBotController extends TypertRemoteService {
         deployable: this.resolveDeployBot(row.id) !== undefined,
         ...(record?.updatedAt === undefined ? {} : { updatedAt: record.updatedAt }),
         ...(record?.error === undefined ? {} : { error: record.error }),
+        ...(record?.deployedModel === undefined ? {} : { deployedModel: record.deployedModel }),
       }
     })
   }
@@ -411,10 +405,11 @@ export default class RockBotController extends TypertRemoteService {
 
   /** Queue one bot's deployment to its bound execution backend and start the queue. */
   @Remote
-  deployBot(id: string): void {
+  async deployBot(id: string): Promise<void> {
     if (this.deployState.running) {
       throw new RemoteError('rockBots/invalid', 'a deployment batch is already running', {})
     }
+    await this.refreshIdentity()
     const bot = this.requireDeployBot(id)
     this.deployQueue = [bot]
     this.deployState = { running: true, total: 1, done: 0 }
@@ -555,6 +550,7 @@ export default class RockBotController extends TypertRemoteService {
   /** Persist one deployment outcome, advance the batch, and start the next. */
   private settleDeploy(id: string, status: 'deployed' | 'failed', error?: string): void {
     const toolType = this.deployCurrent?.toolType ?? ''
+    const deployedModel = this.deployCurrent?.checklist.modelId
     this.deployCurrent = undefined
     this.deploySessionId = undefined
     this.deployAssistantText = ''
@@ -563,6 +559,7 @@ export default class RockBotController extends TypertRemoteService {
       toolType,
       status,
       updatedAt: new Date().toISOString(),
+      ...(status === 'deployed' && deployedModel !== undefined ? { deployedModel } : {}),
       ...(error === undefined || error.length === 0 ? {} : { error }),
     }).catch((persistError: unknown) => {
       this.ctx.logger.warn(`rock-bot-manager: persist deployment result failed: ${messageOf(persistError)}`)
@@ -693,6 +690,18 @@ export default class RockBotController extends TypertRemoteService {
   /** The optional identity service, structurally typed to avoid a package cycle. */
   private optionalIdentity(): IdentityLike | undefined {
     return this.ctx.get('seagullIdentity') as IdentityLike | undefined
+  }
+
+  /** Re-sync the identity service so a bot resolved right after edits carries fresh claims. */
+  private async refreshIdentity(): Promise<void> {
+    const identity = this.optionalIdentity()
+    if (identity === undefined) return
+    try {
+      await identity.sync()
+    } catch (error) {
+      // Keep the last-known claims/assistants when the gateway is unreachable.
+      this.ctx.logger.warn(`rock-bot-manager: identity re-sync failed: ${messageOf(error)}`)
+    }
   }
 
   /** The optional tool-inventory service, structurally typed to avoid a package cycle. */

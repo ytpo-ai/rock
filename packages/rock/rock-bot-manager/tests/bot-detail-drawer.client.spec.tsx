@@ -47,6 +47,7 @@ const CHECKLIST: LlmProxyChecklist = {
 /** Render one bot's drawer with every action wired to no-ops. */
 function renderDrawer(bot: BotRow, options: {
   status?: 'undeployed' | 'deployed'
+  deployedModel?: string
   loadProxy?: () => Promise<LlmProxyChecklist | null>
 } = {}): void {
   const status = options.status ?? 'undeployed'
@@ -61,6 +62,7 @@ function renderDrawer(bot: BotRow, options: {
         ...boundTool === undefined ? {} : { toolType: boundTool },
         status,
         deployable: true,
+        ...options.deployedModel === undefined ? {} : { deployedModel: options.deployedModel },
       }}
       status={status}
       debug={null}
@@ -121,6 +123,12 @@ describe('BotDetailDrawer', () => {
   it('shows the redeploy action once the bot is deployed', () => {
     renderDrawer(CLAIMED, { status: 'deployed' })
     expect(screen.getByText('deploy.redeploy')).toBeTruthy()
+  })
+
+  it('flags a deployed model change and shows the deployed model id', () => {
+    renderDrawer({ ...CLAIMED, modelId: 'gpt-5' }, { status: 'deployed', deployedModel: 'gpt-4' })
+    expect(screen.getByText('modelChanged')).toBeTruthy()
+    expect(screen.getByText('gpt-4')).toBeTruthy()
   })
 
   it('reads the proxy checklist only when its tab is opened', async () => {

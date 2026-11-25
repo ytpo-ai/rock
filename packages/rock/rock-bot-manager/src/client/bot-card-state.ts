@@ -38,17 +38,45 @@ export function boundToolType(bot: BotRow): string | undefined {
 }
 
 /**
+ * The bot's raw model id for change detection. Cloud bots carry `modelId`
+ * (the raw Seagull model id, distinct from the display-name `llm.model`);
+ * local bots fall back to their own `llm.model`.
+ * @param bot - one unified bot row.
+ * @returns the raw model id, or undefined when the bot has none.
+ */
+export function currentModelId(bot: BotRow): string | undefined {
+  const id = bot.modelId ?? bot.llm?.model
+  return id === undefined || id === '' ? undefined : id
+}
+
+/**
+ * Whether a deployed bot's current model differs from the model last written
+ * to its external tool, so it needs a redeploy.
+ * @param bot - one unified bot row.
+ * @param deployment - the bot's deployment row, or undefined when Rock has no record.
+ * @returns true only when the bot is deployed and its model changed.
+ */
+export function modelChanged(bot: BotRow, deployment: BotDeploymentRow | undefined): boolean {
+  if (deployment?.status !== 'deployed') return false
+  const deployed = deployment.deployedModel
+  const current = currentModelId(bot)
+  return deployed !== undefined && current !== undefined && current !== deployed
+}
+
+/**
  * The card's pending-action buttons. A bound but undeployed bot offers deploy
- * and debug; a deployed bot offers none because both actions live on its detail
- * drawer from then on.
+ * and debug; a deployed bot offers none, except a redeploy when its model
+ * changed since the last deploy, because both actions otherwise live on its
+ * detail drawer from then on.
  * @param bot - one unified bot row.
  * @param status - the bot's current deployment status.
+ * @param deployment - the bot's deployment row, or undefined when Rock has no record.
  * @returns the ordered card actions, empty when the card needs no action.
  */
-export function cardCtas(bot: BotRow, status: BotDeployStatus): CardCta[] {
+export function cardCtas(bot: BotRow, status: BotDeployStatus, deployment?: BotDeploymentRow): CardCta[] {
   if (!supportsTools(bot)) return []
   if (boundToolType(bot) === undefined) return ['bind']
-  if (status === 'deployed') return []
+  if (status === 'deployed') return modelChanged(bot, deployment) ? ['deploy'] : []
   if (status === 'deploying') return ['deploy']
   return ['deploy', 'debug']
 }
