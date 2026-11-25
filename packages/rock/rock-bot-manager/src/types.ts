@@ -13,6 +13,9 @@ export type ToolType = string
 /** API protocol a custom bot declares for its upstream LLM route. */
 export type ApiProtocol = 'openai-chat' | 'openai-responses' | 'anthropic' | 'gemini'
 
+/** Wire protocol an external tool uses to reach the loopback relay (`/chat/completions` / `/responses` / `/messages`). */
+export type WireProtocol = 'chat-completions' | 'openai-responses' | 'anthropic-messages'
+
 /** Model input modality a custom bot accepts. */
 export type BotInputType = 'text' | 'image'
 
@@ -185,8 +188,10 @@ export interface LlmProxyChecklist {
   displayName: string
   /** DSH provider API address (base URL through the relay). */
   baseUrl: string
-  /** DSH provider API protocol (fixed: OpenAI Chat Completions). */
+  /** DSH provider API protocol display name, derived from {@link wireProtocol}. */
   protocol: string
+  /** Wire protocol the deploy wrote into the external tool config. */
+  wireProtocol: WireProtocol
   /** Local relay bearer key the DSH provider authenticates with. */
   apiKey: string
   /** Real model id sent upstream (the bot's bound model, e.g. `gpt-5`). */

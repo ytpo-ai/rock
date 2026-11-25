@@ -27,7 +27,7 @@ import type { SubagentRunEndInfo, SubagentRunInfo } from '@deepseek-ai/dsh-subag
 // Type-only: brings the `rock-tool-inventory/detected` event declaration into scope.
 import type {} from '@rock/rock-tool-inventory'
 import { installedToolIds, type InstalledStatus } from './installed.ts'
-import { buildLlmProxyChecklist, RELAY_MODEL } from './proxy.ts'
+import { buildLlmProxyChecklist, defaultWireProtocol, isWireProtocol, RELAY_MODEL } from './proxy.ts'
 import { RockBotService } from './service.ts'
 import { JsonFileBindingStore, JsonFileBotStore, JsonFileDeploymentStore } from './store.ts'
 import { activeBotIdsFrom } from './tasks.ts'
@@ -227,7 +227,7 @@ export default class RockBotController extends TypertRemoteService {
 
   /** DSH custom-model-API checklist for one cloud bot (D-034); null for local bots. */
   @Remote
-  getLlmProxy(id: string): LlmProxyChecklist | null {
+  getLlmProxy(id: string, wireProtocol?: string): LlmProxyChecklist | null {
     if (this.service.get(id) !== undefined) return null
     const relay = this.optionalRelay()
     if (relay === undefined) throw new RemoteError('rockBots/invalid', 'llm relay unavailable', {})
@@ -235,7 +235,8 @@ export default class RockBotController extends TypertRemoteService {
     const name = ref?.name ?? id
     const modelId = ref?.model?.model ?? RELAY_MODEL
     const supportedProtocols = ref?.model?.supportedProtocols
-    return buildLlmProxyChecklist(id, name, modelId, relay.getFacts(), supportedProtocols)
+    const selected = wireProtocol !== undefined && isWireProtocol(wireProtocol) ? wireProtocol : defaultWireProtocol(supportedProtocols)
+    return buildLlmProxyChecklist(id, name, modelId, relay.getFacts(), selected, supportedProtocols)
   }
 
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */
@@ -405,12 +406,12 @@ export default class RockBotController extends TypertRemoteService {
 
   /** Queue one bot's deployment to its bound execution backend and start the queue. */
   @Remote
-  async deployBot(id: string): Promise<void> {
+  async deployBot(id: string, wireProtocol?: string): Promise<void> {
     if (this.deployState.running) {
       throw new RemoteError('rockBots/invalid', 'a deployment batch is already running', {})
     }
     await this.refreshIdentity()
-    const bot = this.requireDeployBot(id)
+    const bot = this.requireDeployBot(id, wireProtocol)
     this.deployQueue = [bot]
     this.deployState = { running: true, total: 1, done: 0 }
     void this.runDeployQueue()
@@ -436,13 +437,13 @@ export default class RockBotController extends TypertRemoteService {
   }
 
   /** Resolve the deployable surface (name/tool/skill/checklist) for one bot, or undefined. */
-  private resolveDeployBot(id: string): ResolvedDeployBot | undefined {
+  private resolveDeployBot(id: string, wireProtocol?: string): ResolvedDeployBot | undefined {
     const resolved = this.resolveDebugBot(id)
     if (resolved.kind !== 'ok') return undefined
     const bot = resolved.bot
     const skillSlug = DEPLOY_SKILLS[bot.toolType]
     if (skillSlug === undefined) return undefined
-    const checklist = this.getLlmProxy(bot.id)
+    const checklist = this.getLlmProxy(bot.id, wireProtocol)
     if (checklist === null) return undefined
     return { id: bot.id, name: bot.name, toolType: bot.toolType, skillSlug, checklist }
   }
@@ -452,13 +453,13 @@ export default class RockBotController extends TypertRemoteService {
    * `unknown` for an id outside the three sources, `unbound` before the user
    * binds an execution backend, and `invalid` for a backend without a deploy skill.
    */
-  private requireDeployBot(id: string): ResolvedDeployBot {
+  private requireDeployBot(id: string, wireProtocol?: string): ResolvedDeployBot {
     const resolved = this.resolveDebugBot(id)
     if (resolved.kind === 'unknown') throw new RemoteError('rockBots/unknown', `no bot with id "${id}"`, {})
     if (resolved.kind === 'unbound') {
       throw new RemoteError('rockBots/unbound', `bot "${resolved.name}" has no execution backend; bind one before deploying`, {})
     }
-    const bot = this.resolveDeployBot(id)
+    const bot = this.resolveDeployBot(id, wireProtocol)
     if (bot === undefined) {
       throw new RemoteError('rockBots/invalid', `bot "${id}" cannot be deployed (no relay checklist or deploy skill)`, {})
     }

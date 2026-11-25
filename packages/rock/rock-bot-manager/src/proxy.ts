@@ -5,13 +5,20 @@
  *
  * @module @rock/rock-bot-manager/proxy
  */
-import type { LlmProxyChecklist } from './types.ts'
+import type { LlmProxyChecklist, WireProtocol } from './types.ts'
 
-/** The DSH provider protocol the relay exposes (OpenAI-compatible chat completions). */
+/** The DSH provider protocol the relay exposes for the default chat-completions wire protocol. */
 export const RELAY_PROTOCOL = 'OpenAI Chat Completions'
 
 /** The placeholder model id used when a bot's real model id is unavailable; Seagull routes by bot binding. */
 export const RELAY_MODEL = 'seagull-relay'
+
+/** DSH provider display protocol per wire protocol. */
+const WIRE_PROTOCOL_DISPLAY: Readonly<Record<WireProtocol, string>> = {
+  'chat-completions': 'OpenAI Chat Completions',
+  'openai-responses': 'OpenAI Responses',
+  'anthropic-messages': 'Anthropic Messages',
+}
 
 /** Relay facts needed to build a checklist (structurally minimal). */
 export interface RelayFacts {
@@ -21,12 +28,30 @@ export interface RelayFacts {
   apiKey: string
 }
 
+/** Whether a string is one of the three wire protocols the relay routes. */
+export function isWireProtocol(value: string): value is WireProtocol {
+  return value === 'chat-completions' || value === 'openai-responses' || value === 'anthropic-messages'
+}
+
+/**
+ * The wire protocol to deploy by default: `chat-completions` when supported,
+ * otherwise the first supported protocol, otherwise `chat-completions`.
+ * @param supported - the bot's supported wire protocols, or undefined when unknown.
+ * @returns the default wire protocol.
+ */
+export function defaultWireProtocol(supported: readonly string[] | undefined): WireProtocol {
+  const candidates = (supported ?? []).filter(isWireProtocol)
+  if (candidates.includes('chat-completions')) return 'chat-completions'
+  return candidates[0] ?? 'chat-completions'
+}
+
 /** Build the DSH custom-model-API checklist for one cloud bot. */
 export function buildLlmProxyChecklist(
   id: string,
   name: string,
   modelId: string,
   facts: RelayFacts,
+  wireProtocol: WireProtocol,
   supportedProtocols?: string[],
 ): LlmProxyChecklist {
   return {
@@ -34,7 +59,8 @@ export function buildLlmProxyChecklist(
     providerId: providerIdFor(id),
     displayName: name,
     baseUrl: `${facts.baseUrl.replace(/\/$/, '')}/v1/bots/${encodeURIComponent(id)}`,
-    protocol: RELAY_PROTOCOL,
+    protocol: WIRE_PROTOCOL_DISPLAY[wireProtocol],
+    wireProtocol,
     apiKey: facts.apiKey,
     modelId,
     modelName: `${modelId}/${name}`,

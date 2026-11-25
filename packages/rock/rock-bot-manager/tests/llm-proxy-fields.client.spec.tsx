@@ -13,6 +13,7 @@ const CHECKLIST: LlmProxyChecklist = {
   displayName: '客服助手',
   baseUrl: 'http://127.0.0.1:4090/v1/bots/agent-bot-C',
   protocol: 'OpenAI Chat Completions',
+  wireProtocol: 'chat-completions',
   apiKey: 'sk-rock-test',
   modelId: 'gpt-5',
   modelName: 'gpt-5/客服助手',

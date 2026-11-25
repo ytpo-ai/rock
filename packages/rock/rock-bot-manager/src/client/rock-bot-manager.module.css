@@ -677,6 +677,13 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Protocol selector group inside the deploy confirmation. */
+.confirmProtocol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .confirmWarning {
   margin: 0;
   font-size: 13px;

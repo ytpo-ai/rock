@@ -39,6 +39,7 @@ const CHECKLIST: LlmProxyChecklist = {
   displayName: 'Bot C',
   baseUrl: 'http://127.0.0.1:4090/v1/bots/bot-C',
   protocol: 'OpenAI Chat Completions',
+  wireProtocol: 'chat-completions',
   apiKey: 'sk-rock-test',
   modelId: 'gpt-5',
   modelName: 'gpt-5/Bot C',

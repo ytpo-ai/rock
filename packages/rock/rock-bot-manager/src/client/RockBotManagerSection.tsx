@@ -8,17 +8,18 @@ import {
   IconInspectOutlineRegular, IconLinkOutlineRegular, IconPlayOutlineRegular, IconPlusOutlineRegular,
   IconRefreshOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, IconTrashOutlineRegular,
   IconUploadOutlineRegular,
-  Input, Menu, MenuItemButton, Modal, Pill, StateDot, Tag, Toast,
+  Input, Menu, MenuItemButton, Modal, Pill, SegmentedControl, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   BotDebugState, BotDefinition, BotDeployState, BotDeploymentRow, BotInput, BotLlm, BotReasoning, BotRow, BotSource,
-  BotTestResult, LlmProxyChecklist,
+  BotTestResult, LlmProxyChecklist, WireProtocol,
 } from '@rock/rock-bot-manager/types'
 import { BindToolDialog } from './BindToolDialog.tsx'
 import { BotDetailDrawer } from './BotDetailDrawer.tsx'
 import { BotFormDrawer } from './BotFormDrawer.tsx'
 import { boundToolType, cardCtas, isDeployable, modelChanged, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
+import { defaultWireProtocol, isWireProtocol, wireProtocolLabel } from './wire-protocol.ts'
 import css from './rock-bot-manager.module.css'
 
 /** Empty create-form state: a new bot starts unbound. */
@@ -30,6 +31,9 @@ const EMPTY_FORM: BotInput = {
 
 /** Refresh interval while a deployment batch is running. */
 const DEPLOY_POLL_MS = 1500
+
+/** Batch deploy is temporarily hidden until it supports per-bot protocol selection. */
+const SHOW_BATCH_DEPLOY: boolean = false
 
 /** Clone one reasoning mapping so the form never aliases the persisted bot's state. */
 function cloneReasoning(reasoning: BotReasoning): BotReasoning {
@@ -84,7 +88,7 @@ export interface RockBotManagerSectionInjected {
     getLlmProxy(id: string): Promise<RemoteResult<LlmProxyChecklist | null>>
     listDeployableBots(): Promise<RemoteResult<BotDeploymentRow[]>>
     deploymentState(): Promise<RemoteResult<BotDeployState>>
-    deployBot(id: string): Promise<RemoteResult<void>>
+    deployBot(id: string, wireProtocol?: string): Promise<RemoteResult<void>>
     deployAll(): Promise<RemoteResult<void>>
   }
   openSession: (sessionId: string) => void
@@ -139,6 +143,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   const [deployDialog, setDeployDialog] = useState(false)
   const [deployBatchIds, setDeployBatchIds] = useState<readonly string[]>([])
   const [deployConfirm, setDeployConfirm] = useState<BotRow | null>(null)
+  const [deployProtocol, setDeployProtocol] = useState<WireProtocol>('chat-completions')
   const [pendingDeploy, setPendingDeploy] = useState<{ kind: 'all' } | { kind: 'bot'; id: string } | null>(null)
   const [deployError, setDeployError] = useState('')
 
@@ -229,6 +234,12 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   const deployFailures = useMemo(
     () => deployments.filter(row => row.status === 'failed' && row.error !== undefined && row.error !== ''),
     [deployments],
+  )
+
+  /** Wire protocols the bot being confirmed offers, for the deploy protocol selector. */
+  const deployProtocols = useMemo(
+    () => (deployConfirm?.supportedProtocols ?? []).filter(isWireProtocol),
+    [deployConfirm],
   )
 
   const retryLoad = (): void => {
@@ -383,11 +394,17 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     setDeployError('')
   }
 
+  /** Open the single-bot deploy confirmation, pre-selecting the bot's default wire protocol. */
+  const openDeployConfirm = (bot: BotRow): void => {
+    setDeployProtocol(defaultWireProtocol(bot.supportedProtocols))
+    setDeployConfirm(bot)
+  }
+
   /** Run one bot's deployment after the confirmation dialog was accepted. */
   const deployOne = (bot: BotRow): void => {
     setDeployConfirm(null)
     setPendingDeploy({ kind: 'bot', id: bot.id })
-    void remote.deployBot(bot.id).then((result) => {
+    void remote.deployBot(bot.id, deployProtocol).then((result) => {
       setPendingDeploy(null)
       if (result.ok) {
         showToast(t('toast.deploy.started'), true)
@@ -475,16 +492,18 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           >
             {t('refresh')}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<IconUploadOutlineRegular size={14} />}
-            disabled={loading || deployState?.running === true}
-            title={deployState?.running === true ? t('deploy.running') : undefined}
-            onClick={openDeployDialog}
-          >
-            {t('deploy.button')}
-          </Button>
+          {SHOW_BATCH_DEPLOY && (
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<IconUploadOutlineRegular size={14} />}
+              disabled={loading || deployState?.running === true}
+              title={deployState?.running === true ? t('deploy.running') : undefined}
+              onClick={openDeployDialog}
+            >
+              {t('deploy.button')}
+            </Button>
+          )}
           <Button size="sm" variant="primary" icon={<IconPlusOutlineRegular size={14} />} onClick={openAdd}>{t('add')}</Button>
         </div>
       </header>
@@ -517,7 +536,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                 icon: <IconRefreshOutlineRegular size={14} />,
                 onClick: () => {
                   const bot = bots.find(candidate => candidate.id === row.id)
-                  if (bot !== undefined) setDeployConfirm(bot)
+                  if (bot !== undefined) openDeployConfirm(bot)
                 },
               }}
             />
@@ -644,7 +663,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
                         icon={status === 'deploying' || deployBusy ? <StateDot state="ongoing" /> : undefined}
                         disabled={deployLocked || status === 'deploying' || deployBusy || !isDeployable(deployment)}
                         title={!isDeployable(deployment) ? t('deploy.notDeployable') : (deployLocked && status !== 'deploying' ? t('deploy.running') : undefined)}
-                        onClick={() => { setDeployConfirm(bot) }}
+                        onClick={() => { openDeployConfirm(bot) }}
                       >
                         {status === 'deploying' || deployBusy
                           ? t('deploy.status.deploying')
@@ -724,7 +743,7 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           debugBusy={debugStarting === detailBot.id}
           loadProxy={detailBot.source === 'claimed' ? () => loadProxy(detailBot.id) : undefined}
           onBind={() => { setBindTarget(detailBot) }}
-          onDeploy={() => { setDeployConfirm(detailBot) }}
+          onDeploy={() => { openDeployConfirm(detailBot) }}
           onDebug={() => { runDebug(detailBot.id) }}
           onEdit={() => { openEdit(detailBot) }}
           onDelete={() => { setDeleteTarget(detailBot) }}
@@ -766,6 +785,18 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
             <p className={css.confirmLine}>
               {t('detail.tool')}：{boundToolType(deployConfirm) ?? t('bind.pending')}
             </p>
+            {deployProtocols.length >= 2 && (
+              <div className={css.confirmProtocol}>
+                <span className={css.confirmLine}>{t('deploy.protocol')}</span>
+                <SegmentedControl
+                  id="bot-deploy-protocol"
+                  label={t('deploy.protocol')}
+                  value={deployProtocol}
+                  options={deployProtocols.map(protocol => ({ value: protocol, label: wireProtocolLabel(t, protocol) }))}
+                  onChange={setDeployProtocol}
+                />
+              </div>
+            )}
             <p className={css.confirmWarning}>{t('deploy.confirm.warning')}</p>
           </div>
         </Modal>
