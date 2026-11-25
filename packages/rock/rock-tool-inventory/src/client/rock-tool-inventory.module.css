@@ -44,10 +44,15 @@
 }
 
 .toolId {
+  width: 96px;
+  flex-shrink: 0;
   font-size: 13px;
   line-height: 18px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusLabel {
