@@ -26,6 +26,24 @@ describe('buildLlmProxyChecklist', () => {
 
     expect(checklist.baseUrl).toBe('http://127.0.0.1:4090/v1/bots/agent-bot-C')
   })
+
+  it('carries the supported protocols when provided', () => {
+    const checklist = buildLlmProxyChecklist('agent-bot-C', 'x', 'm', {
+      baseUrl: 'http://127.0.0.1:4090',
+      apiKey: 'k',
+    }, ['anthropic-messages', 'chat-completions'])
+
+    expect(checklist.supportedProtocols).toEqual(['anthropic-messages', 'chat-completions'])
+  })
+
+  it('omits supported protocols when none are provided', () => {
+    const checklist = buildLlmProxyChecklist('agent-bot-C', 'x', 'm', {
+      baseUrl: 'http://127.0.0.1:4090',
+      apiKey: 'k',
+    })
+
+    expect(checklist.supportedProtocols).toBeUndefined()
+  })
 })
 
 describe('providerIdFor', () => {

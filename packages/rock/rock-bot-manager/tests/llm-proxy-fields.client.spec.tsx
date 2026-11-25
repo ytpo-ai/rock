@@ -16,6 +16,7 @@ const CHECKLIST: LlmProxyChecklist = {
   apiKey: 'sk-rock-test',
   modelId: 'gpt-5',
   modelName: 'gpt-5/客服助手',
+  supportedProtocols: ['anthropic-messages', 'openai-responses', 'chat-completions'],
 }
 
 /** Return the key verbatim so assertions target the checklist values, not localized copy. */
@@ -32,6 +33,7 @@ describe('LlmProxyFields', () => {
     expect(screen.getByText('sk-rock-test')).toBeTruthy()
     expect(screen.getByText('gpt-5')).toBeTruthy()
     expect(screen.getByText('gpt-5/客服助手')).toBeTruthy()
+    expect(screen.getByText('wireProtocol.anthropic-messages / wireProtocol.openai-responses / wireProtocol.chat-completions')).toBeTruthy()
   })
 
   it('offers a copy action for each copyable field', () => {

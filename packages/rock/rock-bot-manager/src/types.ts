@@ -113,6 +113,8 @@ export interface BotRow {
   projectId?: string
   /** Resolved project display name; absent for global bots or when the list is unsynced. */
   projectName?: string
+  /** Wire protocols the bound channel supports (cloud bots only). */
+  supportedProtocols?: string[]
 }
 
 /** Display summary of a cloud-sourced bot's upstream LLM route. */
@@ -123,6 +125,8 @@ export interface BotModelInfo {
   model?: string
   /** Human-readable model name. */
   name?: string
+  /** Wire protocols the bound channel supports (anthropic-messages / openai-responses / chat-completions). */
+  supportedProtocols?: string[]
 }
 
 /** Structured outcome of a card's "test" action against a bot's bound tool. */
@@ -187,6 +191,8 @@ export interface LlmProxyChecklist {
   modelId: string
   /** Model display name: `{modelId}/{botName}`. */
   modelName: string
+  /** Wire protocols the bound channel supports, for the protocol selector/display. */
+  supportedProtocols?: string[]
 }
 
 /** Deployment status of one bot to its bound execution backend. */

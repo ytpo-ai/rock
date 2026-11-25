@@ -234,7 +234,8 @@ export default class RockBotController extends TypertRemoteService {
     const ref = this.cloudBotRef(id)
     const name = ref?.name ?? id
     const modelId = ref?.model?.model ?? RELAY_MODEL
-    return buildLlmProxyChecklist(id, name, modelId, relay.getFacts())
+    const supportedProtocols = ref?.model?.supportedProtocols
+    return buildLlmProxyChecklist(id, name, modelId, relay.getFacts(), supportedProtocols)
   }
 
   /** Unified bot rows across local, claimed, and assistant sources (D-036). */

@@ -22,7 +22,13 @@ export interface RelayFacts {
 }
 
 /** Build the DSH custom-model-API checklist for one cloud bot. */
-export function buildLlmProxyChecklist(id: string, name: string, modelId: string, facts: RelayFacts): LlmProxyChecklist {
+export function buildLlmProxyChecklist(
+  id: string,
+  name: string,
+  modelId: string,
+  facts: RelayFacts,
+  supportedProtocols?: string[],
+): LlmProxyChecklist {
   return {
     botId: id,
     providerId: providerIdFor(id),
@@ -32,6 +38,7 @@ export function buildLlmProxyChecklist(id: string, name: string, modelId: string
     apiKey: facts.apiKey,
     modelId,
     modelName: `${modelId}/${name}`,
+    ...supportedProtocols === undefined ? {} : { supportedProtocols },
   }
 }
 

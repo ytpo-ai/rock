@@ -89,6 +89,28 @@ describe('buildUnifiedBots', () => {
     })
   })
 
+  it('carries the supported protocols from a cloud bot model onto the row', () => {
+    const rows = buildUnifiedBots({
+      localBots: [],
+      claimed: [{
+        agentBotId: 'bot-C',
+        name: 'Bot C',
+        model: {
+          provider: 'deepseek',
+          model: 'deepseek-chat',
+          name: 'DeepSeek-V3',
+          supportedProtocols: ['anthropic-messages', 'openai-responses', 'chat-completions'],
+        },
+        canRebind: true,
+      }],
+      assistants: [],
+      activeIds: new Set(),
+      bindingOf: () => 'codex',
+      projectNameOf: () => undefined,
+    })
+    expect(rows[0]?.supportedProtocols).toEqual(['anthropic-messages', 'openai-responses', 'chat-completions'])
+  })
+
   it('defaults a cloud bot name to its id and locks assistants by default', () => {
     const rows = buildUnifiedBots({
       localBots: [],

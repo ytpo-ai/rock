@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { Button, useClipboardCopy } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { LlmProxyChecklist } from '@rock/rock-bot-manager/types'
 import type { RockBotManagerKey } from './locales.ts'
+import { wireProtocolLabel } from './wire-protocol.ts'
 import css from './rock-bot-manager.module.css'
 
 /** One field row: localized label, copyable value, and a copy button. */
@@ -49,6 +50,16 @@ export function LlmProxyFields({ t, checklist, intro }: LlmProxyFieldsProps): Re
         <CopyRow label={t('proxy.displayName')} value={checklist.displayName} copyLabel={copyLabel} copiedLabel={copiedLabel} />
         <CopyRow label={t('proxy.baseUrl')} value={checklist.baseUrl} copyLabel={copyLabel} copiedLabel={copiedLabel} />
         <CopyRow label={t('proxy.protocol')} value={checklist.protocol} copyLabel={copyLabel} copiedLabel={copiedLabel} />
+        <div className={css.proxyField}>
+          <div className={css.proxyFieldMeta}>
+            <span className={css.proxyFieldLabel}>{t('proxy.supportedProtocols')}</span>
+            <span className={css.proxyFieldValue}>
+              {checklist.supportedProtocols === undefined || checklist.supportedProtocols.length === 0
+                ? '—'
+                : checklist.supportedProtocols.map(protocol => wireProtocolLabel(t, protocol)).join(' / ')}
+            </span>
+          </div>
+        </div>
         <CopyRow label={t('proxy.apiKey')} value={checklist.apiKey} copyLabel={copyLabel} copiedLabel={copiedLabel} />
       </section>
       <section className={css.proxySection}>

@@ -83,6 +83,7 @@ function cloudRow(ref: CloudBotRef, source: BotSource, input: UnifiedBotsInput):
     canDelete: false,
     active: input.activeIds.has(ref.agentBotId),
     ...ref.projectId === undefined ? {} : { projectId: ref.projectId, projectName: input.projectNameOf(ref.projectId) ?? ref.projectId },
+    ...ref.model?.supportedProtocols === undefined ? {} : { supportedProtocols: ref.model.supportedProtocols },
   }
 }
 

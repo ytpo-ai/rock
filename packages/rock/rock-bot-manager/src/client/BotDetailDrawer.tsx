@@ -9,6 +9,7 @@ import type { BotDebugState, BotDeploymentRow, BotRow, BotSource, LlmProxyCheckl
 import { bindLockedReason, boundToolType, detailActions, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import { LlmProxyFields } from './LlmProxyFields.tsx'
 import type { RockBotManagerKey } from './locales.ts'
+import { wireProtocolLabel } from './wire-protocol.ts'
 import css from './rock-bot-manager.module.css'
 
 /** Drawer views: the bot's own facts, or the LLM proxy checklist for a cloud bot. */
@@ -181,6 +182,11 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
                 <Field label={t('detail.model')}>{llm?.modelName ?? llm?.model}</Field>
                 <Field label={t('detail.protocol')}>
                   {llm?.protocol === undefined ? undefined : t(`form.protocol.${llm.protocol}`)}
+                </Field>
+                <Field label={t('detail.supportedProtocols')}>
+                  {bot.supportedProtocols === undefined || bot.supportedProtocols.length === 0
+                    ? undefined
+                    : bot.supportedProtocols.map(protocol => wireProtocolLabel(t, protocol)).join(' / ')}
                 </Field>
                 <Field label={t('form.contextWindow')}>{llm?.contextWindow}</Field>
                 <Field label={t('form.maxOutputTokens')}>{llm?.maxOutputTokens}</Field>

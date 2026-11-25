@@ -21,6 +21,7 @@ const CLAIMED: BotRow = {
   canDelete: false,
   active: false,
   projectName: 'Project A',
+  supportedProtocols: ['anthropic-messages', 'chat-completions'],
 }
 
 const ASSISTANT: BotRow = {
@@ -83,6 +84,7 @@ describe('BotDetailDrawer', () => {
     expect(screen.getByText('detail.section.basic')).toBeTruthy()
     expect(screen.getByText('DeepSeek-V3')).toBeTruthy()
     expect(screen.getByText('Project A')).toBeTruthy()
+    expect(screen.getByText('wireProtocol.anthropic-messages / wireProtocol.chat-completions')).toBeTruthy()
     expect(screen.getByText('detail.rebind')).toBeTruthy()
     expect(screen.getByText('debug')).toBeTruthy()
     expect(screen.queryByText('edit')).toBeNull()
