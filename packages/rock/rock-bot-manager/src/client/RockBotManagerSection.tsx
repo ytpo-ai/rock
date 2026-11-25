@@ -144,6 +144,8 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
   const [deployBatchIds, setDeployBatchIds] = useState<readonly string[]>([])
   const [deployConfirm, setDeployConfirm] = useState<BotRow | null>(null)
   const [deployProtocol, setDeployProtocol] = useState<WireProtocol>('chat-completions')
+  const [protocolMenu, setProtocolMenu] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [pendingDeploy, setPendingDeploy] = useState<{ kind: 'all' } | { kind: 'bot'; id: string } | null>(null)
   const [deployError, setDeployError] = useState('')
 
@@ -270,9 +272,28 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
     void remote.deploymentState().then((result) => { if (result.ok) setDeployState(result.value) })
   }
 
-  const refreshAll = (): void => {
-    refresh()
-    refreshDeployments()
+  const syncAll = (): void => {
+    if (syncing) return
+    setSyncing(true)
+    const tasks = [
+      remote.listBotsUnified().then((result) => { if (result.ok) setBots(result.value); return result.ok }),
+      remote.installedTools().then((result) => { if (result.ok) setInstalled(new Set(result.value)); return result.ok }),
+      remote.listDeployableBots().then((result) => {
+        if (!result.ok) {
+          setDeploymentsFailed(true)
+          return false
+        }
+        setDeployments(result.value)
+        setDeploymentsFailed(false)
+        return true
+      }),
+      remote.deploymentState().then((result) => { if (result.ok) setDeployState(result.value); return result.ok }),
+    ]
+    void Promise.all(tasks).then((results) => {
+      setSyncing(false)
+      const ok = results.every(Boolean)
+      showToast(ok ? t('sync.done') : t('sync.failed'), ok)
+    })
   }
 
   const showToast = (text: string, success: boolean): void => {
@@ -485,10 +506,10 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
           <Button
             size="sm"
             variant="ghost"
-            icon={<IconRefreshOutlineRegular size={14} />}
-            disabled={loading}
+            icon={syncing ? <StateDot state="ongoing" /> : <IconRefreshOutlineRegular size={14} />}
+            disabled={loading || syncing}
             title={t('refresh.title')}
-            onClick={refreshAll}
+            onClick={syncAll}
           >
             {t('refresh')}
           </Button>
@@ -565,6 +586,12 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
         </div>
       </div>
 
+      {syncing && (
+        <div className={css.progressRow} role="status" aria-live="polite">
+          <StateDot state="ongoing" />
+          <span className={css.progressCurrent}>{t('sync.syncing')}</span>
+        </div>
+      )}
       {debug !== null && debug.running && (
         <DebugProgressRow debug={debug} t={t} openSession={openSession} />
       )}
@@ -788,17 +815,21 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
             {deployProtocols.length >= 2 && (
               <div className={css.confirmProtocol}>
                 <span className={css.confirmLine}>{t('deploy.protocol')}</span>
-                <div className={css.confirmProtocolOptions}>
-                  {deployProtocols.map(protocol => (
-                    <Pill
-                      key={protocol}
-                      active={deployProtocol === protocol}
-                      onClick={() => { setDeployProtocol(protocol) }}
-                    >
-                      {wireProtocolLabel(t, protocol)}
-                    </Pill>
-                  ))}
-                </div>
+                <Menu
+                  open={protocolMenu}
+                  anchor={(
+                    <Button size="sm" variant="outline" onClick={() => { setProtocolMenu(!protocolMenu) }}>
+                      {wireProtocolLabel(t, deployProtocol)}
+                    </Button>
+                  )}
+                  items={deployProtocols.map(protocol => ({ id: protocol, label: wireProtocolLabel(t, protocol) }))}
+                  selectedId={deployProtocol}
+                  onSelect={(id) => {
+                    if (isWireProtocol(id)) setDeployProtocol(id)
+                    setProtocolMenu(false)
+                  }}
+                  onClose={() => { setProtocolMenu(false) }}
+                />
               </div>
             )}
             <p className={css.confirmWarning}>{t('deploy.confirm.warning')}</p>

@@ -681,13 +681,7 @@
 .confirmProtocol {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.confirmProtocolOptions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 6px;
 }
 
