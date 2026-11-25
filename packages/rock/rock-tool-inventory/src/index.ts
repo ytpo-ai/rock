@@ -35,7 +35,9 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { assistantMessageText, commandOf, debugPrompt, detectPrompt, mergeStatuses, parseDebugResult, parseDetectConnectionPatches, parseDetectStatuses, touchedToolIds } from './detect.ts'
 import { backfillConnectionPatch, normalizeConnection, normalizeConnectionConfig } from './connection.ts'
 import { toolStatusFrom } from './probe.ts'
-import type { DebugState, DetectState, ToolConnectionConfig, ToolConnectionPatch, ToolDescriptor, ToolStatus } from './types.ts'
+import { postToolStatus } from './report.ts'
+import { ServiceStatusPoller } from './service-status.ts'
+import type { DebugState, DetectState, ToolConnectionConfig, ToolConnectionPatch, ToolDescriptor, ToolServiceStatus, ToolStatus } from './types.ts'
 
 export type * from './types.ts'
 
@@ -45,6 +47,12 @@ const execFileAsync = promisify(execFile)
 const ASSISTANT_PRESET = 'assistant'
 const ASSISTANT_PROVIDER = 'seagull-cloud'
 const ASSISTANT_MODEL = 'seagull-relay'
+
+/** Default interval between service-status probe rounds. */
+const DEFAULT_POLL_INTERVAL_MS = 10_000
+
+/** Default per-probe timeout for one service liveness probe. */
+const DEFAULT_PROBE_TIMEOUT_MS = 2_000
 
 /** Probe targets the workbench ships by default. */
 const DEFAULT_TOOLS: readonly ToolDescriptor[] = [
@@ -86,6 +94,12 @@ export interface Config {
   statePath?: string
   /** JSON file persisting the service connections; defaults to the Rock home. */
   connectionsPath?: string
+  /** Interval between service-status probe rounds in milliseconds. */
+  pollIntervalMs?: number
+  /** Per-probe timeout for one service liveness probe in milliseconds. */
+  serviceProbeTimeoutMs?: number
+  /** Whether to report service-status changes to the Seagull gateway. */
+  reportToolStatus?: boolean
 }
 
 /** Remote service carrying the tool inventory and the assistant detection run. */
@@ -102,11 +116,17 @@ export default class RockToolInventoryController extends TypertRemoteService {
     })).default([...DEFAULT_TOOLS]),
     statePath: z.string().min(1).default(DEFAULT_STATE_PATH),
     connectionsPath: z.string().min(1).default(DEFAULT_CONNECTIONS_PATH),
+    pollIntervalMs: z.number().step(1).min(1000).default(DEFAULT_POLL_INTERVAL_MS),
+    serviceProbeTimeoutMs: z.number().step(1).min(100).default(DEFAULT_PROBE_TIMEOUT_MS),
+    reportToolStatus: z.boolean().default(true),
   })
 
   private readonly tools: readonly ToolDescriptor[]
   private readonly statePath: string
   private readonly connectionsPath: string
+  private readonly reportToolStatus: boolean
+  private readonly poller: ServiceStatusPoller
+  private readonly serviceStatus = new Map<string, ToolServiceStatus>()
   private connections: Record<string, ToolConnectionConfig>
   private state: DetectState
   private debug: DebugState
@@ -131,6 +151,16 @@ export default class RockToolInventoryController extends TypertRemoteService {
       progress: { total: this.tools.length, detected: 0, steps: 0 },
     }
     this.debug = { running: false, progress: { total: 1, detected: 0, steps: 0 } }
+    this.reportToolStatus = config.reportToolStatus ?? true
+    this.poller = new ServiceStatusPoller({
+      intervalMs: config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+      timeoutMs: config.serviceProbeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+      tools: this.tools,
+      connections: () => this.connections,
+      onResult: (statuses) => { this.handleServiceStatus(statuses) },
+    })
+    this.poller.start()
+    ctx.effect(() => () => { this.poller.stop() }, 'rock-tool-inventory: service status poller')
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.recordDetectEvent(session, event)
     })
@@ -148,10 +178,11 @@ export default class RockToolInventoryController extends TypertRemoteService {
     }, 'rock-tool-inventory: connection watcher')
   }
 
-  /** Detected state of every probe target, in declaration order (fast `--version` probe). */
+  /** Detected state of every probe target, in declaration order (fast `--version` probe + live service status). */
   @Remote
   async listTools(): Promise<ToolStatus[]> {
-    return Promise.all(this.tools.map(tool => probeTool(tool)))
+    const fast = await Promise.all(this.tools.map(tool => probeTool(tool)))
+    return this.withServiceStatus(fast)
   }
 
   /** The probe-target descriptors (static config: service hint, configurability), in declaration order. */
@@ -163,7 +194,13 @@ export default class RockToolInventoryController extends TypertRemoteService {
   /** Latest detection run state (statuses + progress; the process renders in the assistant session). */
   @Remote
   detectState(): DetectState {
-    return this.state
+    return { ...this.state, statuses: this.withServiceStatus(this.state.statuses) }
+  }
+
+  /** The freshest transport-level service-status rows, in declaration order. */
+  @Remote
+  serviceStatuses(): ToolServiceStatus[] {
+    return this.serviceStatusSnapshot()
   }
 
   /** Latest per-tool debug run state (result + progress; the process renders in the assistant session). */
@@ -440,6 +477,56 @@ export default class RockToolInventoryController extends TypertRemoteService {
     this.debugAssistantText = ''
   }
 
+  /** Overlay the freshest service status onto base status rows (running + lastCheckedAt). */
+  private withServiceStatus(statuses: readonly ToolStatus[]): ToolStatus[] {
+    return statuses.map((status) => {
+      const live = this.serviceStatus.get(status.id)
+      if (live === undefined) return status
+      return { ...status, running: live.running, lastCheckedAt: live.lastCheckedAt }
+    })
+  }
+
+  /** The freshest service-status rows, in declaration order. */
+  private serviceStatusSnapshot(): ToolServiceStatus[] {
+    const out: ToolServiceStatus[] = []
+    for (const tool of this.tools) {
+      const status = this.serviceStatus.get(tool.id)
+      if (status !== undefined) out.push(status)
+    }
+    return out
+  }
+
+  /** Handle one probe round: update the live map, emit, persist and report on change. */
+  private handleServiceStatus(statuses: readonly ToolServiceStatus[]): void {
+    let changed = false
+    for (const status of statuses) {
+      const previous = this.serviceStatus.get(status.id)
+      if (previous === undefined || previous.running !== status.running) changed = true
+      this.serviceStatus.set(status.id, status)
+    }
+    try {
+      this.ctx.emit('rock-tool-inventory/service-status', statuses)
+    } catch (error) {
+      this.ctx.logger.warn(`rock-tool-inventory: service-status listener failed: ${messageOf(error)}`)
+    }
+    if (!changed) return
+    const merged = this.withServiceStatus(this.state.statuses)
+    if (merged.length > 0) this.persistState(merged, this.state.lastDetectedAt)
+    this.reportServiceStatus()
+  }
+
+  /** Report the freshest service status to the Seagull gateway (best-effort, key-gated). */
+  private reportServiceStatus(): void {
+    if (!this.reportToolStatus) return
+    const onboarding = this.ctx.get('rockOnboarding') as { getRecord(): { baseUrl: string; key: string } | null } | undefined
+    const record = onboarding?.getRecord()
+    if (record === null || record === undefined) return
+    const url = `${record.baseUrl.replace(/\/+$/, '')}/v1/connectors/tool-status`
+    void postToolStatus(url, record.key, this.serviceStatusSnapshot()).catch(() => {
+      // Best-effort: a failed report retries on the next status change.
+    })
+  }
+
   /** Read the last persisted detection result, or an empty state on absence/failure. */
   private loadPersisted(): { lastDetectedAt?: string; statuses: ToolStatus[] } {
     let raw: string
@@ -461,10 +548,10 @@ export default class RockToolInventoryController extends TypertRemoteService {
   }
 
   /** Persist the latest detection result and timestamp so a restart keeps them. */
-  private persistState(statuses: readonly ToolStatus[], lastDetectedAt: string): void {
+  private persistState(statuses: readonly ToolStatus[], lastDetectedAt?: string): void {
     try {
       mkdirSync(dirname(this.statePath), { recursive: true })
-      const payload = { lastDetectedAt, statuses }
+      const payload = { ...(lastDetectedAt === undefined ? {} : { lastDetectedAt }), statuses }
       writeFileSync(this.statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
     } catch (error) {
       this.ctx.logger.warn(`rock-tool-inventory: persist detection result failed: ${messageOf(error)}`)

@@ -80,6 +80,16 @@ export interface ToolStatus {
   detectedBy?: DetectSource
 }
 
+/** Live service-status row produced by the periodic transport-level liveness probe. */
+export interface ToolServiceStatus {
+  /** Tool type id. */
+  id: string
+  /** Whether the tool's resident service/daemon was reachable at the last probe. */
+  running: boolean
+  /** ISO timestamp of the last probe that produced this row. */
+  lastCheckedAt: string
+}
+
 /** Live progress of one assistant-LLM detection run. */
 export interface DetectProgress {
   /** Total probe targets. */
@@ -147,5 +157,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'rock-tool-inventory/detected'(): void
+    /**
+     * A periodic service-status probe finished: the freshest transport-level
+     * `running` state for every probed tool. Consumers re-read
+     * `ctx.rockToolInventory` for the merged statuses.
+     * @param statuses - the probe results, in declaration order.
+     * @mode emit
+     */
+    'rock-tool-inventory/service-status'(statuses: readonly ToolServiceStatus[]): void
   }
 }

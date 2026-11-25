@@ -26,6 +26,13 @@ vi.mock('chokidar', async () => {
   }
 })
 
+// The periodic service-status poller probes real socket/HTTP transports; the
+// connection-config tests only need the poller to stay hermetic, so every probe
+// resolves offline without touching the network.
+vi.mock('../src/service-probe.ts', () => ({
+  probeServiceLiveness: vi.fn(async () => false),
+}))
+
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {

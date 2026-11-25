@@ -4,11 +4,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { Button, Input, Modal, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DebugResult, DebugState, DetectState, ToolClientType, ToolConnectionConfig, ToolDescriptor, ToolStatus } from '@rock/rock-tool-inventory/types'
+import type { DebugResult, DebugState, DetectState, ToolClientType, ToolConnectionConfig, ToolDescriptor, ToolServiceStatus, ToolStatus } from '@rock/rock-tool-inventory/types'
 import css from './rock-tool-inventory.module.css'
 
 /** Poll interval while a detection run is in flight. */
 const DETECT_POLL_MS = 1000
+
+/** Poll interval for the live service status (online/offline). */
+const SERVICE_POLL_MS = 10_000
 
 /** Host operations injected into the Cordis-free read-only component. */
 export interface ToolInventorySectionInjected {
@@ -17,6 +20,7 @@ export interface ToolInventorySectionInjected {
     toolDescriptors(): Promise<RemoteResult<ToolDescriptor[]>>
     detect(): Promise<RemoteResult<DetectState>>
     detectState(): Promise<RemoteResult<DetectState>>
+    serviceStatuses(): Promise<RemoteResult<ToolServiceStatus[]>>
     debugTool(id: string): Promise<RemoteResult<DebugState>>
     debugState(): Promise<RemoteResult<DebugState>>
     connectionConfigs(): Promise<RemoteResult<Record<string, ToolConnectionConfig>>>
@@ -62,6 +66,7 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
   const [configRootDir, setConfigRootDir] = useState('')
   const [configConfigRootDir, setConfigConfigRootDir] = useState('')
   const [configStartupCommand, setConfigStartupCommand] = useState('')
+  const [serviceStatus, setServiceStatus] = useState<ToolServiceStatus[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -83,7 +88,19 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     void remote.debugState().then((result) => {
       if (!cancelled && result.ok) setDebug(result.value)
     })
+    void remote.serviceStatuses().then((result) => {
+      if (!cancelled && result.ok) setServiceStatus(result.value)
+    })
     return () => { cancelled = true }
+  }, [remote])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void remote.serviceStatuses().then((result) => {
+        if (result.ok) setServiceStatus(result.value)
+      })
+    }, SERVICE_POLL_MS)
+    return () => { clearInterval(timer) }
   }, [remote])
 
   useEffect(() => {
@@ -163,7 +180,12 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
     })
   }
 
-  const statuses = detect !== null && detect.statuses.length > 0 ? detect.statuses : tools
+  const serviceById = new Map(serviceStatus.map(status => [status.id, status]))
+  const statuses = (detect !== null && detect.statuses.length > 0 ? detect.statuses : tools)
+    .map((tool) => {
+      const live = serviceById.get(tool.id)
+      return live === undefined ? tool : { ...tool, running: live.running, lastCheckedAt: live.lastCheckedAt }
+    })
   const running = detect?.running === true
   const debugging = debug?.running === true
   const busy = running || debugging
@@ -231,6 +253,9 @@ export function ToolInventorySection({ t, remote, openSession }: ToolInventorySe
                 <StateDot state={runnerDot(state)} />
                 <span className={css.toolId}>{tool.id}</span>
                 <span className={css.statusLabel}>{t(`status.${state}`)}</span>
+                {tool.lastCheckedAt !== undefined
+                  ? <span className={css.checkedAt}>{t('status.checkedAt', { time: formatTime(tool.lastCheckedAt) })}</span>
+                  : null}
                 <span className={css.version}>{tool.version ?? '—'}</span>
                 {state === 'missing' && tool.installDocUrl !== undefined
                   ? <a className={css.install} href={tool.installDocUrl} target="_blank" rel="noreferrer">{t('action.install')}</a>
