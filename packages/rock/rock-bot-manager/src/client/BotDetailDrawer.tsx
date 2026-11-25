@@ -233,6 +233,9 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
                     </span>
                   </Field>
                   <Field label={t('detail.deployedModel')}>{deployment?.deployedModel}</Field>
+                  <Field label={t('detail.deployedProtocol')}>
+                    {deployment?.deployedProtocol === undefined ? undefined : wireProtocolLabel(t, deployment.deployedProtocol)}
+                  </Field>
                   <Field label={t('detail.deployUpdatedAt')}>
                     {deployment?.updatedAt === undefined ? undefined : new Date(deployment.updatedAt).toLocaleString('zh-CN')}
                   </Field>

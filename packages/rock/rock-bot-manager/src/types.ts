@@ -219,6 +219,8 @@ export interface DeploymentRecord {
   error?: string
   /** Model id written to the external tool during the last successful deploy. */
   deployedModel?: string
+  /** Wire protocol written to the external tool during the last successful deploy. */
+  deployedProtocol?: WireProtocol
 }
 
 /** One bot's deployment row for the management panel. */
@@ -239,6 +241,8 @@ export interface BotDeploymentRow {
   error?: string
   /** Model id written to the external tool during the last successful deploy; absent when never deployed. */
   deployedModel?: string
+  /** Wire protocol written to the external tool during the last successful deploy; absent when never deployed. */
+  deployedProtocol?: WireProtocol
 }
 
 /** Live progress of a batch deployment run. */

@@ -394,6 +394,7 @@ export default class RockBotController extends TypertRemoteService {
         ...(record?.updatedAt === undefined ? {} : { updatedAt: record.updatedAt }),
         ...(record?.error === undefined ? {} : { error: record.error }),
         ...(record?.deployedModel === undefined ? {} : { deployedModel: record.deployedModel }),
+        ...(record?.deployedProtocol === undefined ? {} : { deployedProtocol: record.deployedProtocol }),
       }
     })
   }
@@ -552,6 +553,7 @@ export default class RockBotController extends TypertRemoteService {
   private settleDeploy(id: string, status: 'deployed' | 'failed', error?: string): void {
     const toolType = this.deployCurrent?.toolType ?? ''
     const deployedModel = this.deployCurrent?.checklist.modelId
+    const deployedProtocol = this.deployCurrent?.checklist.wireProtocol
     this.deployCurrent = undefined
     this.deploySessionId = undefined
     this.deployAssistantText = ''
@@ -561,6 +563,7 @@ export default class RockBotController extends TypertRemoteService {
       status,
       updatedAt: new Date().toISOString(),
       ...(status === 'deployed' && deployedModel !== undefined ? { deployedModel } : {}),
+      ...(status === 'deployed' && deployedProtocol !== undefined ? { deployedProtocol } : {}),
       ...(error === undefined || error.length === 0 ? {} : { error }),
     }).catch((persistError: unknown) => {
       this.ctx.logger.warn(`rock-bot-manager: persist deployment result failed: ${messageOf(persistError)}`)

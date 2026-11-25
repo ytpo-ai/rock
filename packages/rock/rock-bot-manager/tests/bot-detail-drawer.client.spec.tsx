@@ -49,6 +49,7 @@ const CHECKLIST: LlmProxyChecklist = {
 function renderDrawer(bot: BotRow, options: {
   status?: 'undeployed' | 'deployed'
   deployedModel?: string
+  deployedProtocol?: string
   loadProxy?: () => Promise<LlmProxyChecklist | null>
 } = {}): void {
   const status = options.status ?? 'undeployed'
@@ -64,6 +65,7 @@ function renderDrawer(bot: BotRow, options: {
         status,
         deployable: true,
         ...options.deployedModel === undefined ? {} : { deployedModel: options.deployedModel },
+        ...options.deployedProtocol === undefined ? {} : { deployedProtocol: options.deployedProtocol },
       }}
       status={status}
       debug={null}
@@ -131,6 +133,11 @@ describe('BotDetailDrawer', () => {
     renderDrawer({ ...CLAIMED, modelId: 'gpt-5' }, { status: 'deployed', deployedModel: 'gpt-4' })
     expect(screen.getByText('modelChanged')).toBeTruthy()
     expect(screen.getByText('gpt-4')).toBeTruthy()
+  })
+
+  it('shows the deployed wire protocol in the execution section', () => {
+    renderDrawer(CLAIMED, { status: 'deployed', deployedProtocol: 'anthropic-messages' })
+    expect(screen.getByText('wireProtocol.anthropic-messages')).toBeTruthy()
   })
 
   it('reads the proxy checklist only when its tab is opened', async () => {
