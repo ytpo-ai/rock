@@ -8,7 +8,7 @@ import {
   IconInspectOutlineRegular, IconLinkOutlineRegular, IconPlayOutlineRegular, IconPlusOutlineRegular,
   IconRefreshOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, IconTrashOutlineRegular,
   IconUploadOutlineRegular,
-  Input, Menu, MenuItemButton, Modal, Pill, SegmentedControl, StateDot, Tag, Toast,
+  Input, Menu, MenuItemButton, Modal, Pill, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -788,13 +788,17 @@ export function RockBotManagerSection({ t, remote, openSession }: RockBotManager
             {deployProtocols.length >= 2 && (
               <div className={css.confirmProtocol}>
                 <span className={css.confirmLine}>{t('deploy.protocol')}</span>
-                <SegmentedControl
-                  id="bot-deploy-protocol"
-                  label={t('deploy.protocol')}
-                  value={deployProtocol}
-                  options={deployProtocols.map(protocol => ({ value: protocol, label: wireProtocolLabel(t, protocol) }))}
-                  onChange={setDeployProtocol}
-                />
+                <div className={css.confirmProtocolOptions}>
+                  {deployProtocols.map(protocol => (
+                    <Pill
+                      key={protocol}
+                      active={deployProtocol === protocol}
+                      onClick={() => { setDeployProtocol(protocol) }}
+                    >
+                      {wireProtocolLabel(t, protocol)}
+                    </Pill>
+                  ))}
+                </div>
               </div>
             )}
             <p className={css.confirmWarning}>{t('deploy.confirm.warning')}</p>

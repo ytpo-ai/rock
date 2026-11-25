@@ -684,6 +684,13 @@
   gap: 6px;
 }
 
+.confirmProtocolOptions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .confirmWarning {
   margin: 0;
   font-size: 13px;
