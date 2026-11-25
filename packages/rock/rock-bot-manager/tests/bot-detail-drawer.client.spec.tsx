@@ -86,6 +86,7 @@ describe('BotDetailDrawer', () => {
     renderDrawer(CLAIMED)
     expect(screen.getByText('detail.section.basic')).toBeTruthy()
     expect(screen.getByText('DeepSeek-V3')).toBeTruthy()
+    expect(screen.getByText('deepseek-chat')).toBeTruthy()
     expect(screen.getByText('Project A')).toBeTruthy()
     expect(screen.getByText('wireProtocol.anthropic-messages / wireProtocol.chat-completions')).toBeTruthy()
     expect(screen.getByText('detail.rebind')).toBeTruthy()

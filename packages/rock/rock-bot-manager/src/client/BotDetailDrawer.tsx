@@ -6,7 +6,7 @@ import {
   Modal, SegmentedTabs, StateDot, Tag, type TagTone,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { BotDebugState, BotDeploymentRow, BotRow, BotSource, LlmProxyChecklist } from '@rock/rock-bot-manager/types'
-import { bindLockedReason, boundToolType, detailActions, modelChanged, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
+import { bindLockedReason, boundToolType, currentModelId, detailActions, modelChanged, supportsTools, type BotDeployStatus } from './bot-card-state.ts'
 import { LlmProxyFields } from './LlmProxyFields.tsx'
 import type { RockBotManagerKey } from './locales.ts'
 import { wireProtocolLabel } from './wire-protocol.ts'
@@ -181,6 +181,7 @@ export function BotDetailDrawer(props: BotDetailDrawerProps): ReactElement {
               <div className={css.detailGrid}>
                 <Field label={t('detail.provider')}>{llm === undefined ? t('cloudManaged') : llm.provider}</Field>
                 <Field label={t('detail.model')}>{llm?.modelName ?? llm?.model}</Field>
+                <Field label={t('detail.modelId')}>{currentModelId(bot)}</Field>
                 <Field label={t('detail.protocol')}>
                   {llm?.protocol === undefined ? undefined : t(`form.protocol.${llm.protocol}`)}
                 </Field>
