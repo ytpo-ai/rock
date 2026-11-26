@@ -30,6 +30,9 @@ import {
 export const name = 'subagent-dsh-sdk'
 export const inject = ['subagents']
 
+/** Environment variable carrying the delegating (parent) session id into the child runtime. */
+const PARENT_SESSION_ID_ENV = 'DSH_PARENT_SESSION_ID'
+
 /** Config: how to spawn and drive the child SDK runtime process. */
 export interface Config {
   /** Provider name on `ctx.subagents` (default `dsh-sdk`). */
@@ -152,7 +155,10 @@ class SdkSubagentProvider implements SubagentProvider {
       cwd,
       originCwd: request.parent.session.header.cwd,
       ...route,
-      env: this.config.env,
+      env: {
+        ...this.config.env,
+        [PARENT_SESSION_ID_ENV]: String(request.parent.session.id),
+      },
       shutdownTimeoutMs: this.config.shutdownTimeoutMs,
       disposeEofGraceMs: this.config.disposeEofGraceMs,
       disposeGraceMs: this.config.disposeGraceMs,

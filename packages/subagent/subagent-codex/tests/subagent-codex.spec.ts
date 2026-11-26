@@ -2237,7 +2237,10 @@ describe('run lifecycle and quiescence', () => {
       stopReason: 'error',
     })
     expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
-      env: { OPENAI_API_KEY: 'fake' },
+      env: expect.objectContaining({
+        OPENAI_API_KEY: 'fake',
+        DSH_PARENT_SESSION_ID: expect.any(String),
+      }),
       graceMs: 25,
       cwd: process.cwd(),
     }))

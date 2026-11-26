@@ -38,6 +38,7 @@ Rock ConnectorClient 的 LLM 内网转发端点（D-034）。外部工具（Code
 
 - 路由：`POST /v1/bots/{agentBotId}/chat/completions`（`{agentBotId}` 来自 base_url 路径）。
 - 注入 header：`x-seagull-agent-bot-id` / `x-seagull-employee-id`（查 seagull-identity 认领）/ `x-seagull-connector-client-id` / `x-seagull-relayed: true`。
+- **会话头透传**：入站 `x-rock-session-id`（Rock/DSH 会话 id）/ `x-session-id` / `x-conversation-id`（外部工具会话 id）原样转发到云端，供 Seagull 按会话归并 LLM 调用。
 - **模型强制**：无论入站请求体里的 `model` 是什么，转发前都替换为 `seagull-relay`，使 Seagull 始终按 bot 绑定模型路由，忽略外部工具传入的模型（不触发 `allowOverride`）。
 
 ## 服务暴露

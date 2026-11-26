@@ -202,7 +202,8 @@ describe('RockLlmRelay', () => {
 
   it('records the forward model mapping and session ids via onForward', async () => {
     const onForward = vi.fn()
-    const server = relay({ forward: vi.fn().mockResolvedValue(sseResponse()), onForward })
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const server = relay({ forward, onForward })
     servers.push(server)
     const port = await server.start()
 
@@ -211,7 +212,7 @@ describe('RockLlmRelay', () => {
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer sk-rock-test',
-        'x-dsh-session-id': 'bot-test-123',
+        'x-rock-session-id': 'bot-test-123',
         'x-session-id': 'tool-session-456',
       },
       body: JSON.stringify({ model: 'gpt-5', messages: [] }),
@@ -229,6 +230,11 @@ describe('RockLlmRelay', () => {
     expect(log.startedAt).toBeTypeOf('string')
     expect(log.durationMs).toBeTypeOf('number')
     expect(log.durationMs).toBeGreaterThanOrEqual(0)
+
+    const [, init] = forward.mock.calls[0]! as [string, RequestInit]
+    const forwarded = init.headers as Headers
+    expect(forwarded.get('x-rock-session-id')).toBe('bot-test-123')
+    expect(forwarded.get('x-session-id')).toBe('tool-session-456')
   })
 
   it('falls back to the body sessionId for rockSessionId', async () => {

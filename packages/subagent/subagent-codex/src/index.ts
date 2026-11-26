@@ -40,6 +40,9 @@ import {
 export const name = 'subagent-codex'
 export const inject = ['subagents', 'subprocess']
 
+/** Environment variable carrying the delegating (parent) session id into the child process. */
+const PARENT_SESSION_ID_ENV = 'DSH_PARENT_SESSION_ID'
+
 const DEFAULT_PROVIDER_NAME = 'codex'
 
 /** How the provider reaches the Codex app-server. */
@@ -118,6 +121,10 @@ class CodexProvider implements SubagentProvider {
         `subagent-codex "${this.name}": child run failed (${stopReason}): ${error.message}`,
       )
     }
+    const env = {
+      ...this.config.env,
+      [PARENT_SESSION_ID_ENV]: String(request.parent.session.id),
+    }
     if (this.config.transport === 'socket') {
       const socketPath = this.config.socketPath ?? defaultDaemonSocketPath()
       if (socketPath === undefined) {
@@ -131,7 +138,7 @@ class CodexProvider implements SubagentProvider {
         permissionMode: this.config.permissionMode,
         socketPath,
         ensureDaemon: this.config.ensureDaemon,
-        env: this.config.env,
+        env,
         spawn: spawnSpec => this.ctx.subprocess.spawn(spawnSpec),
         onError,
       }
@@ -142,7 +149,7 @@ class CodexProvider implements SubagentProvider {
       ...this.config.model === undefined ? {} : { model: this.config.model },
       ephemeral: true,
       permissionMode: this.config.permissionMode,
-      env: this.config.env,
+      env,
       disposeGraceMs: this.config.disposeGraceMs,
       spawn: spawnSpec => this.ctx.subprocess.spawn(spawnSpec),
       onError,

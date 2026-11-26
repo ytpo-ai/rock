@@ -17,6 +17,16 @@ const WIRE_PROTOCOL_BY_PATH_SUFFIX: Readonly<Record<string, string>> = {
 }
 
 /**
+ * Session headers the relay forwards verbatim from the inbound request to the
+ * cloud Proxy, so Seagull can group the LLM calls under the caller's session.
+ */
+const SESSION_HEADER_NAMES = [
+  PROVENANCE_HEADERS.sessionId,
+  'x-session-id',
+  'x-conversation-id',
+] as const
+
+/**
  * Strip a redundant `/v1` prefix before a known protocol suffix. The Anthropic
  * SDK requests `{baseURL}/v1/messages`, so a caller whose base_url already ends
  * in `/v1/bots/{agentBotId}` produces the suffix `/v1/messages`; canonicalize it
@@ -98,7 +108,7 @@ export class RockLlmRelay {
       const sessionIds = this.sessionIds(req, info.sessionId)
       let upstream: Response
       try {
-        upstream = await this.forward(route, info.mappedBody)
+        upstream = await this.forward(route, info.mappedBody, this.sessionHeaders(req))
       } catch (error) {
         this.record(route, info, sessionIds, startedAt, undefined, diagnosticOf(error))
         this.writeJson(res, 502, { error: { message: diagnosticOf(error) } })
@@ -127,7 +137,7 @@ export class RockLlmRelay {
       || req.headers['x-api-key'] === this.options.localKey
   }
 
-  private async forward(route: RelayRoute, mappedBody: string): Promise<Response> {
+  private async forward(route: RelayRoute, mappedBody: string, sessionHeaders: Record<string, string>): Promise<Response> {
     const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1/bots/${route.agentBotId}${route.pathSuffix}${route.query ?? ''}`
     const headers = new Headers()
     headers.set('content-type', 'application/json')
@@ -138,6 +148,7 @@ export class RockLlmRelay {
     if (employeeId !== undefined) headers.set(PROVENANCE_HEADERS.employeeId, employeeId)
     const connectorKey = this.options.resolveConnectorKey?.()
     if (connectorKey !== undefined && connectorKey !== '') headers.set('authorization', `Bearer ${connectorKey}`)
+    for (const [name, value] of Object.entries(sessionHeaders)) headers.set(name, value)
 
     const doForward = this.options.forward ?? ((target: string, init: RequestInit) => fetch(target, init))
     return doForward(url, { method: 'POST', headers, body: mappedBody })
@@ -149,12 +160,22 @@ export class RockLlmRelay {
       const value = req.headers[name]
       return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
     }
-    const rockSessionId = header('x-dsh-session-id') ?? bodySessionId
+    const rockSessionId = header(PROVENANCE_HEADERS.sessionId) ?? bodySessionId
     const toolSessionId = header('x-session-id') ?? header('x-conversation-id')
     return {
       ...(rockSessionId === undefined ? {} : { rockSessionId }),
       ...(toolSessionId === undefined ? {} : { toolSessionId }),
     }
+  }
+
+  /** Extract the inbound session headers to forward verbatim to the cloud Proxy. */
+  private sessionHeaders(req: IncomingMessage): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const name of SESSION_HEADER_NAMES) {
+      const value = req.headers[name]
+      if (typeof value === 'string' && value.trim() !== '') out[name] = value.trim()
+    }
+    return out
   }
 
   /** Emit one forwarding attempt through the plugin's `onForward` hook, if present. */

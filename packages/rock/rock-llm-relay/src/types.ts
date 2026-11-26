@@ -9,6 +9,7 @@ export const PROVENANCE_HEADERS = {
   employeeId: 'x-seagull-employee-id',
   connectorClientId: 'x-seagull-connector-client-id',
   relayed: 'x-seagull-relayed',
+  sessionId: 'x-rock-session-id',
 } as const
 
 /** Resolved configuration for the relay server. */
@@ -72,7 +73,7 @@ export interface RelayForwardLog {
   pathSuffix: string
   /** Wire protocol inferred from the path suffix (`anthropic-messages` / `openai-responses` / `chat-completions`). */
   wireProtocol?: string
-  /** Rock/DSH delegator session id, from `x-dsh-session-id` header (fallback: body `sessionId`). */
+  /** Rock/DSH delegator session id, from `x-rock-session-id` header (fallback: body `sessionId`). */
   rockSessionId?: string
   /** The external tool's own session identifier, when it presents one. */
   toolSessionId?: string

@@ -39,6 +39,12 @@ const WIRE_PROTOCOL_PATH: Readonly<Record<WireProtocol, string>> = {
   'chat-completions': '/chat/completions',
 }
 
+/** Session header stamped on relayed requests so the cloud groups calls under the DSH session id. */
+const ROCK_SESSION_ID_HEADER = 'x-rock-session-id'
+
+/** Environment variable the parent subagent injects carrying the delegator's DSH session id. */
+const PARENT_SESSION_ID_ENV = 'DSH_PARENT_SESSION_ID'
+
 /**
  * Select the wire protocol by channel support priority; unknown or empty support
  * falls back to `chat-completions` (the relay's long-standing default).
@@ -504,6 +510,11 @@ export class CloudLlmAdapter extends LlmAdapter {
     const headers = new Headers()
     headers.set('content-type', 'application/json')
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+    if (relay) {
+      // Prefer the parent-injected Rock session id, else the harness's own DSH session id.
+      const rockSessionId = process.env[PARENT_SESSION_ID_ENV] ?? (options.sessionId === undefined ? undefined : String(options.sessionId))
+      if (rockSessionId !== undefined && rockSessionId !== '') headers.set(ROCK_SESSION_ID_HEADER, rockSessionId)
+    }
     if (apiKey !== undefined && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`)
 
     const body = this.buildBody(options, protocol)
