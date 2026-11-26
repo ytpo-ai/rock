@@ -15349,6 +15349,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@rock/rock-log-store':
+        specifier: workspace:*
+        version: link:../rock-log-store
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -15415,6 +15418,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:*
         version: link:../../core/session
+      '@deepseek-ai/dsh-subagent':
+        specifier: workspace:*
+        version: link:../../subagent/subagent
       '@rock/rock-tool-inventory':
         specifier: workspace:*
         version: link:../rock-tool-inventory
@@ -15461,10 +15467,15 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@rock/rock-log-store':
+        specifier: workspace:*
+        version: link:../rock-log-store
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+
+  packages/rock/rock-log-store: {}
 
   packages/rock/rock-observability:
     dependencies:
