@@ -464,6 +464,7 @@
       "@rock/rock-llm-relay": ["./packages/rock/rock-llm-relay/src"],
       "@rock/rock-log-store": ["./packages/rock/rock-log-store/src"],
       "@rock/rock-observability": ["./packages/rock/rock-observability/src"],
+      "@rock/rock-project-manager": ["./packages/rock/rock-project-manager/src"],
       "@rock/rock-onboarding": ["./packages/rock/rock-onboarding/src"],
       "@rock/rock-console": ["./packages/rock/rock-console/src"],
       "@rock/rock-tool-inventory": ["./packages/rock/rock-tool-inventory/src"],
