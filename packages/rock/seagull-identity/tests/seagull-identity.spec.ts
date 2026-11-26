@@ -199,4 +199,37 @@ describe('SeagullIdentityService', () => {
     expect(service.renderAgents()).toContainEqual({ id: 'agent-bot-C', provider: 'openai', model: 'gpt-4o', sessionId: 'agent-bot-C' })
     expect(service.toolBindingOf('agent-bot-C')).toBe('pi')
   })
+
+  it('resolves a bot bound channel wire protocols, or undefined when absent', async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      data: {
+        claims: [{
+          agentBotId: 'agent-bot-C',
+          employeeId: 'employee-a',
+          claimedAt: '2026-11-14T00:00:00.000Z',
+          model: { provider: 'deepseek', model: 'deepseek-v4-flash', name: 'deepseek-v4-flash', supportedProtocols: ['anthropic-messages', 'openai-responses', 'chat-completions'] },
+        }],
+        assistants: [{
+          agentBotId: 'assistant-1',
+          name: 'Van的专属助理',
+          model: { provider: 'moonshotai', model: 'kimi-k3.1-pro', name: 'Kimi', supportedProtocols: ['anthropic-messages', 'chat-completions'] },
+        }],
+      },
+    })
+
+    const service = new SeagullIdentityService({
+      gatewayUrl: 'http://gateway.test/claims',
+      employeeId: 'employee-a',
+      bindings: {},
+      defaultToolType: 'codex',
+      defaultProvider: 'seagull-cloud',
+      defaultModel: 'seagull-relay',
+      fetchJson,
+    })
+    await service.sync()
+
+    expect(service.supportedProtocolsOf('agent-bot-C')).toEqual(['anthropic-messages', 'openai-responses', 'chat-completions'])
+    expect(service.supportedProtocolsOf('assistant-1')).toEqual(['anthropic-messages', 'chat-completions'])
+    expect(service.supportedProtocolsOf('unknown')).toBeUndefined()
+  })
 })

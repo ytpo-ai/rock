@@ -105,6 +105,20 @@ export class SeagullIdentityService {
     return ref?.model?.model ?? this.options.defaultModel
   }
 
+  /**
+   * Resolve a bot's bound channel wire protocols (`anthropic-messages` /
+   * `openai-responses` / `chat-completions`), or undefined when the bot has no
+   * projected model or the channel declares none.
+   * @param agentBotId - the claimed bot or assistant id.
+   * @returns the supported wire protocols, or undefined.
+   */
+  supportedProtocolsOf(agentBotId: string): string[] | undefined {
+    const local = this.localBots.find(bot => bot.id === agentBotId)
+    if (local !== undefined) return undefined
+    const ref = [...this.claims, ...this.assistants].find(item => item.agentBotId === agentBotId)
+    return ref?.model?.supportedProtocols
+  }
+
   /** Render the agent-loop agent entries for every claimed bot and local bot. */
   renderAgents(): RenderedAgent[] {
     const byId = new Map<string, RenderedAgent>()

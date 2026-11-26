@@ -84,6 +84,10 @@ export function apply(ctx: Context, config: Config): void {
       const onboarding = ctx.get('rockOnboarding') as { getRecord(): { key: string } | null } | undefined
       return onboarding?.getRecord()?.key
     },
+    resolveSupportedProtocols: (agentId: string) => {
+      const identity = ctx.get('seagullIdentity') as { supportedProtocolsOf(agentBotId: string): string[] | undefined } | undefined
+      return identity?.supportedProtocolsOf(agentId)
+    },
   })
   ctx.llm.registerAdapter(Object.keys(providers), adapter)
 }

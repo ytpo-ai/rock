@@ -25,6 +25,30 @@ import type {
   ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 
+/** Wire protocol the relay routes to Seagull (mirrors Seagull's `WireProtocol`). */
+type WireProtocol = 'anthropic-messages' | 'openai-responses' | 'chat-completions'
+
+/** Protocol preference: Anthropic Messages first, then OpenAI Responses, then Chat Completions. */
+const WIRE_PROTOCOL_PRIORITY: readonly WireProtocol[] = ['anthropic-messages', 'openai-responses', 'chat-completions']
+
+/** Relay path suffix per wire protocol. */
+const WIRE_PROTOCOL_PATH: Readonly<Record<WireProtocol, string>> = {
+  'anthropic-messages': '/messages',
+  'openai-responses': '/responses',
+  'chat-completions': '/chat/completions',
+}
+
+/**
+ * Select the wire protocol by channel support priority; unknown or empty support
+ * falls back to `chat-completions` (the relay's long-standing default).
+ * @param supported - the bot's bound channel wire protocols, or undefined.
+ * @returns the preferred wire protocol.
+ */
+export function preferredWireProtocol(supported: readonly string[] | undefined): WireProtocol {
+  const supportedSet = new Set(supported ?? [])
+  return WIRE_PROTOCOL_PRIORITY.find(protocol => supportedSet.has(protocol)) ?? 'chat-completions'
+}
+
 /** One OpenAI-compatible provider route owned by this adapter. */
 export interface CloudProviderConfig {
   /** OpenAI-compatible endpoint origin; the adapter appends `/v1/chat/completions`. */
@@ -37,7 +61,11 @@ export interface CloudProviderConfig {
   models?: string[]
   /** Placeholder model id for catalog and omitted-request fallback. */
   defaultModel: string
-  /** Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` scoped URL. */
+  /**
+   * Rock-relayed route: connector-key auth + `/v1/bots/{agentId}` scoped URL.
+   * Requires `GenerateOptions.agentId`; a missing id throws `INVALID_REQUEST`
+   * instead of falling back to the session id.
+   */
   relay?: boolean
 }
 
@@ -47,6 +75,8 @@ export interface CloudLlmAdapterOptions {
   providers: Record<string, CloudProviderConfig>
   /** Resolve the Rock connector key for `relay` routes; undefined means the route has no key yet. */
   resolveConnectorKey?: () => string | undefined
+  /** Resolve a relay bot's bound channel wire protocols; undefined means unknown. */
+  resolveSupportedProtocols?: (agentId: string) => string[] | undefined
 }
 
 /** One OpenAI chat message after translation from the harness vocabulary. */
@@ -139,6 +169,112 @@ function toolToOpenAi(tool: ToolSchema): OpenAiTool {
   return {
     type: 'function',
     function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+  }
+}
+
+/** Translate one harness tool schema into an OpenAI Responses tool declaration. */
+function toolToResponses(tool: ToolSchema): Record<string, unknown> {
+  return { type: 'function', name: tool.name, description: tool.description, parameters: tool.parameters }
+}
+
+/** Translate one harness tool schema into an Anthropic tool declaration. */
+function toolToAnthropic(tool: ToolSchema): Record<string, unknown> {
+  return { name: tool.name, description: tool.description, input_schema: tool.parameters }
+}
+
+/** Parse a raw JSON string into an object, falling back to a wrapped raw string. */
+function parseJsonArguments(raw: string): unknown {
+  try {
+    return JSON.parse(raw || '{}')
+  } catch {
+    return { _raw: raw }
+  }
+}
+
+/** Translate one harness message into OpenAI Responses input items (assistant tool calls split into `function_call` items). */
+function messageToResponsesInput(message: RequestMessage): unknown[] {
+  switch (message.role) {
+    case 'system':
+    case 'developer':
+      return [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: textOf(message.content) }] }]
+    case 'user':
+      return [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: textOf(message.content) }] }]
+    case 'assistant': {
+      const out: unknown[] = []
+      const text = textOf(message.content)
+      const toolCalls = toolCallsOf(message.content)
+      if (text.length > 0 || toolCalls.length === 0) {
+        out.push({ type: 'message', role: 'assistant', content: [{ type: 'input_text', text }] })
+      }
+      for (const call of toolCalls) {
+        out.push({ type: 'function_call', call_id: call.id, name: call.function.name, arguments: call.function.arguments })
+      }
+      return out
+    }
+    case 'tool':
+      return [{ type: 'function_call_output', call_id: String(message.toolCallId), output: textOf(message.content) }]
+  }
+}
+
+/**
+ * Translate harness messages into Anthropic `messages` (system/developer are
+ * omitted here — they surface as the top-level `system`). Consecutive tool
+ * results are merged into one user message to satisfy Anthropic alternation.
+ */
+function messagesToAnthropic(messages: readonly RequestMessage[]): Array<{ role: 'user' | 'assistant'; content: unknown[] }> {
+  const out: Array<{ role: 'user' | 'assistant'; content: unknown[] }> = []
+  for (let index = 0; index < messages.length;) {
+    const message = messages[index]
+    if (message === undefined) break
+    if (message.role === 'system' || message.role === 'developer') {
+      index += 1
+      continue
+    }
+    if (message.role === 'assistant') {
+      const blocks: unknown[] = []
+      const text = textOf(message.content)
+      if (text.length > 0) blocks.push({ type: 'text', text })
+      for (const call of toolCallsOf(message.content)) {
+        blocks.push({ type: 'tool_use', id: call.id, name: call.function.name, input: parseJsonArguments(call.function.arguments) })
+      }
+      if (blocks.length > 0) out.push({ role: 'assistant', content: blocks })
+      index += 1
+      continue
+    }
+    if (message.role === 'user') {
+      const text = textOf(message.content)
+      out.push({ role: 'user', content: text.length > 0 ? [{ type: 'text', text }] : [] })
+      index += 1
+      continue
+    }
+    // tool role: merge consecutive tool results into one user message.
+    const blocks: unknown[] = []
+    while (index < messages.length) {
+      const toolMessage = messages[index]
+      if (toolMessage === undefined || toolMessage.role !== 'tool') break
+      blocks.push({ type: 'tool_result', tool_use_id: String(toolMessage.toolCallId), content: textOf(toolMessage.content) })
+      index += 1
+    }
+    out.push({ role: 'user', content: blocks })
+  }
+  return out
+}
+
+/** Map OpenAI Responses usage to the harness disjoint token accounting. */
+function responsesUsageOf(usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number }): TokenUsage {
+  return {
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    ...usage.total_tokens === undefined ? {} : { totalTokens: usage.total_tokens },
+  }
+}
+
+/** Map an Anthropic stop_reason to the harness finish reason. */
+function anthropicFinishReasonOf(stopReason: string | null | undefined): FinishReason {
+  switch (stopReason) {
+    case 'tool_use': return { kind: 'tool-calls' }
+    case 'max_tokens': return { kind: 'max-tokens' }
+    default: return { kind: 'stop' }
   }
 }
 
@@ -290,9 +426,15 @@ export class CloudLlmAdapter extends LlmAdapter {
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const route = this.providerConfig(options.provider)
     const relay = route.relay === true
-    const agentId = options.agentId ?? (options.sessionId === undefined ? undefined : String(options.sessionId))
+    const agentId = options.agentId
+    if (relay && (agentId === undefined || agentId === '')) {
+      throw new LlmError('relay route requires an agent-bot id', 'INVALID_REQUEST')
+    }
+    const protocol: WireProtocol = relay
+      ? preferredWireProtocol(this.config.resolveSupportedProtocols?.(agentId ?? ''))
+      : 'chat-completions'
     const url = relay
-      ? `${route.baseUrl.replace(/\/$/, '')}/v1/bots/${agentId ?? ''}/chat/completions`
+      ? `${route.baseUrl.replace(/\/$/, '')}/v1/bots/${agentId ?? ''}${WIRE_PROTOCOL_PATH[protocol]}`
       : `${route.baseUrl.replace(/\/$/, '')}/v1/chat/completions`
     const apiKey = relay ? this.config.resolveConnectorKey?.() : route.apiKey
     const headers = new Headers()
@@ -300,20 +442,7 @@ export class CloudLlmAdapter extends LlmAdapter {
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     if (apiKey !== undefined && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`)
 
-    const body = {
-      model: options.model,
-      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
-      messages: [
-        ...options.system === undefined ? [] : [{ role: 'system', content: options.system }],
-        ...options.messages.map(messageToOpenAi),
-      ],
-      ...options.tools !== undefined && options.tools.length > 0 ? { tools: options.tools.map(toolToOpenAi) } : {},
-      ...options.temperature === undefined ? {} : { temperature: options.temperature },
-      ...options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens },
-      ...options.stop !== undefined && options.stop.length > 0 ? { stop: options.stop } : {},
-      stream: true,
-      stream_options: { include_usage: true },
-    }
+    const body = this.buildBody(options, protocol)
 
     const init: RequestInit = {
       method: 'POST',
@@ -340,15 +469,89 @@ export class CloudLlmAdapter extends LlmAdapter {
       throw new LlmError('cloud proxy returned an empty response body', 'HTTP_500')
     }
 
-    yield* this.parseSse(response.body, options.signal)
+    yield* this.parseSse(response.body, options.signal, protocol)
   }
 
-  private async * parseSse(body: ReadableStream<Uint8Array>, signal: AbortSignal | undefined): AsyncIterable<StreamChunk> {
+  private buildBody(options: GenerateOptions, protocol: WireProtocol): Record<string, unknown> {
+    switch (protocol) {
+      case 'anthropic-messages': return this.buildAnthropicBody(options)
+      case 'openai-responses': return this.buildResponsesBody(options)
+      case 'chat-completions': return this.buildChatBody(options)
+    }
+  }
+
+  private buildChatBody(options: GenerateOptions): Record<string, unknown> {
+    return {
+      model: options.model,
+      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+      messages: [
+        ...options.system === undefined ? [] : [{ role: 'system', content: options.system }],
+        ...options.messages.map(messageToOpenAi),
+      ],
+      ...options.tools !== undefined && options.tools.length > 0 ? { tools: options.tools.map(toolToOpenAi) } : {},
+      ...options.temperature === undefined ? {} : { temperature: options.temperature },
+      ...options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens },
+      ...options.stop !== undefined && options.stop.length > 0 ? { stop: options.stop } : {},
+      stream: true,
+      stream_options: { include_usage: true },
+    }
+  }
+
+  private buildResponsesBody(options: GenerateOptions): Record<string, unknown> {
+    const input: unknown[] = []
+    for (const message of options.messages) input.push(...messageToResponsesInput(message))
+    return {
+      model: options.model,
+      ...options.system === undefined || options.system.length === 0 ? {} : { instructions: options.system },
+      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+      input,
+      ...options.tools !== undefined && options.tools.length > 0 ? { tools: options.tools.map(toolToResponses) } : {},
+      ...options.temperature === undefined ? {} : { temperature: options.temperature },
+      ...options.maxTokens === undefined ? {} : { max_output_tokens: options.maxTokens },
+      ...options.stop !== undefined && options.stop.length > 0 ? { stop: options.stop } : {},
+      stream: true,
+    }
+  }
+
+  private buildAnthropicBody(options: GenerateOptions): Record<string, unknown> {
+    const system = this.anthropicSystemOf(options)
+    return {
+      model: options.model,
+      ...system === undefined ? {} : { system },
+      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+      messages: messagesToAnthropic(options.messages),
+      ...options.tools !== undefined && options.tools.length > 0 ? { tools: options.tools.map(toolToAnthropic) } : {},
+      ...options.temperature === undefined ? {} : { temperature: options.temperature },
+      ...options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens },
+      ...options.stop !== undefined && options.stop.length > 0 ? { stop_sequences: options.stop } : {},
+      stream: true,
+    }
+  }
+
+  private anthropicSystemOf(options: GenerateOptions): string | undefined {
+    if (options.system !== undefined && options.system.length > 0) return options.system
+    const leading = options.messages.find(message => message.role === 'system' || message.role === 'developer')
+    if (leading === undefined) return undefined
+    const text = textOf(leading.content)
+    return text.length > 0 ? text : undefined
+  }
+
+  private async * parseSse(
+    body: ReadableStream<Uint8Array>,
+    signal: AbortSignal | undefined,
+    protocol: WireProtocol,
+  ): AsyncIterable<StreamChunk> {
     const decoder = new TextDecoder()
     const reader = body.getReader()
     let buffer = ''
+    let event: string | undefined
     const accumulator = new BlockAccumulator()
     let finished = false
+    const handler = protocol === 'anthropic-messages'
+      ? (name: string | undefined, data: string): StreamChunk[] => this.handleAnthropicSseLine(name, data, accumulator)
+      : protocol === 'openai-responses'
+        ? (name: string | undefined, data: string): StreamChunk[] => this.handleResponsesSseLine(name, data, accumulator)
+        : (name: string | undefined, data: string): StreamChunk[] => this.handleChatSseLine(name, data, accumulator)
 
     try {
       while (true) {
@@ -357,11 +560,23 @@ export class CloudLlmAdapter extends LlmAdapter {
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
-        for (const line of lines) {
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (line.length === 0) {
+            event = undefined
+            continue
+          }
+          if (line.startsWith('event:')) {
+            event = line.slice(6).trim()
+            continue
+          }
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (payload === '[DONE]') continue
           if (signal?.aborted) {
             throw new LlmError('cloud proxy stream aborted by caller', 'ABORTED')
           }
-          for (const chunk of this.handleSseLine(line.trim(), accumulator)) {
+          for (const chunk of handler(event, payload)) {
             if (chunk.type === 'finish') finished = true
             yield chunk
           }
@@ -376,13 +591,9 @@ export class CloudLlmAdapter extends LlmAdapter {
     }
   }
 
-  private handleSseLine(line: string, accumulator: BlockAccumulator): StreamChunk[] {
-    if (!line.startsWith('data:')) return []
-    const payload = line.slice(5).trim()
-    if (payload === '[DONE]') {
-      return [...accumulator.flush(), { type: 'finish', reason: { kind: 'stop' } as FinishReason }]
-    }
-    const chunk = JSON.parse(payload) as OpenAiChunk
+  private handleChatSseLine(_event: string | undefined, data: string, accumulator: BlockAccumulator): StreamChunk[] {
+    if (data === '') return []
+    const chunk = JSON.parse(data) as OpenAiChunk
     const out: StreamChunk[] = []
     const delta = chunk.choices?.[0]?.delta
     if (delta !== undefined) {
@@ -417,6 +628,106 @@ export class CloudLlmAdapter extends LlmAdapter {
     const finish = finishReasonOf(chunk.choices?.[0]?.finish_reason)
     if (finish !== undefined) {
       out.push(...accumulator.flush(), { type: 'finish', reason: finish })
+    }
+    return out
+  }
+
+  private handleResponsesSseLine(_event: string | undefined, data: string, accumulator: BlockAccumulator): StreamChunk[] {
+    if (data === '') return []
+    const chunk = JSON.parse(data) as {
+      type?: string
+      delta?: string
+      output_index?: number
+      arguments?: string
+      item?: { type?: string; id?: string; call_id?: string; name?: string }
+      response?: { usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } }
+    }
+    const out: StreamChunk[] = []
+    switch (chunk.type) {
+      case 'response.output_text.delta': {
+        if (chunk.delta === undefined) break
+        const started = accumulator.startText()
+        if (started !== undefined) out.push(started)
+        const appended = accumulator.appendText(chunk.delta)
+        if (appended !== undefined) out.push(appended)
+        break
+      }
+      case 'response.output_item.added': {
+        if (chunk.item?.type === 'function_call') {
+          const index = chunk.output_index ?? 0
+          const id = chunk.item.call_id ?? chunk.item.id ?? ''
+          const started = accumulator.startToolCall(index, id)
+          if (started !== undefined) out.push(started)
+          if (chunk.item.name !== undefined) {
+            const appended = accumulator.appendToolCall(index, { name: chunk.item.name })
+            if (appended !== undefined) out.push(appended)
+          }
+        }
+        break
+      }
+      case 'response.function_call_arguments.done': {
+        const index = chunk.output_index ?? 0
+        const appended = accumulator.appendToolCall(index, { argumentsDelta: chunk.arguments ?? '' })
+        if (appended !== undefined) out.push(appended)
+        break
+      }
+      case 'response.completed': {
+        if (chunk.response?.usage !== undefined) out.push({ type: 'usage', usage: responsesUsageOf(chunk.response.usage) })
+        out.push(...accumulator.flush(), { type: 'finish', reason: { kind: 'stop' } as FinishReason })
+        break
+      }
+      default:
+        break
+    }
+    return out
+  }
+
+  private handleAnthropicSseLine(_event: string | undefined, data: string, accumulator: BlockAccumulator): StreamChunk[] {
+    if (data === '') return []
+    const chunk = JSON.parse(data) as {
+      type?: string
+      index?: number
+      content_block?: { type?: string; id?: string; name?: string }
+      delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string | null }
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
+    const out: StreamChunk[] = []
+    switch (chunk.type) {
+      case 'content_block_start': {
+        if (chunk.content_block?.type === 'text') {
+          const started = accumulator.startText()
+          if (started !== undefined) out.push(started)
+        } else if (chunk.content_block?.type === 'tool_use') {
+          const index = chunk.index ?? 0
+          const started = accumulator.startToolCall(index, chunk.content_block.id ?? '')
+          if (started !== undefined) out.push(started)
+          if (chunk.content_block.name !== undefined) {
+            const appended = accumulator.appendToolCall(index, { name: chunk.content_block.name })
+            if (appended !== undefined) out.push(appended)
+          }
+        }
+        break
+      }
+      case 'content_block_delta': {
+        if (chunk.delta?.type === 'text_delta' && chunk.delta.text !== undefined) {
+          const appended = accumulator.appendText(chunk.delta.text)
+          if (appended !== undefined) out.push(appended)
+        } else if (chunk.delta?.type === 'input_json_delta' && chunk.delta.partial_json !== undefined) {
+          const index = chunk.index ?? 0
+          const appended = accumulator.appendToolCall(index, { argumentsDelta: chunk.delta.partial_json })
+          if (appended !== undefined) out.push(appended)
+        }
+        break
+      }
+      case 'message_delta': {
+        if (chunk.usage !== undefined) {
+          out.push({ type: 'usage', usage: { inputTokens: chunk.usage.input_tokens ?? 0, outputTokens: chunk.usage.output_tokens ?? 0 } })
+        }
+        out.push(...accumulator.flush(), { type: 'finish', reason: anthropicFinishReasonOf(chunk.delta?.stop_reason) })
+        break
+      }
+      default:
+        break
     }
     return out
   }
