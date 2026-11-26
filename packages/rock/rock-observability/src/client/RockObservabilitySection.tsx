@@ -38,8 +38,8 @@ export type RockObservabilitySectionProps =
 /** The narrow translate seat shared by the tab panels. */
 type RelayTranslate = (key: RockObservabilityKey) => string
 
-/** One tab value. */
-type LogTab = 'relay' | 'adapter' | 'sessions'
+/** One tab value; the session aggregate tab is not surfaced yet. */
+type LogTab = 'relay' | 'adapter'
 
 /** The bot filter value that selects every bot. */
 const ALL_BOTS = ''
@@ -234,49 +234,6 @@ export function AdapterLogTable({ t, logs }: { t: RelayTranslate; logs: PagedLog
   )
 }
 
-/** Local session rows: one per observed session with turns/steps/output-token figures. */
-export function SessionsTable({ t, remote, revision }: { t: RelayTranslate; remote: RockObservabilitySectionInjected['remote']; revision: number }): ReactElement {
-  const [rows, setRows] = useState<ObservabilityRow[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    void remote.rows().then((result) => {
-      if (!cancelled && result.ok) setRows(result.value)
-    })
-    return () => { cancelled = true }
-  }, [remote, revision])
-
-  if (rows.length === 0) return <p className={css.empty}>{t('session.empty')}</p>
-  return (
-    <table className={css.table} aria-label={t('tab.sessions')}>
-      <colgroup>
-        <col className={css.colSession} />
-        <col className={css.colMetric} />
-        <col className={css.colMetric} />
-        <col className={css.colMetric} />
-      </colgroup>
-      <thead>
-        <tr>
-          <th className={css.th} scope="col">{t('session.column.session')}</th>
-          <th className={css.th} scope="col">{t('session.column.turns')}</th>
-          <th className={css.th} scope="col">{t('session.column.steps')}</th>
-          <th className={css.th} scope="col">{t('session.column.tokens')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(row => (
-          <tr key={row.sessionId}>
-            <td className={css.cell} title={row.sessionId}>{row.sessionId}</td>
-            <td className={css.num}>{row.turns}</td>
-            <td className={css.num}>{row.steps}</td>
-            <td className={css.num}>{row.outputTokens}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
 /** The tab-selected Logs panel with its shared refresh, bot filter, and page-size controls. */
 export function RockObservabilitySection({ t, remote }: RockObservabilitySectionProps): ReactElement {
   const [tab, setTab] = useState<LogTab>('relay')
@@ -313,7 +270,6 @@ export function RockObservabilitySection({ t, remote }: RockObservabilitySection
   const tabs: readonly { value: LogTab; label: string }[] = [
     { value: 'relay', label: t('tab.relay') },
     { value: 'adapter', label: t('tab.adapter') },
-    { value: 'sessions', label: t('tab.sessions') },
   ]
   const activeBot = bots.find(bot => bot.id === botId)
   const botLabel = activeBot?.name ?? (botId === ALL_BOTS ? t('filter.all') : botId)
@@ -368,7 +324,6 @@ export function RockObservabilitySection({ t, remote }: RockObservabilitySection
       </div>
       {tab === 'relay' && <RelayLogTable t={t} logs={relay} />}
       {tab === 'adapter' && <AdapterLogTable t={t} logs={adapter} />}
-      {tab === 'sessions' && <div className={css.scroll}><SessionsTable t={t} remote={remote} revision={revision} /></div>}
       {displayOpen && (
         <LogDisplayDialog
           open

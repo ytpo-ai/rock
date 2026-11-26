@@ -8,7 +8,6 @@ export const en = {
   'tab.label': 'Rock logs',
   'tab.relay': 'Relay forwards',
   'tab.adapter': 'Adapter requests',
-  'tab.sessions': 'Sessions',
   'toolbar.refresh': 'Refresh',
   'filter.bot': 'Bot',
   'filter.all': 'All bots',
@@ -42,11 +41,6 @@ export const en = {
   'loadOlder.done': 'Already at the earliest record',
   'loadOlder.failed': 'Failed to load earlier logs',
   'loadOlder.retry': 'Retry',
-  'session.empty': 'No local sessions observed yet.',
-  'session.column.session': 'Session',
-  'session.column.turns': 'Turns',
-  'session.column.steps': 'Steps',
-  'session.column.tokens': 'Output tokens',
 } as const
 
 /** Locale keys. */
@@ -58,7 +52,6 @@ export const zh: Record<RockObservabilityKey, string> = {
   'tab.label': 'Rock 日志',
   'tab.relay': '转发日志',
   'tab.adapter': 'Adapter 请求',
-  'tab.sessions': '会话',
   'toolbar.refresh': '刷新',
   'filter.bot': 'Bot',
   'filter.all': '全部 Bot',
@@ -92,9 +85,4 @@ export const zh: Record<RockObservabilityKey, string> = {
   'loadOlder.done': '已经是最早的记录',
   'loadOlder.failed': '加载更早日志失败',
   'loadOlder.retry': '重试',
-  'session.empty': '尚未观测到本地会话',
-  'session.column.session': '会话',
-  'session.column.turns': '轮数',
-  'session.column.steps': '步数',
-  'session.column.tokens': '输出 token',
 }

@@ -53,16 +53,18 @@
   bottom: -1px;
   left: 0;
   height: 2px;
-  border-radius: 2px;
   background: transparent;
 }
 
 .tabActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary);
 }
 
+/* The active tab's underline carries the panel background, so it reads as the
+   strip's hairline opening under the selected tab instead of as a colored bar.
+   It sits one pixel past the tab so it covers that hairline completely. */
 .tabActive::after {
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-bg-base);
 }
 
 .scroll {

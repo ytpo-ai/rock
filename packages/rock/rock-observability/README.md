@@ -26,7 +26,7 @@ Rock 本地可观测插件：把 Harness 的 `session/event` 流折成**每 sess
 
 ## 面板（Client）
 
-侧边栏「日志」→ 顶部工具条 + 三个 Tab：
+侧边栏「日志」→ 顶部工具条 + 两个 Tab：
 
 | 控件 / Tab | 行为 |
 |---|---|
@@ -35,12 +35,14 @@ Rock 本地可观测插件：把 Harness 的 `session/event` 流折成**每 sess
 | 每页条数 | 打开 `LogDisplayDialog`：推荐 20 / 50 / 100 / 200，或手动填写 1–500（默认 50）；非法值给错误提示并禁用「应用」 |
 | 转发日志 | 时间 / Bot / 工具 / 会话 / 路径 / 模型映射 / 状态 / 用时柱图，滚到底加载更早一页 |
 | Adapter 请求 | 时间 / Bot / Provider / 会话 / 模型 / 输入→输出 token（title 含缓存与 reasoning）/ 状态 / 用时柱图 |
-| 会话 | 每 session 的轮数 / 步数 / 输出 token |
+
+Tab 激活态用**面板背景色**作下划线（`--dsw-alias-bg-base`），即分隔细线在选中项下方断开，而不是加一条彩色横条；选中项文字同时提升到 primary 强调色。
 
 ## Known Limitations and Deferred Work
 
 - 输出 token 口径仅含 `usage.outputTokens`（对齐 `sessionStats` 的 `decodeTokens`）；input+output 总量需扩展 projection 后补齐。
 - 当前未做「bot → session」归属标注：session 与其 agent bot 的映射依赖 agent-loop 配置，属后续接线。
 - 日志页没有自动轮询：靠手动刷新与筛选/条数变化重取，避免与本地日志文件的读取竞争。
+- **会话聚合 Tab 暂未展示**：面板只提供「转发日志 / Adapter 请求」。Host 侧的 session fold 与 `rows()` / `rowOf()` Remote 仍保留，需要时重新加回一个表格即可。
 - Bot 筛选只列当前身份与本地注册表里的 bot：历史日志里出现过但已删除的 bot 不会出现在下拉中（其日志行在「全部 Bot」下仍可见）。
 - 两个日志的 `total` 与 `page` 是两次独立读取，期间若有新条目落盘，`total` 可能比实际可翻页数大一条，滚到底时表现为多请求一次空页。

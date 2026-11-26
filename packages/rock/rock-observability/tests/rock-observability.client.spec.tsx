@@ -5,7 +5,6 @@ import {
   AdapterLogTable,
   RelayLogTable,
   RockObservabilitySection,
-  SessionsTable,
 } from '../src/client/RockObservabilitySection.tsx'
 import { LogDisplayDialog, parsePageSize } from '../src/client/LogDisplayDialog.tsx'
 import { usePagedLogs } from '../src/client/paged-logs.ts'
@@ -150,19 +149,6 @@ describe('AdapterLogTable', () => {
   })
 })
 
-describe('SessionsTable', () => {
-  it('renders session rows with their aggregate figures', async () => {
-    const row: ObservabilityRow = { sessionId: 's1', turns: 2, steps: 3, outputTokens: 40 }
-    const remote = remoteFixture({ rows: vi.fn(async () => ok([row])) })
-    render(<SessionsTable t={t} remote={remote} revision={0} />)
-
-    expect(await screen.findByText('s1')).toBeTruthy()
-    expect(screen.getByText('2')).toBeTruthy()
-    expect(screen.getByText('3')).toBeTruthy()
-    expect(screen.getByText('40')).toBeTruthy()
-  })
-})
-
 describe('RockObservabilitySection', () => {
   it('loads the first page of both logs and the bot choices', async () => {
     const remote = remoteFixture()
@@ -171,6 +157,14 @@ describe('RockObservabilitySection', () => {
     await waitFor(() => { expect(remote.relayLogs).toHaveBeenCalledWith(0, 50, undefined) })
     expect(remote.adapterLogs).toHaveBeenCalledWith(0, 50, undefined)
     expect(remote.bots).toHaveBeenCalled()
+  })
+
+  it('offers only the relay and adapter tabs', async () => {
+    const remote = remoteFixture()
+    render(<RockObservabilitySection t={t} remote={remote} />)
+
+    const tabs = screen.getAllByRole('tab').map(tab => tab.textContent)
+    expect(tabs).toEqual(['tab.relay', 'tab.adapter'])
   })
 
   it('reads the adapter log from the adapter tab', async () => {
