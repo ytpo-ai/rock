@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { RelayLogStore } from '../src/log-store.ts'
 import { RockLlmRelay } from '../src/relay.ts'
 import { enrichForwardLog } from '../src/index.ts'
 import type { RelayForwardLog } from '../src/types.ts'
@@ -267,68 +263,6 @@ describe('RockLlmRelay', () => {
     const log = onForward.mock.calls[0]![0] as RelayForwardLog
     expect(log.status).toBeUndefined()
     expect(log.error).toBe('upstream down')
-  })
-})
-
-describe('RelayLogStore', () => {
-  it('bounds the in-memory ring and returns newest-first', () => {
-    const store = new RelayLogStore(join(tmpdir(), 'rock-relay-log-ring.jsonl'), 1024 * 1024, 3)
-    for (const timestamp of ['1', '2', '3', '4']) {
-      store.append({ timestamp, agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' })
-    }
-    expect(store.recent().map(entry => entry.timestamp)).toEqual(['4', '3', '2'])
-  })
-
-  it('rotates fragments when the active file exceeds the size limit', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'rock-relay-log-'))
-    const store = new RelayLogStore(join(dir, 'log.jsonl'), 100, 500, 2)
-    for (let i = 0; i < 20; i++) {
-      store.append({ timestamp: String(i), agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' })
-    }
-    await store.flush()
-    const files = await readdir(dir)
-    // Active file plus at most maxFragments(2) rotated fragments.
-    expect(files.length).toBeGreaterThan(0)
-    expect(files.length).toBeLessThanOrEqual(3)
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('pages the full history newest-first across the active file and fragments', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'rock-relay-log-'))
-    const store = new RelayLogStore(join(dir, 'log.jsonl'), 80, 500, 100)
-    for (let i = 0; i < 5; i++) {
-      store.append({ timestamp: String(i), agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' })
-    }
-    await store.flush()
-
-    await expect(store.count()).resolves.toBe(5)
-    await expect(store.page(0, 2)).resolves.toEqual([
-      { timestamp: '4', agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' },
-      { timestamp: '3', agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' },
-    ])
-    await expect(store.page(4, 2)).resolves.toEqual([
-      { timestamp: '0', agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' },
-    ])
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('scans existing fragments on load so paging survives a restart', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'rock-relay-log-'))
-    const path = join(dir, 'log.jsonl')
-    const store = new RelayLogStore(path, 80, 500, 100)
-    for (let i = 0; i < 5; i++) {
-      store.append({ timestamp: String(i), agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' })
-    }
-    await store.flush()
-
-    const reloaded = new RelayLogStore(path, 80, 500, 100)
-    await reloaded.load()
-    await expect(reloaded.count()).resolves.toBe(5)
-
-    reloaded.append({ timestamp: '5', agentBotId: 'a', pathSuffix: '/chat/completions', mappedModel: 'seagull-relay' })
-    await reloaded.flush()
-    await expect(reloaded.count()).resolves.toBe(6)
-    await rm(dir, { recursive: true, force: true })
   })
 })
 

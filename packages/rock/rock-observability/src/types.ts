@@ -57,3 +57,57 @@ export interface RelayForwardLog {
   /** Safe failure diagnostic when the forward failed. */
   error?: string
 }
+
+/** One bot choice offered by the console's bot filter. */
+export interface BotOption {
+  /** Agent bot id the logs are keyed by. */
+  id: string
+  /** Display name resolved from the identity or the local bot registry. */
+  name: string
+}
+
+/** Token counters one adapter request reported (structurally matches `@rock/cloud-llm-adapter`). */
+export interface AdapterRequestTokens {
+  input: number
+  output: number
+  reasoning?: number
+  cacheRead?: number
+  cacheWrite?: number
+  total?: number
+}
+
+/** One recorded adapter request (structurally matches `@rock/cloud-llm-adapter` `LlmRequestLog`). */
+export interface AdapterRequestLog {
+  /** ISO-8601 timestamp of request completion. */
+  timestamp: string
+  /** ISO-8601 timestamp of request start. */
+  startedAt: string
+  /** Elapsed milliseconds from request start to completion. */
+  durationMs: number
+  /** Rock agent bot id the harness stamped, when present. */
+  agentBotId?: string
+  /** Human-readable bot name resolved from the identity, when available. */
+  botName?: string
+  /** Execution backend the bot binds to (codex/pi/dsh/acp/…), when bound. */
+  toolType?: string
+  /** Provider route id the request selected. */
+  provider: string
+  /** Wire protocol the request used, for relay routes. */
+  wireProtocol?: string
+  /** Harness session id that issued the request, when present. */
+  sessionId?: string
+  /** Model id the request asked for. */
+  requestModel: string
+  /** The bot's bound model resolved from the identity, when the relay overrides the request model. */
+  boundModel?: string
+  /** Conversation messages carried by the request. */
+  messageCount: number
+  /** Declared tools carried by the request; absent when it sent none. */
+  toolCount?: number
+  /** Upstream HTTP status once a response arrived. */
+  status?: number
+  /** Safe failure diagnostic when the request failed. */
+  error?: string
+  /** Provider-reported token usage, when the stream carried it. */
+  tokens?: AdapterRequestTokens
+}

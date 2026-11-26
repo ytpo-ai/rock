@@ -26,7 +26,8 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:~"
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@rock/rock-log-store": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~"

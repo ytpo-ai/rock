@@ -43,9 +43,14 @@ Rock ConnectorClient 的 LLM 内网转发端点（D-034）。外部工具（Code
 ## 服务暴露
 
 - `ctx.rockLlmRelay.getFacts()` → `{ host, port, baseUrl, apiKey }`，供 `rock-bot-manager` 等插件读取并组装 DSH 模型 API 填写清单。
+- `ctx.rockLlmRelay.recentLogs()` — 内存环内最近的转发记录，newest first。
+- `ctx.rockLlmRelay.logPage(offset, limit, botId?)` / `logCount(botId?)` — 覆盖落盘完整历史的一页与该范围内的总数；`botId` 省略表示不过滤。
+- `ctx.rockLlmRelay.logBotIds()` — 历史中出现过的 agent bot id。
+- 日志落盘在 `logPath`（默认 `../.rock/llm-relay-logs.jsonl`），由 `@rock/rock-log-store` 的 `RotatingJsonlLog` 管理：1MB 滚动、保留 10 个分片、500 条内存环。
 
 ## Known Limitations and Deferred Work
 
+- 转发记录**不含 usage / token / 缓存字段**：`record()` 在拿到上游 status 后立即落盘，且响应是逐块字节透传、不解析 SSE，因此拿不到 `usage`。需要 token 口径时读 `@rock/cloud-llm-adapter` 的请求日志（adapter 自己解析 SSE）或云端 `llm_logs`；给 relay 补 token 需要改造响应管道做旁路嗅探并重排记录时机。
 - 仅处理 `chat/completions` 路径后缀（`wire_api = chat`）；`responses` API 路径后续扩展。
 - 云端认领校验（`seat_claims[agentId]==employeeId`）依赖 REQ-002 `seat_claims`，本插件只注入溯源。
 - 多一跳 + Rock 单点（127.0.0.1 回环，延迟可忽略）。

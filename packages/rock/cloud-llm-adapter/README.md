@@ -22,6 +22,30 @@ Rock ConnectorClient 的 LLM adapter：把 Harness LLM seam（`ctx.llm`）的模
         defaultModel: deepseek-chat
 ```
 
+## 请求日志
+
+每次模型调用（成功 / 上游失败 / 传输失败 / 提前断流）落一条 JSONL 记录，落盘到 `logPath`（默认 `../.rock/llm-adapter-logs.jsonl`，1MB 滚动、保留 10 个分片），并暴露为 `ctx.rockLlmAdapter` 供「日志 → Adapter 请求」面板分页读取。
+
+记录的字段：
+
+| 字段 | 说明 |
+|---|---|
+| `timestamp` / `startedAt` / `durationMs` | 完成时刻、发起时刻、端到端耗时（含完整流式读取） |
+| `agentBotId` / `botName` / `toolType` | harness 写入的 bot id + 由 `seagull-identity` 解析的名称与绑定后端 |
+| `provider` / `wireProtocol` | provider 路由 id；relay 路由使用的线上协议 |
+| `sessionId` | 发起请求的会话 id |
+| `requestModel` / `boundModel` | 请求的模型 id 与该 bot 绑定的真实模型 |
+| `messageCount` / `toolCount` | 请求携带的消息条数与工具声明数 |
+| `status` / `error` | 上游 HTTP 状态；失败诊断 |
+| `tokens` | `{ input, output, reasoning?, cacheRead?, cacheWrite?, total? }`，来自上游 SSE 的 usage |
+
+`ctx.rockLlmAdapter`（`RockLlmAdapterService`）：
+
+- `recentLogs()` — 内存环内最近的记录，newest first
+- `logPage(offset, limit, botId?)` / `logCount(botId?)` — 覆盖落盘完整历史的一页与该范围内的总数，可按 bot 过滤
+
+**不记录** API key 与请求/响应正文。
+
 ## 配置
 
 `providers` 为 provider id → 连接事实的映射，每个 provider：
@@ -42,6 +66,9 @@ Rock ConnectorClient 的 LLM adapter：把 Harness LLM seam（`ctx.llm`）的模
 
 ## Known Limitations and Deferred Work
 
+- 请求日志不含请求/响应正文与 tool 调用明细，只记计数与 token；需要排查内容时要在调用方日志里看。
+- 上游流未发送 finish 时，harness 仍会收到合成的 `stop`，此时日志以 `error: 'stream ended before completion'` 记录截断（不视为成功）。
+- `tokens` 依赖上游回传 usage：不回传 usage 的 provider 该字段缺省，不从估算补齐。
 - 只支持文本模态：`image` / `file` 内容块当前被忽略（Relay 场景无需多模态）。
 - `listModels` 返回静态配置的模型，不调用 provider `/v1/models` 发现。
 - `tool-addition` / `tool-removal` 块不投影（Relay 请求无工具更新历史）。

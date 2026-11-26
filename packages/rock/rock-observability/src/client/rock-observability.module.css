@@ -10,6 +10,20 @@
   font: var(--dsw-font-xxs-12);
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 20px 0;
+}
+
+/* Menu renders an inline anchor wrapper; keep it on the toolbar's baseline. */
+.toolbar > span {
+  display: inline-flex;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -107,6 +121,8 @@
 .colStatus { width: 8%; }
 .colDuration { width: 14%; }
 .colMetric { width: 12%; }
+.colProvider { width: 13%; }
+.colTokens { width: 11%; }
 
 .th {
   position: sticky;
@@ -197,4 +213,41 @@
   min-width: 58px;
   font-variant-numeric: tabular-nums;
   text-align: left;
+}
+
+.displayDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.displayHint {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.displayPresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.displayField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.displayLabel {
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  font-weight: 500;
+}
+
+.displayError {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font: var(--dsw-font-xxxs-11);
 }

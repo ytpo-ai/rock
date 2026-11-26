@@ -20,8 +20,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { RotatingJsonlLog } from '@rock/rock-log-store'
 import { RelayKeyService } from './key-service.ts'
-import { RelayLogStore } from './log-store.ts'
 import { RockLlmRelay } from './relay.ts'
 import type { RelayForwardLog, RockLlmRelayFacts } from './types.ts'
 
@@ -72,7 +72,7 @@ class RockLlmRelayService {
     private readonly host: string,
     private port: number,
     private readonly keyService: RelayKeyService,
-    private readonly logStore: RelayLogStore,
+    private readonly logStore: RotatingJsonlLog<RelayForwardLog>,
   ) {}
 
   /** Record the actual bound port once the server is listening. */
@@ -95,14 +95,19 @@ class RockLlmRelayService {
     return this.logStore.recent()
   }
 
-  /** Total persisted forward-log entries across the active file and rotated fragments. */
-  logCount(): Promise<number> {
-    return this.logStore.count()
+  /** Total persisted forward-log entries, optionally scoped to one agent bot. */
+  logCount(botId?: string): Promise<number> {
+    return this.logStore.count(botId)
   }
 
-  /** One newest-first page of persisted forward logs; `offset` is a 0-based skip. */
-  logPage(offset: number, limit: number): Promise<RelayForwardLog[]> {
-    return this.logStore.page(offset, limit)
+  /** One newest-first page of persisted forward logs; `offset` is a 0-based skip and `botId` narrows to one bot. */
+  logPage(offset: number, limit: number, botId?: string): Promise<RelayForwardLog[]> {
+    return this.logStore.page(offset, limit, botId)
+  }
+
+  /** Distinct agent bot ids present in the persisted forward log, for the console's bot filter. */
+  logBotIds(): Promise<string[]> {
+    return this.logStore.keys()
   }
 }
 
@@ -117,8 +122,12 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
-  const logStore = new RelayLogStore(config.logPath ?? DEFAULT_LOG_PATH, undefined, undefined, undefined, (error: unknown) => {
-    ctx.logger.warn(`rock-llm-relay: failed to persist forward log: ${messageOf(error)}`)
+  const logStore = new RotatingJsonlLog<RelayForwardLog>({
+    path: config.logPath ?? DEFAULT_LOG_PATH,
+    keyOf: log => log.agentBotId,
+    onError: (error: unknown) => {
+      ctx.logger.warn(`rock-llm-relay: failed to persist forward log: ${messageOf(error)}`)
+    },
   })
   void logStore.load()
 

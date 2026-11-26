@@ -11,6 +11,7 @@
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import type { LlmRequestLog, LlmRequestTokens } from './types.ts'
 import type {
   ContentBlock,
   FinishReason,
@@ -77,6 +78,22 @@ export interface CloudLlmAdapterOptions {
   resolveConnectorKey?: () => string | undefined
   /** Resolve a relay bot's bound channel wire protocols; undefined means unknown. */
   resolveSupportedProtocols?: (agentId: string) => string[] | undefined
+  /** Record one finished request (success, failure, or early stop); the plugin enriches and persists it. */
+  onRequest?: (log: LlmRequestLog) => void
+}
+
+/** Mutable per-request facts collected while streaming, reported once at completion. */
+interface RequestReport {
+  /** Upstream HTTP status once a response arrived. */
+  status?: number
+  /** Wire protocol the request resolved to. */
+  wireProtocol?: WireProtocol
+  /** Accumulated provider token usage. */
+  tokens?: LlmRequestTokens
+  /** Safe failure diagnostic when the request failed. */
+  error?: string
+  /** Whether the stream delivered its finish chunk. */
+  completed?: boolean
 }
 
 /** One OpenAI chat message after translation from the harness vocabulary. */
@@ -457,6 +474,20 @@ export class CloudLlmAdapter extends LlmAdapter {
   }
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const startedAt = new Date().toISOString()
+    const report: RequestReport = {}
+    try {
+      yield* this.run(options, report)
+    } catch (error) {
+      report.error ??= diagnosticOf(error)
+      throw error
+    } finally {
+      this.record(options, startedAt, report)
+    }
+  }
+
+  /** Perform one request and stream its chunks, reporting status, tokens, and completion into `report`. */
+  private async * run(options: GenerateOptions, report: RequestReport): AsyncIterable<StreamChunk> {
     const route = this.providerConfig(options.provider)
     const relay = route.relay === true
     const agentId = options.agentId
@@ -502,7 +533,32 @@ export class CloudLlmAdapter extends LlmAdapter {
       throw new LlmError('cloud proxy returned an empty response body', 'HTTP_500')
     }
 
-    yield* this.parseSse(response.body, options.signal, protocol)
+    report.status = response.status
+    report.wireProtocol = protocol
+    yield* this.parseSse(response.body, options.signal, protocol, report)
+  }
+
+  /** Report one finished request through the plugin's `onRequest` hook, if present. */
+  private record(options: GenerateOptions, startedAt: string, report: RequestReport): void {
+    const agentBotId = options.agentId
+    const tokens = report.tokens
+    this.config.onRequest?.({
+      timestamp: new Date().toISOString(),
+      startedAt,
+      durationMs: Date.now() - Date.parse(startedAt),
+      ...agentBotId === undefined || agentBotId === '' ? {} : { agentBotId },
+      provider: options.provider,
+      ...report.wireProtocol === undefined ? {} : { wireProtocol: report.wireProtocol },
+      ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+      requestModel: options.model,
+      messageCount: options.messages.length,
+      ...options.tools === undefined || options.tools.length === 0 ? {} : { toolCount: options.tools.length },
+      ...report.status === undefined ? {} : { status: report.status },
+      ...report.error === undefined
+        ? report.completed === true ? {} : { error: 'stream ended before completion' }
+        : { error: report.error },
+      ...tokens === undefined ? {} : { tokens },
+    })
   }
 
   private buildBody(options: GenerateOptions, protocol: WireProtocol): Record<string, unknown> {
@@ -573,6 +629,7 @@ export class CloudLlmAdapter extends LlmAdapter {
     body: ReadableStream<Uint8Array>,
     signal: AbortSignal | undefined,
     protocol: WireProtocol,
+    report: RequestReport,
   ): AsyncIterable<StreamChunk> {
     const decoder = new TextDecoder()
     const reader = body.getReader()
@@ -614,12 +671,18 @@ export class CloudLlmAdapter extends LlmAdapter {
             throw new LlmError('cloud proxy stream aborted by caller', 'ABORTED')
           }
           for (const chunk of handler(event, payload)) {
-            if (chunk.type === 'finish') finished = true
+            if (chunk.type === 'finish') {
+              finished = true
+              report.completed = true
+            }
+            if (chunk.type === 'usage') recordTokens(report, chunk.usage)
             yield chunk
           }
         }
       }
       if (!finished) {
+        // The provider never sent a finish chunk; the harness still gets a
+        // synthetic stop so the turn ends, and the log records the truncation.
         for (const chunk of accumulator.flush()) yield chunk
         yield { type: 'finish', reason: { kind: 'stop' } }
       }
@@ -777,6 +840,23 @@ export class CloudLlmAdapter extends LlmAdapter {
         break
     }
     return out
+  }
+}
+
+/**
+ * Record one streamed usage chunk; each protocol emits a cumulative usage chunk
+ * once per stream, so the newest reading replaces any earlier one.
+ * @param report - the request report to update.
+ * @param usage - the harness token usage one stream chunk carried.
+ */
+function recordTokens(report: RequestReport, usage: TokenUsage): void {
+  report.tokens = {
+    input: usage.inputTokens,
+    output: usage.outputTokens,
+    ...usage.reasoningTokens === undefined ? {} : { reasoning: usage.reasoningTokens },
+    ...usage.cacheReadTokens === undefined ? {} : { cacheRead: usage.cacheReadTokens },
+    ...usage.cacheWriteTokens === undefined ? {} : { cacheWrite: usage.cacheWriteTokens },
+    ...usage.totalTokens === undefined ? {} : { total: usage.totalTokens },
   }
 }
 
