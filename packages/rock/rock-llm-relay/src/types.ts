@@ -45,10 +45,13 @@ export interface RockLlmRelayFacts {
   apiKey: string
 }
 
-/** One parsed relay route: `/v1/bots/{agentBotId}{pathSuffix}`. */
+/** One parsed relay route: `/v1/bots/{agentBotId}{pathSuffix}[?query]`. */
 export interface RelayRoute {
   agentBotId: string
+  /** Canonical path suffix without the query string, e.g. `/messages`. */
   pathSuffix: string
+  /** Raw query string including the leading `?`, or `undefined` when absent. */
+  query?: string
 }
 
 /** One recorded LLM-relay forwarding attempt. */

@@ -9,18 +9,37 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { PROVENANCE_HEADERS, type RelayRoute, type RockLlmRelayOptions } from './types.ts'
 
-/** Parses `/v1/bots/{agentBotId}{pathSuffix}` into its route parts. */
-export function parseRelayRoute(pathname: string): RelayRoute | undefined {
-  const match = /^\/v1\/bots\/([^/]+)(\/.*)?$/.exec(pathname)
-  if (match === null || match[1] === undefined) return undefined
-  return { agentBotId: decodeURIComponent(match[1]), pathSuffix: match[2] ?? '/chat/completions' }
-}
-
 /** Wire protocol inferred from a relay path suffix. */
 const WIRE_PROTOCOL_BY_PATH_SUFFIX: Readonly<Record<string, string>> = {
   '/messages': 'anthropic-messages',
   '/responses': 'openai-responses',
   '/chat/completions': 'chat-completions',
+}
+
+/**
+ * Strip a redundant `/v1` prefix before a known protocol suffix. The Anthropic
+ * SDK requests `{baseURL}/v1/messages`, so a caller whose base_url already ends
+ * in `/v1/bots/{agentBotId}` produces the suffix `/v1/messages`; canonicalize it
+ * to `/messages` so the relay logs the right protocol and forwards the supported path.
+ */
+function canonicalPathSuffix(pathSuffix: string): string {
+  if (!pathSuffix.startsWith('/v1/')) return pathSuffix
+  const stripped = pathSuffix.slice('/v1'.length)
+  return WIRE_PROTOCOL_BY_PATH_SUFFIX[stripped] === undefined ? pathSuffix : stripped
+}
+
+/** Parses `/v1/bots/{agentBotId}{pathSuffix}[?query]` into its route parts. */
+export function parseRelayRoute(pathname: string): RelayRoute | undefined {
+  const queryIndex = pathname.indexOf('?')
+  const path = queryIndex === -1 ? pathname : pathname.slice(0, queryIndex)
+  const query = queryIndex === -1 ? undefined : pathname.slice(queryIndex)
+  const match = /^\/v1\/bots\/([^/]+)(\/.*)?$/.exec(path)
+  if (match === null || match[1] === undefined) return undefined
+  return {
+    agentBotId: decodeURIComponent(match[1]),
+    pathSuffix: canonicalPathSuffix(match[2] ?? '/chat/completions'),
+    ...(query === undefined ? {} : { query }),
+  }
 }
 
 /** Resolve the wire protocol from a path suffix, or `undefined` when unknown. */
@@ -102,13 +121,14 @@ export class RockLlmRelay {
     })
   }
 
-  /** Whether the inbound request presents the loopback bearer key. */
+  /** Whether the inbound request presents the loopback bearer key (OpenAI `Authorization`, Anthropic `x-api-key`). */
   private authorized(req: IncomingMessage): boolean {
     return req.headers.authorization === `Bearer ${this.options.localKey}`
+      || req.headers['x-api-key'] === this.options.localKey
   }
 
   private async forward(route: RelayRoute, mappedBody: string): Promise<Response> {
-    const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1/bots/${route.agentBotId}${route.pathSuffix}`
+    const url = `${this.options.cloudBaseUrl.replace(/\/$/, '')}/v1/bots/${route.agentBotId}${route.pathSuffix}${route.query ?? ''}`
     const headers = new Headers()
     headers.set('content-type', 'application/json')
     headers.set(PROVENANCE_HEADERS.agentBotId, route.agentBotId)

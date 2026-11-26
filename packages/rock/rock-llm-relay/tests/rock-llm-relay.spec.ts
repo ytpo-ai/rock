@@ -98,6 +98,68 @@ describe('RockLlmRelay', () => {
     expect((init.headers as Headers).get('authorization')).toBe('Bearer sk-connector-test')
   })
 
+  it('canonicalizes the Anthropic SDK `/v1/messages` suffix to `/messages`', async () => {
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const onForward = vi.fn()
+    const server = relay({ forward, onForward })
+    servers.push(server)
+    const port = await server.start()
+
+    await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer sk-rock-test' },
+      body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
+    })
+
+    const [url, init] = forward.mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/messages')
+    expect((init.headers as Headers).get('authorization')).toBe('Bearer sk-connector-test')
+
+    const log = onForward.mock.calls[0]![0] as RelayForwardLog
+    expect(log.pathSuffix).toBe('/messages')
+    expect(log.wireProtocol).toBe('anthropic-messages')
+  })
+
+  it('authenticates the Anthropic `x-api-key` header', async () => {
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const server = relay({ forward })
+    servers.push(server)
+    const port = await server.start()
+
+    const response = await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'sk-rock-test' },
+      body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(forward).toHaveBeenCalledTimes(1)
+    const [url, init] = forward.mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/messages')
+    expect((init.headers as Headers).get('authorization')).toBe('Bearer sk-connector-test')
+  })
+
+  it('preserves the query string while canonicalizing the Anthropic path', async () => {
+    const forward = vi.fn().mockResolvedValue(sseResponse())
+    const onForward = vi.fn()
+    const server = relay({ forward, onForward })
+    servers.push(server)
+    const port = await server.start()
+
+    await fetch(`http://127.0.0.1:${port}/v1/bots/agent-bot-C/v1/messages?beta=true`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'sk-rock-test' },
+      body: JSON.stringify({ model: 'seagull-relay', messages: [] }),
+    })
+
+    const [url] = forward.mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe('http://cloud.test/v1/bots/agent-bot-C/messages?beta=true')
+
+    const log = onForward.mock.calls[0]![0] as RelayForwardLog
+    expect(log.pathSuffix).toBe('/messages')
+    expect(log.wireProtocol).toBe('anthropic-messages')
+  })
+
   it('returns 401 for a request missing the local bearer key', async () => {
     const forward = vi.fn()
     const server = relay({ forward })
