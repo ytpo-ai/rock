@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { WorkspaceProject, WorkspaceState } from './types.ts'
+import type { ProjectDirOverrides, WorkspaceProject, WorkspaceState } from './types.ts'
 
 /** Constructor options owned by the plugin's `apply`. */
 export interface WorkspaceServiceOptions {
@@ -23,10 +23,12 @@ export interface WorkspaceServiceOptions {
 export class WorkspaceService {
   private state: WorkspaceState | null
   private projects: WorkspaceProject[]
+  private dirs: Map<string, string>
 
   constructor(private readonly options: WorkspaceServiceOptions) {
     this.state = readState(options.workspacePath)
     this.projects = readProjects(options.workspacePath)
+    this.dirs = new Map(Object.entries(readProjectDirs(options.workspacePath)))
   }
 
   /** The persisted workspace state, or null when not yet initialized. */
@@ -67,17 +69,55 @@ export class WorkspaceService {
     const root = this.requireRoot()
     assertSegment(taskId, 'taskId')
     if (projectId) {
-      return join(root, 'projects', this.projectDirName(projectId), 'tasks', `${taskId}.jsonl`)
+      return join(this.effectiveProjectDir(projectId), 'tasks', `${taskId}.jsonl`)
     }
     return join(root, 'tasks', `${taskId}.jsonl`)
   }
 
   /** Absolute project workspace directory for a task's owning project (created when absent). */
   resolveProjectDir(projectId: string): string {
+    return this.projectDir(projectId)
+  }
+
+  /** The default project directory `<root>/projects/<slug|id>` (no filesystem write). */
+  defaultProjectDir(projectId: string): string {
     const root = this.requireRoot()
-    const dir = join(root, 'projects', this.projectDirName(projectId))
-    mkdirSync(dir, { recursive: true })
+    return join(root, 'projects', this.projectDirName(projectId))
+  }
+
+  /** The effective project directory (override wins, else the default), created with a `tasks/` skeleton. */
+  projectDir(projectId: string): string {
+    const dir = this.effectiveProjectDir(projectId)
+    mkdirSync(join(dir, 'tasks'), { recursive: true })
     return dir
+  }
+
+  /** The persisted per-workbench directory override for a project, or `undefined` when unset. */
+  projectDirOverride(projectId: string): string | undefined {
+    return this.dirs.get(projectId)
+  }
+
+  /** All persisted per-workbench directory overrides (id → absolute path). */
+  listProjectDirs(): ProjectDirOverrides {
+    return Object.fromEntries(this.dirs)
+  }
+
+  /**
+   * Set (or clear, with `null`) a project's working-directory override, persist
+   * it beside the workspace state, and return the new effective directory.
+   */
+  setProjectDir(projectId: string, dir: string | null): string {
+    this.requireRoot()
+    const trimmed = dir === null ? '' : dir.trim()
+    if (trimmed.length === 0) {
+      this.dirs.delete(projectId)
+    } else {
+      const absolute = resolve(expandHome(trimmed))
+      this.dirs.set(projectId, absolute)
+      mkdirSync(join(absolute, 'tasks'), { recursive: true })
+    }
+    persistProjectDirs(this.options.workspacePath, Object.fromEntries(this.dirs))
+    return this.projectDir(projectId)
   }
 
   /** Mirror the cloud project list as `projects/<dir>/tasks/` directories. */
@@ -104,6 +144,13 @@ export class WorkspaceService {
     const dir = project?.slug?.trim() || projectId
     assertSegment(dir, 'projectDir')
     return dir
+  }
+
+  /** The project directory a task resolves to: its override when set, else the default. */
+  private effectiveProjectDir(projectId: string): string {
+    const override = this.dirs.get(projectId)
+    if (override !== undefined && override.trim().length > 0) return override
+    return this.defaultProjectDir(projectId)
   }
 
   private requireRoot(): string {
@@ -195,4 +242,35 @@ function isProjects(value: unknown): value is WorkspaceProject[] {
       && typeof record.name === 'string'
       && (record.slug === undefined || typeof record.slug === 'string')
   })
+}
+
+/** Read the per-project directory overrides, defaulting to empty. */
+function readProjectDirs(workspacePath: string): ProjectDirOverrides {
+  let raw: string
+  try {
+    raw = readFileSync(projectDirsPathOf(workspacePath), 'utf8')
+  } catch {
+    return {}
+  }
+  const parsed: unknown = JSON.parse(raw)
+  if (!isProjectDirs(parsed)) return {}
+  return parsed
+}
+
+/** Persist the per-project directory overrides atomically. */
+function persistProjectDirs(workspacePath: string, dirs: ProjectDirOverrides): void {
+  const projectDirsPath = projectDirsPathOf(workspacePath)
+  mkdirSync(dirname(projectDirsPath), { recursive: true })
+  writeFileSync(projectDirsPath, `${JSON.stringify(dirs, null, 2)}\n`, 'utf8')
+}
+
+/** The `project-dirs.json` beside the workspace state file. */
+function projectDirsPathOf(workspacePath: string): string {
+  return join(dirname(workspacePath), 'project-dirs.json')
+}
+
+/** Whether an unknown value is a well-formed directory-override map. */
+function isProjectDirs(value: unknown): value is ProjectDirOverrides {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  return Object.values(value as Record<string, unknown>).every(entry => typeof entry === 'string')
 }

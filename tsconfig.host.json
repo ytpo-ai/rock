@@ -505,6 +505,7 @@
     { "path": "./packages/rock/gateway-reporter" },
     { "path": "./packages/rock/rock-heartbeat" },
     { "path": "./packages/rock/rock-bot-manager" },
+    { "path": "./packages/rock/rock-project-manager" },
     { "path": "./packages/rock/rock-llm-relay" },
     { "path": "./packages/rock/rock-log-store" },
     { "path": "./packages/rock/rock-observability" },

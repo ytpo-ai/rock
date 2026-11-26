@@ -126,4 +126,62 @@ describe('WorkspaceService', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('applies a per-project directory override to resolution', async () => {
+    const { dir, service } = await makeService()
+    try {
+      const root = service.ensureInitialized().rootPath
+      service.syncProjects([{ id: 'proj-a', name: 'Project A', slug: 'project-a' }])
+      const override = join(dir, 'custom-a')
+
+      service.setProjectDir('proj-a', override)
+
+      expect(service.projectDirOverride('proj-a')).toBe(resolve(override))
+      expect(service.resolveProjectDir('proj-a')).toBe(resolve(override))
+      expect(service.resolveTaskPath('task-2', 'proj-a')).toBe(
+        join(resolve(override), 'tasks', 'task-2.jsonl'),
+      )
+      expect(existsSync(join(resolve(override), 'tasks'))).toBe(true)
+      // Default directory remains computed, not used for this project.
+      expect(service.defaultProjectDir('proj-a')).toBe(join(root, 'projects', 'project-a'))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('clears a directory override back to the default', async () => {
+    const { dir, service } = await makeService()
+    try {
+      const root = service.ensureInitialized().rootPath
+      service.syncProjects([{ id: 'proj-a', name: 'Project A', slug: 'project-a' }])
+      service.setProjectDir('proj-a', join(dir, 'custom-a'))
+      service.setProjectDir('proj-a', null)
+
+      expect(service.projectDirOverride('proj-a')).toBeUndefined()
+      expect(service.resolveProjectDir('proj-a')).toBe(join(root, 'projects', 'project-a'))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('persists directory overrides across restarts and sync keeps them', async () => {
+    const { dir, service } = await makeService()
+    try {
+      service.ensureInitialized()
+      service.syncProjects([{ id: 'proj-a', name: 'Project A', slug: 'project-a' }])
+      service.setProjectDir('proj-a', join(dir, 'custom-a'))
+
+      const revived = new WorkspaceService({
+        workspacePath: join(dir, '.rock', 'workspace.json'),
+        defaultRoot: join(dir, 'default-root'),
+      })
+      expect(revived.projectDirOverride('proj-a')).toBe(resolve(join(dir, 'custom-a')))
+
+      // Re-syncing the cloud list must not clear the override.
+      revived.syncProjects([{ id: 'proj-a', name: 'Project A', slug: 'project-a' }])
+      expect(revived.projectDirOverride('proj-a')).toBe(resolve(join(dir, 'custom-a')))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

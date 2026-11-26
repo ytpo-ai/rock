@@ -46,6 +46,7 @@
     "@rock/rock-llm-relay": "workspace:*",
     "@rock/rock-observability": "workspace:*",
     "@rock/rock-onboarding": "workspace:*",
+    "@rock/rock-project-manager": "workspace:*",
     "@rock/rock-skill-get": "workspace:*",
     "@rock/rock-tasks": "workspace:*",
     "@rock/rock-tool-inventory": "workspace:*",

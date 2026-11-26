@@ -195,6 +195,15 @@
         tasksUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/tasks'"
         employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
 
+    # ── rock-project-manager: project list + per-project working directory ──
+    # Always mounted: syncs employee-visible projects and serves the project
+    # management panel with per-workbench directory overrides.
+    - id: rock-project-manager
+      name: '@rock/rock-project-manager'
+      config:
+        projectsUrl: !!js "(process.env.SEAGULL_GATEWAY_URL || 'http://127.0.0.1:3100') + '/v1/connectors/gateway/projects'"
+        employeeId: !!js "process.env.SEAGULL_EMPLOYEE_ID || 'employee-a'"
+
     # ── plugin⑥ rock-observability: local session turns/steps/tokens fold ──
     # Always mounted: the workbench dashboard reads ctx.rockObservability.
     - id: rock-observability

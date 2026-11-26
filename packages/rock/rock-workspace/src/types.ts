@@ -22,3 +22,9 @@ export interface WorkspaceProject {
   /** URL-safe directory name; falls back to `id` when absent. */
   slug?: string
 }
+
+/**
+ * Per-workbench working-directory overrides, keyed by project id. Absent or
+ * empty entries fall back to the default `<root>/projects/<slug|id>` directory.
+ */
+export type ProjectDirOverrides = Record<string, string>

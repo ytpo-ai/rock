@@ -7,11 +7,11 @@ kind: "package-reference"
 
 ## Summary
 
-Owns the local employee workspace root used as the working directory for all Rock task sessions and as the root of the task archive tree. First use initializes a default root (`~/Documents/SeagullWorkspace`); the archive skeleton is `<root>/tasks/` for tasks without a project and `<root>/projects/<projectId>/tasks/` for project tasks. The mirrored Seagull project list (id → name) persists beside the workspace state.
+Owns the local employee workspace root used as the working directory for all Rock task sessions and as the root of the task archive tree. First use initializes a default root (`~/Documents/SeagullWorkspace`); the archive skeleton is `<root>/tasks/` for tasks without a project and `<root>/projects/<projectId>/tasks/` for project tasks. The mirrored Seagull project list (id → name) persists beside the workspace state, and a per-workbench directory override per project persists in `project-dirs.json`.
 
 ## Use this package
 
-Mount it and read the service through `ctx.rockWorkspace` (or `ctx.get('rockWorkspace')`). Call `ensureInitialized()` during onboarding, `resolveTaskPath(taskId, projectId)` to locate a task's archive file, and `syncProjects(projects)` to mirror the cloud project list.
+Mount it and read the service through `ctx.rockWorkspace` (or `ctx.get('rockWorkspace')`). Call `ensureInitialized()` during onboarding, `resolveTaskPath(taskId, projectId)` to locate a task's archive file, and `syncProjects(projects)` to mirror the cloud project list. Set a project's working directory with `setProjectDir(projectId, dir | null)`; `projectDir(projectId)` and `defaultProjectDir(projectId)` return the effective and default directories.
 
 ```yaml
 - id: rock-workspace
