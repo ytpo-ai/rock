@@ -113,6 +113,101 @@ describe('CloudLlmAdapter', () => {
     })()).rejects.toMatchObject({ code: 'NO_ADAPTER' })
   })
 
+  it('rejects a relay route without an agent-bot id instead of falling back to the session id', async () => {
+    const relayAdapter = new CloudLlmAdapter({
+      providers: {
+        'seagull-cloud': { baseUrl: 'http://cloud.test', defaultModel: 'seagull-relay', relay: true },
+      },
+      resolveConnectorKey: () => 'sk-connector-test',
+    })
+
+    const stream = relayAdapter.stream(options({ sessionId: 'bot-test-123' as never }))
+    await expect((async () => {
+      for await (const _ of stream) { /* drain */ }
+    })()).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+  })
+
+  it('routes a relay request through /v1/bots/{agentId} with the connector key', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+    const relayAdapter = new CloudLlmAdapter({
+      providers: {
+        'seagull-cloud': { baseUrl: 'http://cloud.test', defaultModel: 'seagull-relay', relay: true },
+      },
+      resolveConnectorKey: () => 'sk-connector-test',
+    })
+
+    for await (const _ of relayAdapter.stream(options({ agentId: '69b63932c694637f7b9f5900' }))) { /* drain */ }
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe('http://cloud.test/v1/bots/69b63932c694637f7b9f5900/chat/completions')
+    expect(String((init.headers as Headers).get('authorization'))).toBe('Bearer sk-connector-test')
+  })
+
+  it('carries cache reads from OpenAI prompt_tokens_details as a disjoint bucket', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":5,"total_tokens":1005,"prompt_tokens_details":{"cached_tokens":896}}}',
+    ])))
+
+    const chunks: StreamChunk[] = []
+    for await (const chunk of adapter().stream(options())) chunks.push(chunk)
+
+    expect(chunks.find(c => c.type === 'usage')).toMatchObject({
+      usage: { inputTokens: 104, outputTokens: 5, totalTokens: 1005, cacheReadTokens: 896 },
+    })
+  })
+
+  it('merges the Anthropic message_start cache fields with the message_delta output count', async () => {
+    const relayAdapter = new CloudLlmAdapter({
+      providers: {
+        'seagull-cloud': { baseUrl: 'http://cloud.test', defaultModel: 'seagull-relay', relay: true },
+      },
+      resolveConnectorKey: () => 'sk-connector-test',
+      resolveSupportedProtocols: () => ['anthropic-messages'],
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
+      'event: message_start',
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":104,"cache_read_input_tokens":896,"cache_creation_input_tokens":12}}}',
+      'event: content_block_start',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      'event: content_block_delta',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
+      'event: message_delta',
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}',
+    ])))
+
+    const chunks: StreamChunk[] = []
+    for await (const chunk of relayAdapter.stream(options({ agentId: '69b63932c694637f7b9f5900' }))) chunks.push(chunk)
+
+    expect(chunks.find(c => c.type === 'usage')).toMatchObject({
+      usage: { inputTokens: 104, outputTokens: 5, cacheReadTokens: 896, cacheWriteTokens: 12 },
+    })
+  })
+
+  it('carries cache reads from a Responses input_tokens_details as a disjoint bucket', async () => {
+    const responsesAdapter = new CloudLlmAdapter({
+      providers: {
+        'seagull-cloud': { baseUrl: 'http://cloud.test', defaultModel: 'seagull-relay', relay: true },
+      },
+      resolveConnectorKey: () => 'sk-connector-test',
+      resolveSupportedProtocols: () => ['openai-responses'],
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
+      'event: response.completed',
+      'data: {"type":"response.completed","response":{"usage":{"input_tokens":1000,"output_tokens":5,"total_tokens":1005,"input_tokens_details":{"cached_tokens":896}}}}',
+    ])))
+
+    const chunks: StreamChunk[] = []
+    for await (const chunk of responsesAdapter.stream(options({ agentId: '69b63932c694637f7b9f5900' }))) chunks.push(chunk)
+
+    expect(chunks.find(c => c.type === 'usage')).toMatchObject({
+      usage: { inputTokens: 104, outputTokens: 5, totalTokens: 1005, cacheReadTokens: 896 },
+    })
+  })
+
   it('relays the harness sessionId through the request body', async () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse([
       'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',

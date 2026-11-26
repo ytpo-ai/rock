@@ -261,11 +261,44 @@ function messagesToAnthropic(messages: readonly RequestMessage[]): Array<{ role:
 }
 
 /** Map OpenAI Responses usage to the harness disjoint token accounting. */
-function responsesUsageOf(usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number }): TokenUsage {
+function responsesUsageOf(usage: {
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  input_tokens_details?: { cached_tokens?: number }
+}): TokenUsage {
+  const cached = usage.input_tokens_details?.cached_tokens ?? 0
+  return {
+    inputTokens: Math.max(0, (usage.input_tokens ?? 0) - cached),
+    outputTokens: usage.output_tokens ?? 0,
+    ...usage.total_tokens === undefined ? {} : { totalTokens: usage.total_tokens },
+    ...cached > 0 ? { cacheReadTokens: cached } : {},
+  }
+}
+
+/** Mutable per-stream accumulation of the Anthropic usage halves. */
+interface AnthropicUsageCounts {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+}
+
+/**
+ * Map Anthropic usage to the harness disjoint token accounting.
+ *
+ * Anthropic reports `input_tokens` excluding cache reads/writes, which is
+ * already the harness's uncached bucket; the cache fields are carried through
+ * so the token meter and the cache-hit display see them.
+ */
+function anthropicUsageOf(usage: AnthropicUsageCounts): TokenUsage {
+  const cacheRead = usage.cache_read_input_tokens ?? 0
+  const cacheWrite = usage.cache_creation_input_tokens ?? 0
   return {
     inputTokens: usage.input_tokens ?? 0,
     outputTokens: usage.output_tokens ?? 0,
-    ...usage.total_tokens === undefined ? {} : { totalTokens: usage.total_tokens },
+    ...cacheRead > 0 ? { cacheReadTokens: cacheRead } : {},
+    ...cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {},
   }
 }
 
@@ -546,9 +579,13 @@ export class CloudLlmAdapter extends LlmAdapter {
     let buffer = ''
     let event: string | undefined
     const accumulator = new BlockAccumulator()
+    // Anthropic splits one call's usage across message_start (input + cache) and
+    // message_delta (output); accumulate per stream so the terminal usage chunk
+    // carries both halves instead of the output-only half overwriting the input.
+    const anthropicUsage: AnthropicUsageCounts = {}
     let finished = false
     const handler = protocol === 'anthropic-messages'
-      ? (name: string | undefined, data: string): StreamChunk[] => this.handleAnthropicSseLine(name, data, accumulator)
+      ? (name: string | undefined, data: string): StreamChunk[] => this.handleAnthropicSseLine(name, data, accumulator, anthropicUsage)
       : protocol === 'openai-responses'
         ? (name: string | undefined, data: string): StreamChunk[] => this.handleResponsesSseLine(name, data, accumulator)
         : (name: string | undefined, data: string): StreamChunk[] => this.handleChatSseLine(name, data, accumulator)
@@ -682,17 +719,28 @@ export class CloudLlmAdapter extends LlmAdapter {
     return out
   }
 
-  private handleAnthropicSseLine(_event: string | undefined, data: string, accumulator: BlockAccumulator): StreamChunk[] {
+  private handleAnthropicSseLine(
+    _event: string | undefined,
+    data: string,
+    accumulator: BlockAccumulator,
+    usage: AnthropicUsageCounts,
+  ): StreamChunk[] {
     if (data === '') return []
     const chunk = JSON.parse(data) as {
       type?: string
       index?: number
       content_block?: { type?: string; id?: string; name?: string }
       delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string | null }
-      usage?: { input_tokens?: number; output_tokens?: number }
+      message?: { usage?: AnthropicUsageCounts }
+      usage?: AnthropicUsageCounts
     }
     const out: StreamChunk[] = []
     switch (chunk.type) {
+      case 'message_start': {
+        // Anthropic puts the prompt-side usage on the message, not the event.
+        if (chunk.message?.usage !== undefined) Object.assign(usage, chunk.message.usage)
+        break
+      }
       case 'content_block_start': {
         if (chunk.content_block?.type === 'text') {
           const started = accumulator.startText()
@@ -720,9 +768,8 @@ export class CloudLlmAdapter extends LlmAdapter {
         break
       }
       case 'message_delta': {
-        if (chunk.usage !== undefined) {
-          out.push({ type: 'usage', usage: { inputTokens: chunk.usage.input_tokens ?? 0, outputTokens: chunk.usage.output_tokens ?? 0 } })
-        }
+        if (chunk.usage !== undefined) Object.assign(usage, chunk.usage)
+        out.push({ type: 'usage', usage: anthropicUsageOf(usage) })
         out.push(...accumulator.flush(), { type: 'finish', reason: anthropicFinishReasonOf(chunk.delta?.stop_reason) })
         break
       }
