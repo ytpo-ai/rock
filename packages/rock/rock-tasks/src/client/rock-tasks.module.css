@@ -852,9 +852,22 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.periodMetric {
+.periodRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.periodLabel {
   font-size: 0.9em;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.periodValue {
+  font-size: 0.9em;
+  font-weight: 600;
   color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .acceptedCheck {
