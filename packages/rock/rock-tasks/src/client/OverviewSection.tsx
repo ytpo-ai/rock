@@ -141,7 +141,7 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
           <div className={css.statGrid}>
             <StatCard label={t('overview.bots')} value={formatNumber(overview?.counts.bots ?? 0)} />
             <StatCard label={t('overview.projects')} value={formatNumber(overview?.counts.projects ?? 0)} />
-            <StatCard label={t('overview.runningTasks')} value={formatNumber(overview?.counts.runningTasks ?? 0)} />
+            <StatCard label={t('overview.runningTasks')} value={`${formatNumber(overview?.counts.executing ?? 0)} + ${formatNumber(overview?.counts.pendingReview ?? 0)}`} />
           </div>
 
           <div className={css.statGrid}>

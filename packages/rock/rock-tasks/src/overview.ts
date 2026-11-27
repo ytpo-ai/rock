@@ -81,7 +81,8 @@ export function foldOverview(
   const weekStart = startOfWeekShanghai(now).getTime()
   const monthStart = startOfMonthShanghai(now).getTime()
 
-  let runningTasks = 0
+  let executing = 0
+  let pendingReview = 0
   const started = new Map<string, PeriodCounts>()
   const accepted = new Map<string, PeriodCounts>()
   const assigned = new Map<string, PeriodCounts>()
@@ -93,7 +94,8 @@ export function foldOverview(
     map.set(botId, entry)
   }
   for (const task of tasks) {
-    if (task.status === 'in-progress') runningTasks += 1
+    if (task.status === 'in-progress') executing += 1
+    if (task.status === 'bot-completed' || task.status === 'awaiting-review') pendingReview += 1
     if (task.type !== 'task' || task.executorId.length === 0) continue
     const createdMs = task.createdAt === undefined ? Number.NaN : Date.parse(task.createdAt)
     if (Number.isNaN(createdMs)) continue
@@ -170,7 +172,7 @@ export function foldOverview(
   byBot.sort((a, b) => (b.month.tasks - a.month.tasks) || (b.month.tokens - a.month.tokens))
 
   return {
-    counts: { bots: bots.length, projects: projects.length, runningTasks },
+    counts: { bots: bots.length, projects: projects.length, executing, pendingReview },
     totals,
     byBot: byBot.filter(row => row.month.tasks > 0 || row.month.tokens > 0),
   }

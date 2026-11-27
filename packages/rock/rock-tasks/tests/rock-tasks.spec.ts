@@ -108,7 +108,7 @@ describe('foldOverview', () => {
 
     const result = foldOverview(tasks, bots, projects, logs, now)
 
-    expect(result.counts).toEqual({ bots: 3, projects: 1, runningTasks: 1 })
+    expect(result.counts).toEqual({ bots: 3, projects: 1, executing: 1, pendingReview: 0 })
     expect(result.totals).toEqual({
       today: { tasks: 1, tokens: 150, accepted: 1, assigned: 1 },
       week: { tasks: 2, tokens: 450, accepted: 1, assigned: 2 },
@@ -133,7 +133,7 @@ describe('foldOverview', () => {
 
   it('returns empty totals and leaderboard when there is no activity', () => {
     const result = foldOverview([], [], [], [], now)
-    expect(result.counts).toEqual({ bots: 0, projects: 0, runningTasks: 0 })
+    expect(result.counts).toEqual({ bots: 0, projects: 0, executing: 0, pendingReview: 0 })
     expect(result.totals.month).toEqual({ tasks: 0, tokens: 0, accepted: 0, assigned: 0 })
     expect(result.byBot).toEqual([])
   })

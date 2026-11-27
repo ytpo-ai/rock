@@ -183,7 +183,7 @@ export interface OverviewBotRow {
 
 /** Aggregated Rock console overview: counts, per-period totals, and per-bot leaderboard. */
 export interface RockOverview {
-  counts: { bots: number; projects: number; runningTasks: number }
+  counts: { bots: number; projects: number; executing: number; pendingReview: number }
   totals: { today: OverviewTotalsMetrics; week: OverviewTotalsMetrics; month: OverviewTotalsMetrics }
   byBot: OverviewBotRow[]
 }
