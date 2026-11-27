@@ -57,7 +57,7 @@ function TaskRatio({ accepted, assigned }: { accepted: number; assigned: number 
     <span className={css.periodValue}>
       {formatNumber(accepted)}
       <span className={css.acceptedCheck}>✓</span>
-      <span className={css.ratioSeparator}>/</span>
+      <span className={css.ratioSeparator}>{' / '}</span>
       {formatNumber(assigned)}
     </span>
   )
