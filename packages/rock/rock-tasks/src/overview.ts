@@ -36,6 +36,9 @@ function tokenTotal(tokens: OverviewAdapterLog['tokens']): number {
   return tokens.total ?? tokens.input + tokens.output
 }
 
+/** Work-queue statuses counted as "executing or later" (excludes pending/cancelled). */
+const STARTED_STATUSES = new Set(['in-progress', 'bot-completed', 'awaiting-review', 'done'])
+
 /** The UTC instant of Asia/Shanghai midnight at the start of `now`'s local day. */
 export function startOfDayShanghai(now: Date): Date {
   const shifted = new Date(now.getTime() + SHANGHAI_OFFSET_MS)
@@ -79,17 +82,27 @@ export function foldOverview(
   const monthStart = startOfMonthShanghai(now).getTime()
 
   let runningTasks = 0
-  const taskCounts = new Map<string, PeriodCounts>()
+  const started = new Map<string, PeriodCounts>()
+  const accepted = new Map<string, PeriodCounts>()
+  const assigned = new Map<string, PeriodCounts>()
+  const bump = (map: Map<string, PeriodCounts>, botId: string, ms: number): void => {
+    const entry = map.get(botId) ?? zeroCounts()
+    if (ms >= monthStart) entry.month += 1
+    if (ms >= weekStart) entry.week += 1
+    if (ms >= todayStart) entry.today += 1
+    map.set(botId, entry)
+  }
   for (const task of tasks) {
     if (task.status === 'in-progress') runningTasks += 1
     if (task.type !== 'task' || task.executorId.length === 0) continue
     const createdMs = task.createdAt === undefined ? Number.NaN : Date.parse(task.createdAt)
     if (Number.isNaN(createdMs)) continue
-    const entry = taskCounts.get(task.executorId) ?? zeroCounts()
-    if (createdMs >= monthStart) entry.month += 1
-    if (createdMs >= weekStart) entry.week += 1
-    if (createdMs >= todayStart) entry.today += 1
-    taskCounts.set(task.executorId, entry)
+    const isStarted = STARTED_STATUSES.has(task.status)
+    const isAccepted = task.status === 'done' && task.resolution === 'accepted'
+    const isAssigned = task.status !== 'cancelled'
+    if (isAssigned) bump(assigned, task.executorId, createdMs)
+    if (isAccepted) bump(accepted, task.executorId, createdMs)
+    if (isStarted) bump(started, task.executorId, createdMs)
   }
 
   const tokenCounts = new Map<string, PeriodCounts>()
@@ -112,15 +125,15 @@ export function foldOverview(
     tokenCounts.set(botId, entry)
   }
 
-  const botIds = new Set([...taskCounts.keys(), ...tokenCounts.keys()])
+  const botIds = new Set([...started.keys(), ...tokenCounts.keys()])
   const byBot: OverviewBotRow[] = []
-  const totals = {
-    today: { tasks: 0, tokens: 0 },
-    week: { tasks: 0, tokens: 0 },
-    month: { tasks: 0, tokens: 0 },
+  const totals: RockOverview['totals'] = {
+    today: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
+    week: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
+    month: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
   }
   for (const botId of botIds) {
-    const t = taskCounts.get(botId) ?? zeroCounts()
+    const t = started.get(botId) ?? zeroCounts()
     const k = tokenCounts.get(botId) ?? zeroCounts()
     const row: OverviewBotRow = {
       botId,
@@ -137,6 +150,23 @@ export function foldOverview(
     totals.month.tasks += row.month.tasks
     totals.month.tokens += row.month.tokens
   }
+  const sum = (map: Map<string, PeriodCounts>): PeriodCounts => {
+    const total = zeroCounts()
+    for (const entry of map.values()) {
+      total.today += entry.today
+      total.week += entry.week
+      total.month += entry.month
+    }
+    return total
+  }
+  const acceptedTotal = sum(accepted)
+  const assignedTotal = sum(assigned)
+  totals.today.accepted = acceptedTotal.today
+  totals.today.assigned = assignedTotal.today
+  totals.week.accepted = acceptedTotal.week
+  totals.week.assigned = assignedTotal.week
+  totals.month.accepted = acceptedTotal.month
+  totals.month.assigned = assignedTotal.month
   byBot.sort((a, b) => (b.month.tasks - a.month.tasks) || (b.month.tokens - a.month.tokens))
 
   return {

@@ -156,10 +156,18 @@ export interface ArchiveIndex {
 
 /** Per-period task/token counters shown in the Rock console overview. */
 export interface OverviewPeriodMetrics {
-  /** Executed task count in the period. */
+  /** Executed (in-progress or later) task count in the period. */
   tasks: number
   /** Consumed token count in the period. */
   tokens: number
+}
+
+/** Per-period totals incl. the accepted/assigned task-ratio counters. */
+export interface OverviewTotalsMetrics extends OverviewPeriodMetrics {
+  /** Accepted task count (status=done 且 resolution=accepted). */
+  accepted: number
+  /** Assigned task count (executorId 非空 且非 cancelled). */
+  assigned: number
 }
 
 /** One bot's per-period task/token counters in the Rock console overview leaderboard. */
@@ -176,7 +184,7 @@ export interface OverviewBotRow {
 /** Aggregated Rock console overview: counts, per-period totals, and per-bot leaderboard. */
 export interface RockOverview {
   counts: { bots: number; projects: number; runningTasks: number }
-  totals: { today: OverviewPeriodMetrics; week: OverviewPeriodMetrics; month: OverviewPeriodMetrics }
+  totals: { today: OverviewTotalsMetrics; week: OverviewTotalsMetrics; month: OverviewTotalsMetrics }
   byBot: OverviewBotRow[]
 }
 

@@ -83,38 +83,39 @@ describe('Shanghai period bounds', () => {
 describe('foldOverview', () => {
   const now = new Date('2026-11-27T10:00:00.000Z')
 
-  function task(id: string, executorId: string, status: string, createdAt: string, type = 'task') {
-    return { id, type, title: id, description: '', status, executorId, createdAt }
+  function task(id: string, executorId: string, status: string, createdAt: string, resolution?: string, type = 'task') {
+    return { id, type, title: id, description: '', status, executorId, createdAt, ...(resolution === undefined ? {} : { resolution }) }
   }
 
   it('folds tasks and adapter logs into counts, totals, and a sorted leaderboard', () => {
     const tasks = [
-      task('t1', 'bot-a', 'done', '2026-11-27T02:00:00.000Z'), // today
-      task('t2', 'bot-a', 'done', '2026-11-24T00:00:00.000Z'), // this week
-      task('t3', 'bot-b', 'in-progress', '2026-11-10T00:00:00.000Z'), // this month, running
-      task('t4', 'bot-a', 'done', '2026-11-01T00:00:00.000Z', 'requirement'), // skipped type
-      task('t5', '', 'done', '2026-11-27T02:00:00.000Z'), // skipped executor
+      task('t1', 'bot-a', 'done', '2026-11-27T02:00:00.000Z', 'accepted'), // today, accepted
+      task('t2', 'bot-a', 'in-progress', '2026-11-24T00:00:00.000Z'), // this week, started
+      task('t3', 'bot-b', 'pending', '2026-11-10T00:00:00.000Z'), // this month, assigned only
+      task('t4', 'bot-b', 'cancelled', '2026-11-10T00:00:00.000Z'), // excluded
+      task('t5', 'bot-c', 'done', '2026-11-10T00:00:00.000Z', 'rejected'), // started + assigned, not accepted
     ]
     const bots = [
       { id: 'bot-a', name: 'Coder-A', source: 'claimed' },
       { id: 'bot-b', name: 'Coder-B', source: 'claimed' },
+      { id: 'bot-c', name: 'Coder-C', source: 'claimed' },
     ]
     const projects = [{ id: 'p1', name: 'P1' }]
     const logs = [
       { timestamp: '2026-11-27T03:00:00.000Z', agentBotId: 'bot-a', botName: 'Coder-A', tokens: { input: 100, output: 50, total: 150 } },
       { timestamp: '2026-11-24T03:00:00.000Z', agentBotId: 'bot-a', tokens: { input: 200, output: 100 } },
-      { timestamp: '2026-11-10T03:00:00.000Z', agentBotId: 'bot-b', tokens: { input: 10, output: 10, total: 25 } },
     ]
 
     const result = foldOverview(tasks, bots, projects, logs, now)
 
-    expect(result.counts).toEqual({ bots: 2, projects: 1, runningTasks: 1 })
+    expect(result.counts).toEqual({ bots: 3, projects: 1, runningTasks: 1 })
     expect(result.totals).toEqual({
-      today: { tasks: 1, tokens: 150 },
-      week: { tasks: 2, tokens: 450 },
-      month: { tasks: 3, tokens: 475 },
+      today: { tasks: 1, tokens: 150, accepted: 1, assigned: 1 },
+      week: { tasks: 2, tokens: 450, accepted: 1, assigned: 2 },
+      month: { tasks: 3, tokens: 450, accepted: 1, assigned: 4 },
     })
-    expect(result.byBot.map(row => row.botId)).toEqual(['bot-a', 'bot-b'])
+    // 按本月 started 任务数降序：bot-a(2) > bot-c(1)；bot-b started=0 且无 token 被过滤
+    expect(result.byBot.map(row => row.botId)).toEqual(['bot-a', 'bot-c'])
     expect(result.byBot[0]).toMatchObject({
       botId: 'bot-a',
       botName: 'Coder-A',
@@ -123,17 +124,17 @@ describe('foldOverview', () => {
       month: { tasks: 2, tokens: 450 },
     })
     expect(result.byBot[1]).toMatchObject({
-      botId: 'bot-b',
-      botName: 'Coder-B',
+      botId: 'bot-c',
+      botName: 'Coder-C',
       today: { tasks: 0, tokens: 0 },
-      month: { tasks: 1, tokens: 25 },
+      month: { tasks: 1, tokens: 0 },
     })
   })
 
   it('returns empty totals and leaderboard when there is no activity', () => {
     const result = foldOverview([], [], [], [], now)
     expect(result.counts).toEqual({ bots: 0, projects: 0, runningTasks: 0 })
-    expect(result.totals.month).toEqual({ tasks: 0, tokens: 0 })
+    expect(result.totals.month).toEqual({ tasks: 0, tokens: 0, accepted: 0, assigned: 0 })
     expect(result.byBot).toEqual([])
   })
 })

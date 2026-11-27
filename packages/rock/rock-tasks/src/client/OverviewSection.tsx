@@ -123,9 +123,9 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
   ), [overview, period])
 
   const totals = overview?.totals ?? {
-    today: { tasks: 0, tokens: 0 },
-    week: { tasks: 0, tokens: 0 },
-    month: { tasks: 0, tokens: 0 },
+    today: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
+    week: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
+    month: { tasks: 0, tokens: 0, accepted: 0, assigned: 0 },
   }
 
   return (
@@ -147,18 +147,18 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
           <div className={css.statGrid}>
             <div className={css.statCard}>
               <span className={css.statLabel}>{t('overview.period.today')}</span>
-              <span className={css.periodMetric}>{formatNumber(totals.today.tasks)} {t('overview.tasks')}</span>
-              <span className={css.periodMetric}>{formatTokens(totals.today.tokens)} {t('overview.tokens')}</span>
+              <span className={css.periodMetric}>{t('overview.tasks')} {formatNumber(totals.today.accepted)}<span className={css.acceptedCheck}>✓</span><span className={css.ratioSeparator}>/</span>{formatNumber(totals.today.assigned)}</span>
+              <span className={css.periodMetric}>{t('overview.tokens')} {formatTokens(totals.today.tokens)}</span>
             </div>
             <div className={css.statCard}>
               <span className={css.statLabel}>{t('overview.period.week')}</span>
-              <span className={css.periodMetric}>{formatNumber(totals.week.tasks)} {t('overview.tasks')}</span>
-              <span className={css.periodMetric}>{formatTokens(totals.week.tokens)} {t('overview.tokens')}</span>
+              <span className={css.periodMetric}>{t('overview.tasks')} {formatNumber(totals.week.accepted)}<span className={css.acceptedCheck}>✓</span><span className={css.ratioSeparator}>/</span>{formatNumber(totals.week.assigned)}</span>
+              <span className={css.periodMetric}>{t('overview.tokens')} {formatTokens(totals.week.tokens)}</span>
             </div>
             <div className={css.statCard}>
               <span className={css.statLabel}>{t('overview.period.month')}</span>
-              <span className={css.periodMetric}>{formatNumber(totals.month.tasks)} {t('overview.tasks')}</span>
-              <span className={css.periodMetric}>{formatTokens(totals.month.tokens)} {t('overview.tokens')}</span>
+              <span className={css.periodMetric}>{t('overview.tasks')} {formatNumber(totals.month.accepted)}<span className={css.acceptedCheck}>✓</span><span className={css.ratioSeparator}>/</span>{formatNumber(totals.month.assigned)}</span>
+              <span className={css.periodMetric}>{t('overview.tokens')} {formatTokens(totals.month.tokens)}</span>
             </div>
           </div>
 

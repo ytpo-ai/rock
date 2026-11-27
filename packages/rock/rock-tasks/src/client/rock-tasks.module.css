@@ -857,6 +857,14 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.acceptedCheck {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.ratioSeparator {
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .periodToolbar {
   display: flex;
   align-items: center;
