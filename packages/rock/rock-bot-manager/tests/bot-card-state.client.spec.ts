@@ -102,11 +102,13 @@ describe('model change detection', () => {
 
   it('flags a deployed bot whose model changed since the last deploy', () => {
     const bot = { ...CLAIMED, modelId: 'gpt-5' }
+    const { deployedModel: _deployedModel, ...neverDeployed } = deployed
+    const { modelId: _modelId, ...botWithoutModel } = bot
     expect(modelChanged(bot, deployed)).toBe(true)
     expect(modelChanged({ ...bot, modelId: 'gpt-4' }, deployed)).toBe(false)
     expect(modelChanged(bot, { ...deployed, status: 'undeployed' })).toBe(false)
-    expect(modelChanged(bot, { ...deployed, deployedModel: undefined })).toBe(false)
-    expect(modelChanged({ ...bot, modelId: undefined }, deployed)).toBe(false)
+    expect(modelChanged(bot, neverDeployed)).toBe(false)
+    expect(modelChanged(botWithoutModel, deployed)).toBe(false)
   })
 
   it('offers a redeploy action on the card only after the model changed', () => {

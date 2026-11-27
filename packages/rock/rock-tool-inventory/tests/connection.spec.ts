@@ -24,7 +24,6 @@ describe('normalizeConnectionConfig', () => {
     expect(normalizeConnectionConfig({
       url: '',
       token: '',
-      clientType: undefined,
       rootDir: '',
       configRootDir: '',
       startupCommand: '',

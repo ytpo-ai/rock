@@ -86,3 +86,7 @@ export const zh: Record<RockObservabilityKey, string> = {
   'loadOlder.failed': '加载更早日志失败',
   'loadOlder.retry': '重试',
 }
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap { 'rock-observability': RockObservabilityKey }
+}

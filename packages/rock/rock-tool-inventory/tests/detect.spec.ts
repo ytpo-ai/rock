@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { commandOf, debugPrompt, detectPrompt, extractJsonArray, mergeStatuses, parseDebugResult, parseDetectConnectionPatches, parseDetectStatuses, touchedToolIds } from '../src/detect.ts'
 import type { ToolDescriptor, ToolStatus } from '../src/types.ts'
 
-const TOOLS: readonly ToolDescriptor[] = [
+const TOOLS: readonly [ToolDescriptor, ToolDescriptor] = [
   { id: 'codex', command: 'codex', installDocUrl: 'https://docs/codex', serviceHint: '通过 daemon socket 委派' },
   { id: 'pi', command: 'pi' },
 ]

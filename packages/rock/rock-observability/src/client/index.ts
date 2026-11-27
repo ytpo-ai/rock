@@ -8,13 +8,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import remote from '@rock/rock-observability/remote'
 import { NS, en, zh } from './locales.ts'
-import type { RockObservabilityKey } from './locales.ts'
 import { RockObservabilitySection, type RockObservabilitySectionInjected } from './RockObservabilitySection.tsx'
 import { ObservabilityPanelIcon } from './ObservabilityPanelIcon.tsx'
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap { 'rock-observability': RockObservabilityKey }
-}
 
 /** The id shared by the sidebar entry and the main panel it opens. */
 export const PANEL_ID = 'rock-observability' as MainPanelId

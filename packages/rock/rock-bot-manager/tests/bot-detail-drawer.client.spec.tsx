@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BotDetailDrawer } from '../src/client/BotDetailDrawer.tsx'
 import type { RockBotManagerKey } from '../src/client/locales.ts'
-import type { BotRow, LlmProxyChecklist } from '../src/types.ts'
+import type { BotRow, LlmProxyChecklist, WireProtocol } from '../src/types.ts'
 
 afterEach(cleanup)
 
@@ -49,7 +49,7 @@ const CHECKLIST: LlmProxyChecklist = {
 function renderDrawer(bot: BotRow, options: {
   status?: 'undeployed' | 'deployed'
   deployedModel?: string
-  deployedProtocol?: string
+  deployedProtocol?: WireProtocol
   loadProxy?: () => Promise<LlmProxyChecklist | null>
 } = {}): void {
   const status = options.status ?? 'undeployed'

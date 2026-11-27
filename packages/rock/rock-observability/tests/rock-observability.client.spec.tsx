@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AdapterLogTable,
@@ -8,14 +9,14 @@ import {
 } from '../src/client/RockObservabilitySection.tsx'
 import { LogDisplayDialog, parsePageSize } from '../src/client/LogDisplayDialog.tsx'
 import { usePagedLogs } from '../src/client/paged-logs.ts'
-import type { RockObservabilityKey } from '../src/client/locales.ts'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AdapterRequestLog, ObservabilityRow, RelayForwardLog } from '../src/types.ts'
 
 afterEach(cleanup)
 
 /** Return the key verbatim so assertions target structural copy, not localized text. */
-const t = (key: RockObservabilityKey): string => key
+const t: TranslateNS<'rock-observability'> = key => key
 
 function ok<T>(value: T): RemoteResult<T> {
   return { ok: true, value }
@@ -144,15 +145,32 @@ describe('AdapterLogTable', () => {
   })
 
   it('surfaces a failure diagnostic in the status cell', () => {
-    render(<AdapterLogTable t={t} logs={fixedLogs([{ ...ADAPTER_LOG, status: undefined, error: 'HTTP_503' }])} />)
+    const { status: _status, ...failed } = ADAPTER_LOG
+    render(<AdapterLogTable t={t} logs={fixedLogs([{ ...failed, error: 'HTTP_503' }])} />)
     expect(screen.getByText('HTTP_503')).toBeTruthy()
   })
 })
 
+type SectionProps = ComponentProps<typeof RockObservabilitySection>
+
+/** Framework standard seats the section never reads, stubbed to satisfy the slot contract. */
+const standardProps: Omit<SectionProps, 't' | 'remote'> = {
+  useRemoteAccess: () => true,
+  useSessions: selector => selector({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }),
+  useSessionRetainInfo: () => undefined,
+  useSessionAccess: () => true,
+  usePanelInfo: selector => selector({ activePanelId: null }),
+  useResource: (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as SectionProps['useResource'],
+  useWorkspaces: selector => selector({ items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null }),
+  useWorkspaceAccess: () => true,
+  useSessionStatus: selector => selector(new Map()),
+  useContextMenu: () => ({ getTriggerProps: () => ({}) }),
+}
+
 describe('RockObservabilitySection', () => {
   it('loads the first page of both logs and the bot choices', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
 
     await waitFor(() => { expect(remote.relayLogs).toHaveBeenCalledWith(0, 50, undefined) })
     expect(remote.adapterLogs).toHaveBeenCalledWith(0, 50, undefined)
@@ -161,7 +179,7 @@ describe('RockObservabilitySection', () => {
 
   it('offers only the relay and adapter tabs', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
 
     const tabs = screen.getAllByRole('tab').map(tab => tab.textContent)
     expect(tabs).toEqual(['tab.relay', 'tab.adapter'])
@@ -169,7 +187,7 @@ describe('RockObservabilitySection', () => {
 
   it('reads the adapter log from the adapter tab', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
 
     fireEvent.click(screen.getByRole('tab', { name: 'tab.adapter' }))
 
@@ -178,7 +196,7 @@ describe('RockObservabilitySection', () => {
 
   it('reloads page one when the refresh control is pressed', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
     await waitFor(() => { expect(remote.relayLogs).toHaveBeenCalledTimes(1) })
 
     fireEvent.click(screen.getByRole('button', { name: 'toolbar.refresh' }))
@@ -189,7 +207,7 @@ describe('RockObservabilitySection', () => {
 
   it('scopes both logs to the bot chosen in the filter', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
     await waitFor(() => { expect(remote.bots).toHaveBeenCalled() })
 
     fireEvent.click(screen.getByRole('button', { name: 'filter.bot: filter.all' }))
@@ -202,7 +220,7 @@ describe('RockObservabilitySection', () => {
 
   it('applies a page size picked in the display dialog', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
     await waitFor(() => { expect(remote.relayLogs).toHaveBeenCalled() })
 
     fireEvent.click(screen.getByRole('button', { name: 'display.button: 50' }))
@@ -214,7 +232,7 @@ describe('RockObservabilitySection', () => {
 
   it('applies a manually typed page size', async () => {
     const remote = remoteFixture()
-    render(<RockObservabilitySection t={t} remote={remote} />)
+    render(<RockObservabilitySection t={t} remote={remote} {...standardProps} />)
     await waitFor(() => { expect(remote.relayLogs).toHaveBeenCalled() })
 
     fireEvent.click(screen.getByRole('button', { name: 'display.button: 50' }))

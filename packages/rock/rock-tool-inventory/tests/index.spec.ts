@@ -100,7 +100,7 @@ describe('connection config', () => {
     await writeFile(connectionsPath, JSON.stringify({ opencode: { url: 'http://x', token: 't', clientType: 'gui', configRootDir: '~/.dsh' } }))
     const { controller } = await boot(connectionsPath)
 
-    controller.setConnectionConfig('opencode', { url: 'http://x', token: '', clientType: undefined, rootDir: '', configRootDir: '' })
+    controller.setConnectionConfig('opencode', { url: 'http://x', token: '', rootDir: '', configRootDir: '' })
 
     expect(controller.connectionConfig('opencode')).toEqual({ url: 'http://x' })
   })
