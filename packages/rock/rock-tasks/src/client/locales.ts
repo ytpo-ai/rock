@@ -185,7 +185,7 @@ export const zh: Record<RockTasksKey, string> = {
   'tasks.execute': '执行',
   'status.pending': '待处理',
   'status.in-progress': '执行中',
-  'status.bot-completed': 'Bot 已完成',
+  'status.bot-completed': 'Bot完成',
   'status.awaiting-review': '待验收',
   'status.blocked': '阻塞',
   'status.done': '已完成',
