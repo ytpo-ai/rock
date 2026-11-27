@@ -106,6 +106,15 @@ export class RotatingJsonlLog<T> {
   }
 
   /**
+   * Full persisted history, newest first, optionally scoped to one key.
+   * @param key - filter to entries whose `keyOf` value equals this; omitted returns every entry.
+   * @returns every persisted entry in newest-first order.
+   */
+  async all(key?: string): Promise<T[]> {
+    return scoped(await this.history(), this.keyOf, key)
+  }
+
+  /**
    * Resolve once all pending disk writes have settled (tests and graceful shutdown).
    * @returns a promise settling after the last queued write.
    */

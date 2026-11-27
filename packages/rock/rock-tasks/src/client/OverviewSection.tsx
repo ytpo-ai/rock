@@ -1,56 +1,94 @@
-/** Rock overview panel: which bot is running which task, with task status. */
+/** Rock overview panel: console dashboard with counts, period totals, and per-bot leaderboards. */
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { TaskBot, TaskSummary } from '@rock/rock-tasks/types'
-import { statusLabel } from './status.ts'
+import { Button, SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { OverviewBotRow, RockOverview } from '@rock/rock-tasks/types'
 import css from './rock-tasks.module.css'
 
 /** Host operations injected into the Cordis-free overview component. */
 export interface OverviewSectionInjected {
   remote: {
-    listTasks(): Promise<RemoteResult<TaskSummary[]>>
-    listBots(): Promise<RemoteResult<TaskBot[]>>
+    overview(): Promise<RemoteResult<RockOverview>>
   }
 }
 
 export type OverviewSectionProps =
   PropsRuntime<'main'> & PropsLocale<'rock-tasks'> & InjectFace<OverviewSectionInjected>
 
-/** One bot row: its id, whether it is running, and its tasks. */
-interface BotOverview {
+/** Selectable aggregation period. */
+type Period = 'month' | 'week' | 'today'
+
+/** One leaderboard row: a bot and its period value. */
+interface RankItem {
   botId: string
-  running: boolean
-  tasks: TaskSummary[]
+  botName: string
+  value: number
 }
 
-/** A task is "running" while it is in progress. */
-function isRunning(task: TaskSummary): boolean {
-  return task.status === 'in-progress'
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat().format(Math.round(value))
 }
 
-/** Group tasks by owning bot, marking bots with an in-progress task as running. */
-function groupByBot(tasks: readonly TaskSummary[]): BotOverview[] {
-  const map = new Map<string, BotOverview>()
-  for (const task of tasks) {
-    const botId = task.executorId.length > 0 ? task.executorId : '(unassigned)'
-    let entry = map.get(botId)
-    if (entry === undefined) {
-      entry = { botId, running: false, tasks: [] }
-      map.set(botId, entry)
-    }
-    entry.tasks.push(task)
-    if (isRunning(task)) entry.running = true
-  }
-  return [...map.values()]
+function formatTokens(value: number): string {
+  const v = value
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`
+  return String(Math.round(v))
 }
 
-/** Render the per-bot task overview. */
+function valueOf(row: OverviewBotRow, period: Period, metric: 'tasks' | 'tokens'): number {
+  return row[period][metric]
+}
+
+function StatCard({ label, value }: { label: string; value: string }): ReactElement {
+  return (
+    <div className={css.statCard}>
+      <span className={css.statLabel}>{label}</span>
+      <span className={css.statValue}>{value}</span>
+    </div>
+  )
+}
+
+function Leaderboard({ title, items, barClass, format }: {
+  title: string
+  items: RankItem[]
+  barClass: string | undefined
+  format: (value: number) => string
+}): ReactElement {
+  const max = items[0]?.value ?? 0
+  return (
+    <div className={css.leaderboard}>
+      <p className={css.leaderboardTitle}>{title}</p>
+      {items.length === 0 ? (
+        <p className={css.empty}>—</p>
+      ) : (
+        <ul className={css.rankList}>
+          {items.map((item, index) => {
+            const pct = max > 0 ? Math.max(2, (item.value / max) * 100) : 0
+            return (
+              <li key={item.botId} className={css.rankRow}>
+                <span className={css.rankIndex}>{index + 1}</span>
+                <span className={css.rankName} title={item.botName}>{item.botName}</span>
+                <div className={css.rankTrack}>
+                  <div className={[css.rankBar, barClass].filter(Boolean).join(' ')} style={{ width: `${pct}%` }} />
+                </div>
+                <span className={css.rankValue}>{format(item.value)}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** Render the per-bot console dashboard. */
 export function OverviewSection({ t, remote }: OverviewSectionProps): ReactElement {
-  const [tasks, setTasks] = useState<TaskSummary[]>([])
-  const [bots, setBots] = useState<TaskBot[]>([])
+  const [overview, setOverview] = useState<RockOverview | null>(null)
+  const [period, setPeriod] = useState<Period>('month')
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [reload, setReload] = useState(0)
@@ -59,20 +97,36 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
     let cancelled = false
     setLoading(true)
     setFailed(false)
-    void remote.listTasks().then((result) => {
+    void remote.overview().then((result) => {
       if (cancelled) return
       setLoading(false)
-      if (result.ok) setTasks(result.value)
+      if (result.ok) setOverview(result.value)
       else setFailed(true)
-    })
-    void remote.listBots().then((result) => {
-      if (!cancelled && result.ok) setBots(result.value)
     })
     return () => { cancelled = true }
   }, [remote, reload])
 
-  const botName = (botId: string): string => bots.find(bot => bot.id === botId)?.name ?? botId
-  const overview = useMemo(() => groupByBot(tasks), [tasks])
+  const taskRank = useMemo<RankItem[]>(() => (
+    (overview?.byBot ?? [])
+      .map(bot => ({ botId: bot.botId, botName: bot.botName, value: valueOf(bot, period, 'tasks') }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  ), [overview, period])
+
+  const tokenRank = useMemo<RankItem[]>(() => (
+    (overview?.byBot ?? [])
+      .map(bot => ({ botId: bot.botId, botName: bot.botName, value: valueOf(bot, period, 'tokens') }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  ), [overview, period])
+
+  const totals = overview?.totals ?? {
+    today: { tasks: 0, tokens: 0 },
+    week: { tasks: 0, tokens: 0 },
+    month: { tasks: 0, tokens: 0 },
+  }
 
   return (
     <div className={css.page}>
@@ -82,28 +136,50 @@ export function OverviewSection({ t, remote }: OverviewSectionProps): ReactEleme
         <p className={css.empty}>
           {t('load.failed')} <Button variant="ghost" size="sm" onClick={() => { setReload(v => v + 1) }}>{t('load.retry')}</Button>
         </p>
-      ) : overview.length === 0 ? (
-        <p className={css.empty}>{t('overview.empty')}</p>
       ) : (
         <div className={css.overview}>
-          {overview.map(bot => (
-            <section key={bot.botId} className={css.botCard}>
-              <header className={css.botHeader}>
-                <span className={css.botId}>{botName(bot.botId)}</span>
-                <span className={bot.running ? css.running : css.idle}>
-                  {bot.running ? t('overview.running') : t('overview.idle')}
-                </span>
-              </header>
-              <ul className={css.taskList}>
-                {bot.tasks.map(task => (
-                  <li key={task.id} className={css.taskRow}>
-                    <span className={css.taskTitle}>{task.title || task.id}</span>
-                    <span className={css.taskStatus}>{statusLabel(t, task.status)}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+          <div className={css.statGrid}>
+            <StatCard label={t('overview.bots')} value={formatNumber(overview?.counts.bots ?? 0)} />
+            <StatCard label={t('overview.projects')} value={formatNumber(overview?.counts.projects ?? 0)} />
+            <StatCard label={t('overview.runningTasks')} value={formatNumber(overview?.counts.runningTasks ?? 0)} />
+          </div>
+
+          <div className={css.statGrid}>
+            <div className={css.statCard}>
+              <span className={css.statLabel}>{t('overview.period.today')}</span>
+              <span className={css.periodMetric}>{formatNumber(totals.today.tasks)} {t('overview.tasks')}</span>
+              <span className={css.periodMetric}>{formatTokens(totals.today.tokens)} {t('overview.tokens')}</span>
+            </div>
+            <div className={css.statCard}>
+              <span className={css.statLabel}>{t('overview.period.week')}</span>
+              <span className={css.periodMetric}>{formatNumber(totals.week.tasks)} {t('overview.tasks')}</span>
+              <span className={css.periodMetric}>{formatTokens(totals.week.tokens)} {t('overview.tokens')}</span>
+            </div>
+            <div className={css.statCard}>
+              <span className={css.statLabel}>{t('overview.period.month')}</span>
+              <span className={css.periodMetric}>{formatNumber(totals.month.tasks)} {t('overview.tasks')}</span>
+              <span className={css.periodMetric}>{formatTokens(totals.month.tokens)} {t('overview.tokens')}</span>
+            </div>
+          </div>
+
+          <div className={css.periodToolbar}>
+            <SegmentedTabs
+              items={[
+                { value: 'month', label: t('overview.period.month'), id: 'overview-period-month', panelId: 'overview-period-month-panel' },
+                { value: 'week', label: t('overview.period.week'), id: 'overview-period-week', panelId: 'overview-period-week-panel' },
+                { value: 'today', label: t('overview.period.today'), id: 'overview-period-today', panelId: 'overview-period-today-panel' },
+              ]}
+              value={period}
+              onChange={setPeriod}
+              label={t('overview.period.label')}
+              size="sm"
+            />
+          </div>
+
+          <div className={css.leaderboards}>
+            <Leaderboard title={t('overview.taskRank')} items={taskRank} barClass={css.rankBarTask} format={formatNumber} />
+            <Leaderboard title={t('overview.tokenRank')} items={tokenRank} barClass={css.rankBarToken} format={formatTokens} />
+          </div>
         </div>
       )}
     </div>

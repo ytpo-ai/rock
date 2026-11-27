@@ -154,6 +154,32 @@ export interface ArchiveIndex {
   tasks: ArchivedTaskSummary[]
 }
 
+/** Per-period task/token counters shown in the Rock console overview. */
+export interface OverviewPeriodMetrics {
+  /** Executed task count in the period. */
+  tasks: number
+  /** Consumed token count in the period. */
+  tokens: number
+}
+
+/** One bot's per-period task/token counters in the Rock console overview leaderboard. */
+export interface OverviewBotRow {
+  /** Owning agent bot id. */
+  botId: string
+  /** Human-readable bot display name. */
+  botName: string
+  today: OverviewPeriodMetrics
+  week: OverviewPeriodMetrics
+  month: OverviewPeriodMetrics
+}
+
+/** Aggregated Rock console overview: counts, per-period totals, and per-bot leaderboard. */
+export interface RockOverview {
+  counts: { bots: number; projects: number; runningTasks: number }
+  totals: { today: OverviewPeriodMetrics; week: OverviewPeriodMetrics; month: OverviewPeriodMetrics }
+  byBot: OverviewBotRow[]
+}
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'rockTasks/unconfigured': Record<string, never>

@@ -25,7 +25,8 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { projectsFrom, taskFrom, tasksFrom } from './tasks.ts'
 import { presetForToolType } from '@rock/rock-bot-manager'
 import { TaskArchiveStore } from './work-records.ts'
-import type { ArchivedTaskSummary, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
+import type { ArchivedTaskSummary, RockOverview, TaskBot, TaskSummary, TaskWorkRecord } from './types.ts'
+import { foldOverview, type OverviewAdapterLog } from './overview.ts'
 
 export type * from './types.ts'
 
@@ -103,6 +104,21 @@ export default class RockTasksController extends TypertRemoteService {
   @Remote
   listProjects(): Array<{ id: string; name: string; slug?: string }> {
     return this.projects
+  }
+
+  /**
+   * Aggregate the console overview: counts, per-period totals, and a per-bot leaderboard.
+   * Task counts come from the cloud queue (pollTasks, includes terminal tasks); token totals
+   * come from the local adapter request log. Periods use Asia/Shanghai day/week/month bounds.
+   * @returns counts plus today/week/month task-token totals and the per-bot leaderboard.
+   */
+  @Remote
+  async overview(): Promise<RockOverview> {
+    const [tasks, bots] = await Promise.all([this.fetchTasks(), this.listBots()])
+    const projects = this.listProjects()
+    const adapter = this.ctx.get('rockLlmAdapter') as AdapterLogSource | undefined
+    const logs = adapter === undefined ? [] : await adapter.all()
+    return foldOverview(tasks, bots, projects, logs, new Date())
   }
 
   /** All employee-visible bots (claimed ∪ assistant ∪ local) for the execute dialog. */
@@ -487,6 +503,11 @@ export default class RockTasksController extends TypertRemoteService {
     if (record?.employeeId) return record.employeeId
     return this.config.employeeId
   }
+}
+
+/** The local adapter-log read surface the overview folds (an optional service). */
+interface AdapterLogSource {
+  all(): Promise<OverviewAdapterLog[]>
 }
 
 /** A safe, secret-free diagnostic for an unknown thrown value. */

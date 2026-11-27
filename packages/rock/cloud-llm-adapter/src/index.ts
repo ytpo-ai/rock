@@ -114,6 +114,15 @@ export class RockLlmAdapterService {
   logPage(offset: number, limit: number, botId?: string): Promise<LlmRequestLog[]> {
     return this.logStore.page(offset, limit, botId)
   }
+
+  /**
+   * Full persisted request-log history, newest first, optionally scoped to one agent bot.
+   * @param botId - filter to requests from this bot; omitted returns every request.
+   * @returns every persisted request log in newest-first order.
+   */
+  all(botId?: string): Promise<LlmRequestLog[]> {
+    return this.logStore.all(botId)
+  }
 }
 
 /** Register one adapter instance for every configured provider route. */

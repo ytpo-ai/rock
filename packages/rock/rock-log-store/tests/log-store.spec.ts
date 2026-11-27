@@ -110,4 +110,17 @@ describe('RotatingJsonlLog', () => {
     expect(store.recent()).toEqual([entry('1')])
     await rm(dir, { recursive: true, force: true })
   })
+
+  it('returns the full newest-first history via all(), optionally scoped to one key', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'rock-log-'))
+    const store = new RotatingJsonlLog<Entry>({ path: join(dir, 'log.jsonl'), keyOf: item => item.agentBotId })
+    store.append(entry('1', 'bot-a'))
+    store.append(entry('2', 'bot-b'))
+    store.append(entry('3', 'bot-a'))
+    await store.flush()
+
+    await expect(store.all()).resolves.toEqual([entry('3', 'bot-a'), entry('2', 'bot-b'), entry('1', 'bot-a')])
+    await expect(store.all('bot-b')).resolves.toEqual([entry('2', 'bot-b')])
+    await rm(dir, { recursive: true, force: true })
+  })
 })
