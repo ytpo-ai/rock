@@ -184,7 +184,7 @@ export function ProjectsSection({ t, remote }: ProjectsSectionProps): ReactEleme
                     </span>
                   </span>
                   {project.slug !== undefined && project.slug !== '' && (
-                    <span className={css.cardRole}>{t('slug.label')}：{project.slug}</span>
+                    <span className={css.cardRole}>{project.slug}</span>
                   )}
                 </div>
               </div>

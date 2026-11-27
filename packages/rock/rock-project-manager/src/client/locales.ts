@@ -27,7 +27,6 @@ export const en = {
   'dir.save': 'Save',
   'dir.cancel': 'Cancel',
   'dir.reset': 'Reset to default',
-  'slug.label': 'Slug',
   'toast.saved': 'Directory saved',
   'toast.reset': 'Reset to default',
 } as const
@@ -59,7 +58,6 @@ export const zh: Record<RockProjectManagerKey, string> = {
   'dir.save': '保存',
   'dir.cancel': '取消',
   'dir.reset': '重置为默认',
-  'slug.label': 'Slug',
   'toast.saved': '目录已保存',
   'toast.reset': '已重置为默认',
 }
