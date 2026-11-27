@@ -206,6 +206,16 @@
   flex-shrink: 0;
 }
 
+/* Brand-filled CTA: the set-directory action reads as a colored button instead of the white primary. */
+.cardFooterActions .dirSetButton {
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-static-neutral-bluish-50);
+}
+
+.cardFooterActions .dirSetButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-info-hover);
+}
+
 .cardProject {
   min-width: 0;
   overflow: hidden;

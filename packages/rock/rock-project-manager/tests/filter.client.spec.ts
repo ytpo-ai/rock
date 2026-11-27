@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterProjects } from '../src/client/filter.ts'
+import { filterProjects, projectDirLabel } from '../src/client/filter.ts'
 import type { ProjectRow } from '../src/types.ts'
 
 /** Build a minimal panel row. */
@@ -24,5 +24,19 @@ describe('filterProjects', () => {
 
   it('returns an empty list when nothing matches', () => {
     expect(filterProjects(projects, 'nope')).toEqual([])
+  })
+})
+
+describe('projectDirLabel', () => {
+  it('shows the absolute path for an overridden directory', () => {
+    const overridden: ProjectRow = {
+      id: 'p1', name: 'Life Script', slug: 'life-script', dir: '/custom/life-script', defaultDir: '/root/projects/life-script', hasOverride: true,
+    }
+    expect(projectDirLabel(overridden)).toBe('/custom/life-script')
+  })
+
+  it('shows the default directory as a path relative to the workspace root', () => {
+    expect(projectDirLabel(row('p1', 'Life Script', 'life-script'))).toBe('projects/life-script')
+    expect(projectDirLabel(row('p2', '八字分析'))).toBe('projects/p2')
   })
 })

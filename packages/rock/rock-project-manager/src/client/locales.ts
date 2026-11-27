@@ -36,7 +36,7 @@ export type RockProjectManagerKey = keyof typeof en
 
 /** Chinese dictionary. */
 export const zh: Record<RockProjectManagerKey, string> = {
-  nav: '项目管理',
+  nav: '项目',
   'page.title': '项目管理',
   'page.description': '你参与的项目，已同步到本工作台',
   refresh: '同步',

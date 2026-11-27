@@ -8,7 +8,7 @@ import {
   IconSearchOutlineRegular, Input, Modal, StateDot, Tag, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProjectRow } from '@rock/rock-project-manager/types'
-import { filterProjects } from './filter.ts'
+import { filterProjects, projectDirLabel } from './filter.ts'
 import css from './rock-project-manager.module.css'
 
 /** Directory-edit drawer form id shared by the submit button and the form element. */
@@ -190,7 +190,7 @@ export function ProjectsSection({ t, remote }: ProjectsSectionProps): ReactEleme
               </div>
 
               <div className={css.cardChips}>
-                <span className={css.cardChip} title={project.dir}>{project.dir}</span>
+                <span className={css.cardChip} title={project.dir}>{projectDirLabel(project)}</span>
               </div>
 
               <div className={css.cardFooter}>
@@ -199,6 +199,7 @@ export function ProjectsSection({ t, remote }: ProjectsSectionProps): ReactEleme
                   <Button
                     size="sm"
                     variant="primary"
+                    className={css.dirSetButton ?? ''}
                     icon={<IconEditOutlineRegular size={14} />}
                     onClick={() => { openDirEditor(project) }}
                   >

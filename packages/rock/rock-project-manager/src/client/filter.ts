@@ -1,4 +1,4 @@
-/** Search filter for the project card list; matching covers name, id, and slug. */
+/** Client helpers for the project card list: search filter and directory label. */
 import type { ProjectRow } from '@rock/rock-project-manager/types'
 
 /**
@@ -16,4 +16,15 @@ export function filterProjects(projects: readonly ProjectRow[], query: string): 
     || project.id.toLowerCase().includes(q)
     || (project.slug ?? '').toLowerCase().includes(q),
   )
+}
+
+/**
+ * Render a project's working-directory label: the absolute override path when
+ * set, else the default directory as a path relative to the workspace root.
+ * @param project - the project row.
+ * @returns the display path for the card chip.
+ */
+export function projectDirLabel(project: ProjectRow): string {
+  if (project.hasOverride) return project.dir
+  return `projects/${project.slug?.trim() || project.id}`
 }
