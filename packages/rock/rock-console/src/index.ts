@@ -6,4 +6,5 @@
  * @module @rock/rock-console
  */
 
-export {}
+/** Provides no host-side behavior; the browser half owns all Rock console UI. */
+export function apply(): void {}

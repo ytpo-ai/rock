@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RockBrandName } from './RockBrandName.tsx'
 
 /** The panel the console opens on: the Rock overview panel. */
@@ -13,11 +14,25 @@ const DEFAULT_PANEL = 'rock-overview' as MainPanelId
 export const inject = ['slots', 'layout']
 
 /**
+ * Rock is text-only: the sidebar brand mark seat stays empty so the DSH whale
+ * logo fallback never renders beside the "Rock" name.
+ * @param _props - the sidebar's brand-mark share (unused).
+ * @returns null (render nothing).
+ */
+function RockBrandMark(_props: PropsRuntime<'sidebar.brand.mark'>): null {
+  return null
+}
+
+/**
  * Select the default panel once its main-slot occupant registers, and fill the
- * Rock brand name. Selection happens once; later navigation is the user's own.
+ * Rock brand (no mark, "Rock" name). Selection happens once; later navigation
+ * is the user's own.
  * @param ctx - browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({
+    name: 'sidebar.brand.mark',
+  }, RockBrandMark))
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({
     name: 'sidebar.brand.name',
   }, RockBrandName))
